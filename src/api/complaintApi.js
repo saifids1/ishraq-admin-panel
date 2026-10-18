@@ -35,3 +35,13 @@ export const getComplaintsByUserId = async (
 
   return response.data;
 };
+
+
+// Get complaint by ID
+export const getComplaintById = async (complaintId) => {
+  const response = await axiosInstance.get(
+    `/Complaint/${complaintId}`
+  );
+
+  return response.data;
+};

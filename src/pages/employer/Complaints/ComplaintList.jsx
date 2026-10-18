@@ -2,33 +2,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronsRight,
-  Search as SearchIcon,
-  Users as UsersIcon,
+  Search,
   Plus,
   RefreshCw,
-  AlertCircle,
+  MessageSquareText,
 } from "lucide-react";
 
 import { getComplaintsByUserId } from "../../../api/complaintApi";
 import { getCurrentUserId } from "../../../utils/authUtils";
 
-// Prevent duplicate concurrent requests for the same user and page.
-const inFlightComplaintRequests = new Map();
-
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const PAGE_SIZES = [10, 25, 50, 100];
 
 const formatDate = (value) => {
   if (!value) return "-";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return "-";
 
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
 
-  return `${day}-${month}-${year}`;
+  return `${day}-${month}-${date.getFullYear()}`;
 };
 
 const getValue = (item, keys, fallback = "") => {
@@ -42,75 +37,41 @@ const getValue = (item, keys, fallback = "") => {
   return fallback;
 };
 
-const mapComplaint = (item) => {
-  const id = getValue(item, [
+const mapComplaint = (item) => ({
+  id: getValue(item, [
     "cP_complaint_id",
     "CP_ComplaintId",
     "complaintId",
     "id",
-  ]);
-
-  return {
-    id,
-    fullName: getValue(item, [
-      "cP_name",
-      "cP_full_name",
-      "cP_complainer_name",
-      "cP_fullName",
-      "fullName",
-      "name",
-      "complainerName",
-    ], "—"),
-
-    contactNo: getValue(item, [
-      "cP_contact",
-      "cP_contact_no",
-      "cP_mobile",
-      "cP_mobile_no",
-      "contactNo",
-      "contact",
-      "mobile",
-      "phone",
-    ], "—"),
-
-    email: getValue(item, [
-      "cP_email",
-      "cP_email_id",
-      "email",
-      "emailAddress",
-    ], "—"),
-
-    youAre: getValue(item, [
-      "userTypeName",
-      "cP_user_type_name",
-      "cP_user_type",
-      "userType",
-      "youAre",
-    ], "—"),
-
-    complaintCategory: getValue(item, [
+  ]),
+  requestNo: getValue(item, ["cP_request_no", "requestNo"], "-"),
+  fullName: getValue(
+    item,
+    ["cP_name", "cP_full_name", "cP_complainer_name", "fullName", "name"],
+    "-",
+  ),
+  contactNo: getValue(
+    item,
+    ["cP_contact", "cP_contact_no", "cP_mobile", "contactNo", "contact"],
+    "-",
+  ),
+  email: getValue(item, ["cP_email", "cP_email_id", "email"], "-"),
+  complaintCategory: getValue(
+    item,
+    [
       "complaintCategoryName",
       "categoryName",
       "cP_complaint_category_name",
-      "cP_category_name",
       "complaintCategory",
       "category",
-    ], "—"),
-
-    createdAt: formatDate(
-      getValue(item, [
-        "cP_created_at",
-        "cP_created_date",
-        "cP_created_on",
-        "createdAt",
-        "createdDate",
-        "createdOn",
-      ], "")
-    ),
-
-    raw: item,
-  };
-};
+    ],
+    "-",
+  ),
+  createdAt: formatDate(
+    getValue(item, ["cP_created_at", "cP_created_date", "createdAt"], ""),
+  ),
+  raw: item,
+});
 
 const getErrorMessage = (error) =>
   error?.response?.data?.message ||
@@ -120,103 +81,70 @@ const getErrorMessage = (error) =>
 
 const ComplaintList = () => {
   const navigate = useNavigate();
+  const userId = getCurrentUserId();
 
   const [complaints, setComplaints] = useState([]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
-  const [totalPagesFromApi, setTotalPagesFromApi] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const requestSequence = useRef(0);
 
-  const userId = getCurrentUserId();
-
   const fetchComplaints = useCallback(
-    async ({ force = false } = {}) => {
+    async () => {
       if (userId === undefined || userId === null || userId === "") {
         setComplaints([]);
         setTotalRecords(0);
-        setTotalPagesFromApi(0);
+        setTotalPages(1);
         setError("Unable to identify the logged-in user. Please log in again.");
-        setLoading(false);
-        setRefreshing(false);
         return;
       }
 
-      const requestKey = `${userId}-${page}-${pageSize}`;
       const sequence = ++requestSequence.current;
 
+      setLoading(true);
       setError("");
 
-      if (force) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
       try {
-        let request = inFlightComplaintRequests.get(requestKey);
+        const response = await getComplaintsByUserId(userId, page, pageSize);
 
-        if (!request || force) {
-          request = getComplaintsByUserId(userId, page, pageSize);
-          inFlightComplaintRequests.set(requestKey, request);
-        }
-
-        const response = await request;
-
-        // Ignore an older request if the user has changed pages.
+        // Ignore stale responses when the page or size has changed.
         if (sequence !== requestSequence.current) return;
 
         if (response?.success === false) {
           throw new Error(response?.message || "Unable to load complaints.");
         }
 
-        // Expected paginated response:
-        // { success, message, data: { pageNo, pageSize, totalRecords, totalPages, data: [] } }
+        // Actual response:
+        // { success, message, data: { pageNo, pageSize, totalRecords, totalPages, data: [...] } }
         const result = response?.data;
-        const rows = Array.isArray(result?.data)
-          ? result.data
-          : Array.isArray(result)
-            ? result
-            : Array.isArray(response?.data?.items)
-              ? response.data.items
-              : [];
+        const rows = Array.isArray(result?.data) ? result.data : [];
 
         setComplaints(rows.map(mapComplaint));
-        setTotalRecords(
-          Number(result?.totalRecords ?? result?.totalCount ?? rows.length)
-        );
-        setTotalPagesFromApi(
-          Number(result?.totalPages ?? 0)
-        );
+        setTotalRecords(Number(result?.totalRecords) || 0);
+        setTotalPages(Math.max(1, Number(result?.totalPages) || 1));
       } catch (err) {
         if (sequence !== requestSequence.current) return;
 
+        console.error("Failed to fetch complaints:", err);
+
         setComplaints([]);
         setTotalRecords(0);
-        setTotalPagesFromApi(0);
+        setTotalPages(1);
         setError(getErrorMessage(err));
       } finally {
-        if (sequence === requestSequence.current) {
-          setLoading(false);
-          setRefreshing(false);
-        }
+        if (sequence === requestSequence.current) setLoading(false);
       }
     },
-    [userId, page, pageSize]
+    [userId, page, pageSize],
   );
 
   useEffect(() => {
     fetchComplaints();
-
-    return () => {
-      // Mark any outstanding response as stale when the page changes/unmounts.
-      requestSequence.current += 1;
-    };
   }, [fetchComplaints]);
 
   const filteredComplaints = useMemo(() => {
@@ -224,152 +152,118 @@ const ComplaintList = () => {
 
     if (!query) return complaints;
 
-    return complaints.filter((complaint) => {
-      const searchableText = [
-        complaint.fullName,
-        complaint.contactNo,
-        complaint.email,
-        complaint.youAre,
-        complaint.complaintCategory,
-      ]
+    return complaints.filter((item) =>
+      [item.fullName, item.contactNo, item.email, item.complaintCategory]
         .join(" ")
-        .toLowerCase();
-
-      return searchableText.includes(query);
-    });
+        .toLowerCase()
+        .includes(query),
+    );
   }, [complaints, search]);
 
-  const totalPages = Math.max(
-    1,
-    totalPagesFromApi || Math.ceil(totalRecords / pageSize)
-  );
-
-  const currentPage = Math.min(page, totalPages);
-  const start = totalRecords === 0 ? 0 : (currentPage - 1) * pageSize;
-  const end = Math.min(start + pageSize, totalRecords);
-
   const pageNumbers = useMemo(() => {
-    const visibleCount = 5;
-    let from = Math.max(1, currentPage - Math.floor(visibleCount / 2));
-    let to = Math.min(totalPages, from + visibleCount - 1);
+    const count = 5;
+    let from = Math.max(1, page - Math.floor(count / 2));
+    let to = Math.min(totalPages, from + count - 1);
 
-    from = Math.max(1, to - visibleCount + 1);
+    from = Math.max(1, to - count + 1);
 
-    return Array.from(
-      { length: to - from + 1 },
-      (_, index) => from + index
-    );
-  }, [currentPage, totalPages]);
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  }, [page, totalPages]);
 
-  const pageButtonClass =
-    "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[12.5px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
+  const start = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, totalRecords);
 
-  const handlePageSizeChange = (event) => {
+  const changePageSize = (event) => {
     setPageSize(Number(event.target.value));
     setPage(1);
   };
 
-  const handleRefresh = () => {
-    fetchComplaints({ force: true });
-  };
+  const refresh = () => fetchComplaints();
+
+  const paginationButton =
+    "grid h-8 min-w-8 place-items-center rounded-lg border px-2.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-40";
 
   return (
-    <div className="js-page bg-[#f7f9fb] p-0 text-[#1e2b36]">
-      <div className="mx-auto rounded-[12px] border border-[#e2e8ee] bg-white p-2 shadow-sm sm:px-[18px]">
-        {/* Title and search */}
-        <div className="mb-2 flex flex-col items-start justify-between gap-3 xl:flex-row xl:items-center">
+    <div className="min-h-full bg-[#f7f9fb] text-[#1e2b36]">
+      <div className="mx-auto max-w-[1500px] rounded-xl border border-[#e2e8ee] bg-white p-4 shadow-sm sm:p-5">
+        {/* Header */}
+        <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
-            <h1 className="m-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]">
+            <h1 className="text-2xl font-extrabold tracking-tight text-[#2c6b8a]">
               Complaints / Grievances
             </h1>
           </div>
 
-          <div className="flex w-full flex-wrap items-center gap-2.5 xl:w-auto">
-            <div className="relative min-w-[250px] flex-1 xl:min-w-[320px] xl:flex-none">
-              <SearchIcon
-                size={15}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
+          <div className="flex flex-wrap gap-2">
+            <div className="relative w-[300px]">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
               />
-
               <input
                 type="search"
-                aria-label="Search complaints"
-                placeholder="Search by email, name or mobile"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-white pl-9 pr-3 text-[15px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:ring-2 focus:ring-[#2c6b8a]/30"
+                placeholder="Search by name, contact or email"
+                className="h-10 w-full rounded-lg border border-[#c9d5dd] pl-9 pr-3 text-sm outline-none focus:border-[#2c6b8a] focus:ring-2 focus:ring-[#2c6b8a]/20"
               />
             </div>
 
             <button
               type="button"
-              onClick={handleRefresh}
-              disabled={loading || refreshing}
-              title="Refresh complaints"
-              className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[14px] font-semibold text-[#2c6b8a] transition hover:bg-[#e8f1f6] disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={refresh}
+              disabled={loading}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#c9d5dd] px-3 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
             >
-              <RefreshCw
-                size={14}
-                className={refreshing ? "animate-spin" : ""}
-              />
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
 
             <button
               type="button"
               onClick={() => navigate("/employer/complaint-add")}
-              title="Add Complaint"
-              className="group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[15px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#2c6b8a] px-3 text-sm font-semibold text-white hover:bg-[#245a75]"
             >
-              <Plus
-                size={15}
-                strokeWidth={2.2}
-                className="transition-transform group-hover:scale-110"
-              />
-              <span className="hidden sm:inline">Add Complaint</span>
+              <Plus size={16} />
+              Add Complaint
             </button>
           </div>
         </div>
 
-        <hr />
-
-        {/* Error message */}
         {error && (
           <div
             role="alert"
-            className="mt-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-[14px] text-rose-700"
+            className="mb-4 flex flex-col gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between"
           >
-            <AlertCircle size={17} className="mt-0.5 shrink-0" />
-            <div className="flex-1">{error}</div>
+            <span>{error}</span>
             <button
               type="button"
-              onClick={handleRefresh}
-              className="shrink-0 font-semibold underline"
+              onClick={refresh}
+              className="font-semibold underline"
             >
-              Retry
+              Try again
             </button>
           </div>
         )}
 
-        {/* Complaints table */}
-        <div className="mt-4 h-[62vh] overflow-x-auto overflow-y-auto rounded-lg border border-[#cbe1f4] common-scrollbar">
-          <table className="w-full min-w-[1050px] border-collapse text-[15px]">
-            <thead className="sticky top-0 z-10">
-              <tr>
+        {/* Table */}
+        <div className="overflow-x-auto rounded-lg border border-[#cbe1f4]">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] text-left text-white">
                 {[
                   "Sr.No",
                   "Full Name",
                   "Contact No.",
                   "Email",
-                  // "You Are",
                   "Complaint Category",
                   "Submit Date",
-                  "Actions",
+                  "Action",
                 ].map((heading) => (
                   <th
                     key={heading}
                     scope="col"
-                    className="whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-3.5 py-3 text-left text-[15px] font-bold text-white"
+                    className="whitespace-nowrap px-3 py-3 font-bold"
                   >
                     {heading}
                   </th>
@@ -380,92 +274,60 @@ const ComplaintList = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td
-                    colSpan={8}
-                    className="border-t border-[#e2e8ee] px-4 py-12 text-center text-[14px] text-[#6b7a88]"
-                  >
+                  <td colSpan={7} className="px-4 py-12 text-center text-[#60738a]">
+                    <RefreshCw
+                      size={22}
+                      className="mx-auto mb-2 animate-spin text-[#2c6b8a]"
+                    />
                     Loading complaints...
                   </td>
                 </tr>
               ) : filteredComplaints.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={8}
-                    className="border-t border-[#e2e8ee] px-4 py-12 text-center"
-                  >
-                    <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a]">
-                      <UsersIcon size={22} />
-                    </div>
-
-                    <p className="mt-3 text-[15px] text-[#1e2b36]">
-                      {search.trim()
-                        ? "No complaints match your search"
-                        : "No complaints found"}
+                  <td colSpan={7} className="px-4 py-12 text-center">
+                    <MessageSquareText
+                      size={28}
+                      className="mx-auto mb-3 text-[#2c6b8a]"
+                    />
+                    <p className="font-semibold text-[#34445a]">
+                      {search
+                        ? "No complaints match your search."
+                        : "No complaints found."}
                     </p>
-
-                    <p className="mt-0.5 text-[14px] text-[#6b7a88]">
-                      {search.trim()
-                        ? "Try searching with another name, email or mobile number."
-                        : "Complaints submitted by this user will appear here."}
-                    </p>
-
-                    {search.trim() && (
-                      <button
-                        type="button"
-                        onClick={() => setSearch("")}
-                        className="mt-3 cursor-pointer rounded-lg bg-[#2c6b8a] px-3.5 py-2 text-[14px] font-semibold text-white transition hover:bg-[#245a75]"
-                      >
-                        Clear search
-                      </button>
-                    )}
                   </td>
                 </tr>
               ) : (
-                filteredComplaints.map((complaint, index) => (
+                filteredComplaints.map((item, index) => (
                   <tr
-                    key={complaint.id ?? `${complaint.email}-${index}`}
-                    className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                    key={item.id ?? `${item.email}-${index}`}
+                    className="border-t border-[#e2e8ee] even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                   >
-                    <td className="border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] tabular-nums text-slate-900">
-                      {start + index + 1}
+                    <td className="whitespace-nowrap px-3 py-3 tabular-nums">
+                      {start + index}
                     </td>
-
-                    <td className="border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900">
-                      {complaint.fullName || "—"}
+                    <td className="px-3 py-3 font-medium">{item.fullName}</td>
+                    <td className="whitespace-nowrap px-3 py-3">
+                      {item.contactNo}
                     </td>
-
-                    <td className="whitespace-nowrap border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900">
-                      {complaint.contactNo || "—"}
+                    <td className="px-3 py-3">{item.email}</td>
+                    <td className="px-3 py-3">{item.complaintCategory}</td>
+                    <td className="whitespace-nowrap px-3 py-3">
+                      {item.createdAt}
                     </td>
-
-                    <td className="border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900">
-                      {complaint.email || "—"}
-                    </td>
-
-                    {/* <td className="border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900">
-                      {complaint.youAre || "—"}
-                    </td> */}
-
-                    <td className="border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900">
-                      {complaint.complaintCategory || "—"}
-                    </td>
-
-                    <td className="whitespace-nowrap border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900">
-                      {complaint.createdAt || "—"}
-                    </td>
-
-                    <td className="border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px]">
+                    <td className="px-3 py-3">
                       <div className="flex justify-center">
                         <button
                           type="button"
                           onClick={() =>
-                            navigate(`/employer/complaints/${complaint.id}`)
+                            navigate(`/employer/complaints/${item.id}`, {
+                              state: { complaint: item.raw },
+                            })
                           }
                           title="View complaint"
-                          aria-label={`View complaint from ${complaint.fullName || "user"}`}
-                          className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1a9aa8] focus-visible:ring-offset-2"
+                          aria-label={`View complaint from ${item.fullName}`}
+                          className="grid h-8 w-8 place-items-center rounded-md bg-[#2c9ba8] text-white transition hover:bg-[#238491]"
                         >
-                          <ChevronsRight size={14} strokeWidth={2.2} />
+                          <ChevronsRight size={17} />
                         </button>
                       </div>
                     </td>
@@ -477,33 +339,21 @@ const ComplaintList = () => {
         </div>
 
         {/* Pagination */}
-        <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-3.5 text-[12.5px] text-[#60738a]">
+        <div className="mt-4 flex flex-col gap-3 border-t border-[#e2e8ee] pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-[#60738a]">
             <span>
-              Showing{" "}
-              <strong className="font-semibold text-[#53677f]">
-                {totalRecords === 0 ? 0 : start + 1}
-              </strong>{" "}
-              to{" "}
-              <strong className="font-semibold text-[#53677f]">
-                {end}
-              </strong>{" "}
-              of{" "}
-              <strong className="font-semibold text-[#53677f]">
-                {totalRecords}
-              </strong>{" "}
-              entries
+              Showing <strong>{start}</strong> to <strong>{end}</strong> of{" "}
+              <strong>{totalRecords}</strong>
             </span>
 
-            <label className="flex items-center gap-1.5">
+            <label className="flex items-center gap-2">
               <span>Show:</span>
-
               <select
                 value={pageSize}
-                onChange={handlePageSizeChange}
-                className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[12.5px] text-[#34445a] transition hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30"
+                onChange={changePageSize}
+                className="h-8 rounded-lg border border-[#dce3eb] bg-white px-2 text-sm outline-none focus:border-[#2c6b8a]"
               >
-                {PAGE_SIZE_OPTIONS.map((size) => (
+                {PAGE_SIZES.map((size) => (
                   <option key={size} value={size}>
                     {size}
                   </option>
@@ -513,14 +363,14 @@ const ComplaintList = () => {
           </div>
 
           <nav
-            aria-label="Pagination"
+            aria-label="Complaint pagination"
             className="flex flex-wrap items-center gap-1"
           >
             <button
               type="button"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={currentPage === 1 || loading}
-              className={`${pageButtonClass} border border-[#dce3eb] bg-white text-[#34445a] hover:bg-[#e8f1f6] disabled:cursor-not-allowed disabled:text-[#b8c4d3] disabled:hover:bg-white`}
+              onClick={() => setPage((current) => current - 1)}
+              disabled={page <= 1 || loading}
+              className={`${paginationButton} border-[#dce3eb] bg-white hover:bg-[#e8f1f6]`}
             >
               Previous
             </button>
@@ -530,12 +380,12 @@ const ComplaintList = () => {
                 key={number}
                 type="button"
                 onClick={() => setPage(number)}
-                aria-current={number === currentPage ? "page" : undefined}
                 disabled={loading}
-                className={`${pageButtonClass} ${
-                  number === currentPage
-                    ? "bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] font-semibold text-white shadow-sm"
-                    : "border border-[#dce3eb] bg-white text-[#34445a] hover:bg-[#e8f1f6]"
+                aria-current={number === page ? "page" : undefined}
+                className={`${paginationButton} ${
+                  number === page
+                    ? "border-[#2c6b8a] bg-[#2c6b8a] font-semibold text-white"
+                    : "border-[#dce3eb] bg-white hover:bg-[#e8f1f6]"
                 }`}
               >
                 {number}
@@ -544,11 +394,9 @@ const ComplaintList = () => {
 
             <button
               type="button"
-              onClick={() =>
-                setPage((current) => Math.min(totalPages, current + 1))
-              }
-              disabled={currentPage === totalPages || loading}
-              className={`${pageButtonClass} border border-[#dce3eb] bg-white text-[#34445a] hover:bg-[#e8f1f6] disabled:cursor-not-allowed disabled:text-[#b8c4d3] disabled:hover:bg-white`}
+              onClick={() => setPage((current) => current + 1)}
+              disabled={page >= totalPages || loading}
+              className={`${paginationButton} border-[#dce3eb] bg-white hover:bg-[#e8f1f6]`}
             >
               Next
             </button>

@@ -24,3 +24,12 @@ export const getFeedbackByUserId = async (
 
   return response.data;
 };
+
+// Get feedback by ID
+export const getFeedbackById = async (feedbackId) => {
+  const response = await axiosInstance.get(
+    `/Feedback/${feedbackId}`
+  );
+
+  return response.data;
+};
