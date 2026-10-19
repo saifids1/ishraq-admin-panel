@@ -5,11 +5,14 @@ import {
   ChevronsRight,
   MapPin,
   RefreshCw,
+  BuildingComplex,
+  Search
 } from "lucide-react";
 
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import { getJobsForJobseeker } from "../../../api/jobRequirementApi";
 import { getCurrentUserId } from "../../../utils/authUtils";
+import dayjs from "dayjs";
 
 const PAGE_SIZE = 10;
 
@@ -106,6 +109,7 @@ const JobsForYou = () => {
   const navigate = useNavigate();
 
   const [profile, setProfile] = useState(null);
+  const [search, setSearch] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [page, setPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -249,13 +253,12 @@ const JobsForYou = () => {
 
   const headings = [
     "Sr.No",
-    "Position & Location",
-    "Organization Name",
+    "Organization & Location",
     "Job Type",
     "Job Role",
     "Job Category",
     "Vacancies",
-    // "Deadline",
+    "Deadline",
     "Action",
   ];
 
@@ -269,6 +272,22 @@ const JobsForYou = () => {
           </h1>
 
           <div className="flex flex-wrap gap-2">
+            <div className="relative w-full sm:w-[300px]">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
+              />
+
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search Jobs..."
+                aria-label="Search Job"
+                className="h-10 w-full rounded-lg border border-[#c9d5dd] pl-9 pr-3 text-sm outline-none focus:border-[#2c6b8a] focus:ring-2 focus:ring-[#2c6b8a]/20"
+              />
+            </div>
+
             <button
               type="button"
               onClick={() => {
@@ -365,17 +384,17 @@ const JobsForYou = () => {
                       {start + index}
                     </td>
 
-                    <td className={`min-w-[14rem] px-3 py-3 ${CELL_TEXT}`}>
-                      <div className="">{job.position}</div>
-
-                      <div className="mt-1 inline-flex items-center gap-1 ">
-                        <MapPin size={12} className="shrink-0" />
-                        {job.location}
+                    <td className={`min-w-[14rem] py-3 ${CELL_TEXT}`}>
+                      <div className="inline-flex flex-col">
+                        <div className="mt-1 inline-flex items-center gap-1">
+                          <BuildingComplex size={12} className="shrink-0" />{" "}
+                          {job.employerName}
+                        </div>
+                        <div className="mt-1 inline-flex items-center gap-1 ">
+                          <MapPin size={12} className="shrink-0" />
+                          {job.location}
+                        </div>
                       </div>
-                    </td>
-
-                    <td className={`px-3 py-3 ${CELL_TEXT}`}>
-                      {job.employerName}
                     </td>
                     <td className={`px-3 py-3 ${CELL_TEXT}`}>
                       {job.instituteType}
@@ -394,8 +413,11 @@ const JobsForYou = () => {
                     >
                       {job.vacancies}
                     </td>
-
-                    
+                    <td
+                      className={`px-3 py-3 text-center tabular-nums ${CELL_TEXT}`}
+                    >
+                      {dayjs(job.deadline).format("DD-MM-YYYY")}
+                    </td>
 
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-center gap-2">

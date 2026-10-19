@@ -23,6 +23,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 
+import applicationApi from "../../../api/applicationApi";
+import toast from "react-hot-toast";
 import { getJobRequirementById } from "../../../api/jobRequirementApi";
 import {
   ACCENT,
@@ -31,6 +33,8 @@ import {
   IconField,
   PageHeader,
 } from "../../../components/common/FormUi";
+
+import { getCurrentUserId } from "../../../utils/authUtils";
 
 /* ======================== HELPERS ======================== */
 
@@ -184,7 +188,7 @@ const ReadOnlyValue = ({ icon: Icon, children, multiline = false }) => {
 export default function JobRequiremnetDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-
+  const [applying, setApplying] = useState(false);
   const [raw, setRaw] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -247,6 +251,60 @@ export default function JobRequiremnetDetails() {
     };
   }, [id]);
 
+  const handleApply = async () => {
+    if (applying) return;
+
+    const jobseekerId = Number(getCurrentUserId());
+    const jobRequirementId = Number(id);
+
+    if (!Number.isInteger(jobseekerId) || jobseekerId <= 0) {
+      toast.error("Unable to identify your jobseeker profile.");
+      return;
+    }
+
+    if (!Number.isInteger(jobRequirementId) || jobRequirementId <= 0) {
+      toast.error("Invalid job requirement.");
+      return;
+    }
+
+    try {
+      setApplying(true);
+
+      const response = await applicationApi.applyForJob({
+        AP_job_requirement_id: jobRequirementId,
+        AP_jobseeker_id: jobseekerId,
+        AP_remarks: "",
+        AP_created_by: jobseekerId,
+        AP_is_active: true,
+      });
+
+      const result = response?.data;
+
+      if (result?.success ?? result?.Success) {
+        toast.success(
+          result?.message ||
+            result?.Message ||
+            "Application submitted successfully.",
+        );
+      } else {
+        toast.error(
+          result?.message || result?.Message || "Failed to submit application.",
+        );
+      }
+
+      navigate('/jobseeker/job-list')
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message ||
+          err?.response?.data?.Message ||
+          err?.message ||
+          "Failed to submit application.",
+      );
+    } finally {
+      setApplying(false);
+    }
+  };
+
   const job = useMemo(() => (raw ? normalizeJob(raw) : null), [raw]);
 
   if (loading) {
@@ -269,7 +327,7 @@ export default function JobRequiremnetDetails() {
       <div className="min-h-full bg-white p-4">
         <button
           type="button"
-          onClick={() => navigate("/employer/job-requirement-list")}
+          onClick={() => navigate("/jobseeker/job-list")}
           className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           Back to list
@@ -303,8 +361,6 @@ export default function JobRequiremnetDetails() {
                 {job.status}
               </span>
             )}
-
-            
           </div>
         }
       />
@@ -454,7 +510,7 @@ export default function JobRequiremnetDetails() {
       <div className="mt-4 flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-end">
         <button
           type="button"
-          onClick={() => navigate("/employer/job-requirement-list")}
+          onClick={() => navigate("/jobseeker/job-list")}
           className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
         >
           Back to List
@@ -462,11 +518,13 @@ export default function JobRequiremnetDetails() {
 
         <button
           type="button"
-          className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+          onClick={handleApply}
+          disabled={applying}
+          className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           style={{ backgroundColor: ACCENT }}
         >
-          {/* <Pencil size={15} /> */}
-          Apply for job
+          {applying && <LoaderCircle size={15} className="animate-spin" />}
+          {applying ? "Applying..." : "Apply for Job"}
         </button>
       </div>
     </div>

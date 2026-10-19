@@ -315,40 +315,6 @@ const JobseekerAppliedJobs = () => {
      so colors/icons/layout stay consistent app-wide)
   ========================================================== */
 
-  const kpis = [
-    {
-      title: "Total Applications",
-      value: stats.total,
-      note: "applications sent",
-      icon: BriefcaseBusiness,
-      color: "#0ea5e9",
-      color2: "#2563eb",
-    },
-    {
-      title: "Active Applications",
-      value: stats.active,
-      note: "still in progress",
-      icon: CircleCheck,
-      color: "#10b981",
-      color2: "#059669",
-    },
-    {
-      title: "Shortlisted",
-      value: stats.shortlisted,
-      note: "moving forward",
-      icon: UserRound,
-      color: "#6366f1",
-      color2: "#8b5cf6",
-    },
-    {
-      title: "Selected",
-      value: stats.selected,
-      note: "offers received",
-      icon: CircleCheck,
-      color: "#f59e0b",
-      color2: "#ef4444",
-    },
-  ];
 
   /* ==========================================================
      FILTER
@@ -503,7 +469,6 @@ const JobseekerAppliedJobs = () => {
           the dashboards)
       ====================================================== */}
 
-      <StatCardGrid items={kpis} />
 
       {/* ======================================================
           CONTENT
