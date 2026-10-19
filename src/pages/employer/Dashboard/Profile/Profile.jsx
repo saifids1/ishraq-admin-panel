@@ -1,13 +1,9 @@
-const EmployerProfile = () => {
-  return (
-    <div>
-      <h1>Employer Dashboard</h1>
+import { Navigate } from "react-router-dom";
 
-      <p>
-        Welcome to the Admin Panel.
-      </p>
-    </div>
-  );
+const EmployerProfile = () => {
+  // The organization profile is the actual employer profile screen and
+  // contains the edit action and update form.
+  return <Navigate to="/employer/organization-profile" replace />;
 };
 
 export default EmployerProfile;

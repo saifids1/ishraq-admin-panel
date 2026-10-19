@@ -131,6 +131,16 @@ const getErrorMessage = (error, fallback) =>
   error?.message ||
   fallback;
 
+const readField = (item, key) => {
+  if (item?.[key] !== undefined && item?.[key] !== null) return item[key];
+
+  const actualKey = Object.keys(item || {}).find(
+    (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+  );
+
+  return actualKey ? item[actualKey] : undefined;
+};
+
 // Runs the shared validator and maps its keys onto this form's field names.
 // The shared validator checks organizationName and mobile, which this form
 // does not have, so those are dropped. location and employmentType are

@@ -7,6 +7,7 @@ import {
   Inbox,
   ChevronsRight,
 } from "lucide-react";
+import { getJobRequirementsByEmployer } from "../../../api/jobRequirementApi";
 
 /* ---------------- Design tokens ---------------- */
 const T = {
@@ -126,10 +127,33 @@ const EmployerProfile = () => {
           throw new Error(json?.message || "Employer not found");
         }
 
+        let jobRequirements = [];
+        try {
+          const jobResponse = await getJobRequirementsByEmployer(id);
+          jobRequirements = Array.isArray(jobResponse)
+            ? jobResponse
+            : jobResponse?.data ?? jobResponse?.Data ?? [];
+        } catch {
+          // Keep the employer profile usable if its job requirements fail.
+          jobRequirements = [];
+        }
+
         if (!cancelled) {
           setEmp(json.data);
           // Jobs not provided by this endpoint — keep empty for now
-          setJobs([]);
+          setJobs(
+            jobRequirements.map((job) => ({
+              id: job.jQ_job_requirement_id,
+              title: job.jQ_position_title,
+              category: job.jobCategoryName,
+              status: job.jobStatusName,
+              vacancies: Number(job.jQ_vacancies) || 0,
+              filled: 0,
+              applicants: job.appliedCount ?? 0,
+              postedOn: formatDate(job.jQ_created_at),
+              deadline: formatDate(job.jQ_deadline),
+            })),
+          );
         }
       } catch (err) {
         if (!cancelled) {
@@ -149,7 +173,7 @@ const EmployerProfile = () => {
 
   /* ------------------- Navigation helpers ------------------- */
   const goToEditProfile = () =>
-    navigate(`/admin/settings/master/employer/${id}/edit`);
+    navigate(`/admin/employers/${id}/edit`);
 
   const goToViewJob = (jobId) =>
     navigate(`/admin/settings/master/jobRequirement/${jobId}`);
@@ -212,19 +236,18 @@ const EmployerProfile = () => {
             </div>
 
             <div className="flex items-center gap-3">
-              <button
+              {/* <button
                 type="button"
                 onClick={() => navigate(-1)}
                 className={BTN_OUTLINE}
               >
                 Cancel
-              </button>
+              </button> */}
               <button
                 type="button"
                 onClick={goToEditProfile}
                 className={BTN_PRIMARY}
               >
-                <Pencil size={14} />
                 Edit
               </button>
             </div>
@@ -502,7 +525,7 @@ const EmployerProfile = () => {
                                   type="button"
                                   title={`View ${job.title || "Job"}`}
                                   aria-label={`View ${job.title || "Job"}`}
-                                  onClick={() => goToViewJob(job.id)}
+                                  onClick={() => navigate(`/admin/job-requirements/${job.id}`)}
                                   className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                                 >
                                   <ChevronsRight size={14} strokeWidth={2.2} />

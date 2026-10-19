@@ -37,7 +37,7 @@ const config = {
   consentField: "eM_consent_given",
 };
 
-const listPath = "/admin/settings/master/employer";
+const listPath = "/admin/employer";
 
 /* --------------------------- HELPERS ------------------------- */
 
@@ -342,7 +342,7 @@ const CreateEmployer = ({ mode }) => {
           [config.consentField]: Boolean(consentGiven),
         };
 
-        await config.api.update(payload);
+        await config.api.update(id, payload);
       }
 
       navigate(listPath);

@@ -80,7 +80,7 @@ const toForm = (item) => ({
     "JB_address",
     "jB_address",
     "preferredLocationName",
-    "jB_preferred_locationName",
+    "jB_preferredLocationName",
     "cityName"
   ),
   document: (() => {
@@ -354,22 +354,24 @@ const AddJobSeeker = ({ mode }) => {
         JB_consent_given: true,
       };
 
-      let response;
+      // Jobseeker create and update endpoints both consume multipart/form-data.
+      // Sending the edit payload as JSON causes ASP.NET Core to reject the PUT
+      // with 415 Unsupported Media Type.
+      const formData = new FormData();
+      Object.entries({
+        ...payload,
+        ...(isCreate ? { Password: form.password.trim() } : {}),
+      }).forEach(([key, value]) => {
+        formData.append(key, String(value ?? ""));
+      });
 
-      if (isCreate) {
-        const fd = new FormData();
-        Object.entries({ ...payload, Password: form.password.trim() }).forEach(
-          ([key, value]) => fd.append(key, String(value ?? "")),
-        );
-
-        if (form.document?.file) {
-          fd.append("CVFile", form.document.file, form.document.file.name);
-        }
-
-        response = await jobseekerApi.create(fd);
-      } else {
-        response = await jobseekerApi.update(payload);
+      if (form.document?.file) {
+        formData.append("CVFile", form.document.file, form.document.file.name);
       }
+
+      const response = isCreate
+        ? await jobseekerApi.create(formData)
+        : await jobseekerApi.update(id, formData);
 
       toast.success(
         response?.data?.message ||
@@ -674,6 +676,7 @@ const AddJobSeeker = ({ mode }) => {
 
                 {isView ? (
                   <button
+                    key="view-edit-button"
                     type="button"
                     onClick={() => {
                       setIsView(false);
@@ -685,6 +688,7 @@ const AddJobSeeker = ({ mode }) => {
                   </button>
                 ) : (
                   <button
+                    key="form-submit-button"
                     type="submit"
                     disabled={saving}
                     className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"

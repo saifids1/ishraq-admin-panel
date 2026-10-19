@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ChevronsLeft, Paperclip, Plus, X as CloseIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  ChevronDown,
+  ChevronsLeft,
+  Pencil,
+  Paperclip,
+  Plus,
+  X as CloseIcon,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import jobRequirementApi from "../../../api/Services/jobRequirementApi";
 import { getAllEmployers } from "../../../api/employerApi";
@@ -12,11 +19,24 @@ import cityMasterApi from "../../../api/Services/cityMasterApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 
 const inputClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50";
-const first = (item, ...keys) =>
-  keys
-    .map((key) => item?.[key])
-    .find((value) => value !== undefined && value !== null) ?? "";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+
+const selectClass =
+  "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+
+const first = (item, ...keys) => {
+  for (const key of keys) {
+    if (item?.[key] !== undefined && item?.[key] !== null) return item[key];
+
+    const actualKey = Object.keys(item || {}).find(
+      (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+    );
+    if (actualKey) return item[actualKey];
+  }
+
+  return "";
+};
+
 const listFrom = (response) => {
   const root = response?.data ?? response;
   for (const value of [
@@ -32,6 +52,7 @@ const listFrom = (response) => {
   }
   return [];
 };
+
 const options = (response, ids, names) =>
   listFrom(response)
     .map((item) => ({
@@ -58,12 +79,87 @@ const EMPTY = {
   accommodation: false,
   foodFacility: false,
   expectedJoiningDate: "",
+  postExpireDedline: "",
   description: "",
   assignedTo: "",
 };
 
-export default function JobRequirementCreate() {
+const recordFrom = (response) => {
+  const root = response?.data ?? response;
+  const payload = root?.data ?? root?.Data ?? root;
+  return payload?.data ?? payload?.Data ?? payload;
+};
+
+const dateInput = (value) => (value ? String(value).slice(0, 10) : "");
+
+const formFromRecord = (item) => ({
+  ...EMPTY,
+  employerId: String(
+    first(item, "jQ_employer_id", "JQ_employer_id", "employerId"),
+  ),
+  instituteTypeId: String(
+    first(
+      item,
+      "jQ_institute_type_id",
+      "JQ_institute_type_id",
+      "instituteTypeId",
+    ),
+  ),
+  roleId: String(first(item, "jQ_job_role_id", "JQ_job_role_id", "jobRoleId")),
+  categoryId: String(
+    first(item, "jQ_job_category_id", "JQ_job_category_id", "jobCategoryId"),
+  ),
+  employmentTypeId: String(
+    first(
+      item,
+      "jQ_employment_type_id",
+      "JQ_employment_type_id",
+      "employmentTypeId",
+    ),
+  ),
+  positionTitle: String(
+    first(item, "jQ_position_title", "JQ_position_title", "position") || "",
+  ),
+  departmentSpeciality: String(
+    first(
+      item,
+      "jQ_department_speciality",
+      "JQ_department_speciality",
+      "department",
+    ) || "",
+  ),
+  vacancies: String(
+    first(item, "jQ_vacancies", "JQ_vacancies", "vacancies") || "",
+  ),
+  qualificationRequired: String(
+    first(item, "jQ_qualification_required", "JQ_qualification_required") || "",
+  ),
+  experienceRequired: String(
+    first(item, "jQ_experience_required", "JQ_experience_required") || "",
+  ),
+  salaryRange: String(first(item, "jQ_salary_range", "JQ_salary_range") || ""),
+  jobLocation: String(
+    first(item, "jQ_job_location", "JQ_job_location", "jobLocation") || "",
+  ),
+  dutyHours: String(first(item, "jQ_duty_hours", "JQ_duty_hours") || ""),
+  accommodation: Boolean(first(item, "jQ_accommodation", "JQ_accommodation")),
+  foodFacility: Boolean(first(item, "jQ_food_facility", "JQ_food_facility")),
+  expectedJoiningDate: dateInput(
+    first(item, "jQ_expected_joining_date", "JQ_expected_joining_date"),
+  ),
+  postExpireDedline: dateInput(first(item, "jQ_deadline", "JQ_deadline")),
+  description: String(first(item, "jQ_description", "JQ_description") || ""),
+  assignedTo: String(
+    first(item, "jQ_assigned_to", "JQ_assigned_to", "assignedTo") || "",
+  ),
+});
+
+export default function JobRequirementCreate({ mode = "create" }) {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const listPath = "/admin/job-requirement-list";
+  const isCreate = mode === "create" || !id;
+  const [isView, setIsView] = useState(mode === "view");
   const [form, setForm] = useState(EMPTY);
   const [file, setFile] = useState(null);
   const [sources, setSources] = useState({
@@ -78,61 +174,91 @@ export default function JobRequirementCreate() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [errors, setErrors] = useState({});
+  const [loadingRecord, setLoadingRecord] = useState(!isCreate);
+
+  useEffect(() => {
+    setIsView(mode === "view");
+  }, [mode, id]);
+
+  useEffect(() => {
+    if (isCreate) {
+      setForm(EMPTY);
+      setLoadingRecord(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadRecord = async () => {
+      setLoadingRecord(true);
+      setError("");
+      try {
+        const response = await jobRequirementApi.getById(id);
+        const record = recordFrom(response);
+        if (!record || typeof record !== "object") {
+          throw new Error("Job requirement was not found.");
+        }
+        if (!cancelled) setForm(formFromRecord(record));
+      } catch (err) {
+        if (!cancelled)
+          setError(
+            getApiErrorMessage(err) || "Unable to load job requirement.",
+          );
+      } finally {
+        if (!cancelled) setLoadingRecord(false);
+      }
+    };
+
+    loadRecord();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isCreate]);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       getAllEmployers(),
       instituteTypeApi.getAllList(),
-      jobRoleApi.getAllList(),
-      jobCategoryApi.getAllList(),
       employmentTypeApi.getAllList(),
       cityMasterApi.getAllList(),
     ])
-      .then(
-        ([
-          employers,
-          institutes,
-          roles,
-          categories,
-          employmentTypes,
-          cities,
-        ]) => {
-          if (cancelled) return;
-          setSources({
-            employers: options(
-              employers,
-              ["EM_employer_id", "employerId", "id"],
-              ["EM_organization_name", "EM_name", "organizationName", "name"],
-            ),
-            institutes: options(
-              institutes,
-              ["IT_institute_type_id", "instituteTypeId", "id"],
-              ["IT_name", "IT_institute_type_name", "name"],
-            ),
-            roles: options(
-              roles,
-              ["JR_job_role_id", "jobRoleId", "id"],
-              ["JR_name", "JR_job_role_name", "name"],
-            ),
-            categories: options(
-              categories,
-              ["JC_job_category_id", "jobCategoryId", "id"],
-              ["JC_name", "JC_job_category_name", "name"],
-            ),
-            employmentTypes: options(
-              employmentTypes,
-              ["ET_employment_type_id", "employmentTypeId", "id"],
-              ["ET_name", "ET_employment_type_name", "name"],
-            ),
-            cities: options(
-              cities,
-              ["CTM_Id", "cityId", "id"],
-              ["CTM_Name", "CTM_name", "cityName", "name"],
-            ),
-          });
-        },
-      )
+      .then(([employers, institutes, employmentTypes, cities]) => {
+        if (cancelled) return;
+        setSources({
+          employers: options(
+            employers,
+            ["EM_employer_id", "employerId", "id"],
+            ["EM_organization_name", "EM_name", "organizationName", "name"],
+          ),
+          institutes: options(
+            institutes,
+            [
+              "iT_institute_type_id",
+              "IT_institute_type_id",
+              "instituteTypeId",
+              "id",
+            ],
+            ["iT_name", "IT_name", "IT_institute_type_name", "name"],
+          ),
+          roles: [],
+          categories: [],
+          employmentTypes: options(
+            employmentTypes,
+            [
+              "eT_employment_type_id",
+              "ET_employment_type_id",
+              "employmentTypeId",
+              "id",
+            ],
+            ["eT_name", "ET_name", "ET_employment_type_name", "name"],
+          ),
+          cities: options(
+            cities,
+            ["ctM_Id", "CTM_Id", "cityId", "id"],
+            ["ctM_CityName", "CTM_Name", "CTM_name", "cityName", "name"],
+          ),
+        });
+      })
       .catch(
         (err) =>
           !cancelled &&
@@ -144,26 +270,95 @@ export default function JobRequirementCreate() {
     };
   }, []);
 
-  const roles = useMemo(
-    () =>
-      sources.roles.filter(
-        (item) =>
-          !form.instituteTypeId ||
-          String(first(item.raw, "JR_institute_type_id", "instituteTypeId")) ===
-            String(form.instituteTypeId),
-      ),
-    [sources.roles, form.instituteTypeId],
-  );
-  const categories = useMemo(
-    () =>
-      sources.categories.filter(
-        (item) =>
-          !form.roleId ||
-          String(first(item.raw, "JC_job_role_id", "jobRoleId")) ===
-            String(form.roleId),
-      ),
-    [sources.categories, form.roleId],
-  );
+  const [loadingRoles, setLoadingRoles] = useState(false);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const disabled =
+    loading || loadingRecord || loadingRoles || loadingCategories || saving;
+
+  const handleEditClick = () => {
+    setIsView(false);
+    setError("");
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setSources((current) => ({ ...current, roles: [], categories: [] }));
+    if (!form.instituteTypeId) {
+      setLoadingRoles(false);
+      return undefined;
+    }
+
+    const loadRoles = async () => {
+      setLoadingRoles(true);
+      try {
+        const response = await jobRoleApi.getAllList({
+          instituteTypeId: Number(form.instituteTypeId),
+        });
+        if (!cancelled) {
+          setSources((current) => ({
+            ...current,
+            roles: options(
+              response,
+              ["jR_job_role_id", "JR_job_role_id", "jobRoleId", "id"],
+              ["jR_name", "JR_name", "JR_job_role_name", "name"],
+            ),
+          }));
+        }
+      } catch (err) {
+        if (!cancelled)
+          setError(getApiErrorMessage(err) || "Unable to load job roles.");
+      } finally {
+        if (!cancelled) setLoadingRoles(false);
+      }
+    };
+
+    loadRoles();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.instituteTypeId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSources((current) => ({ ...current, categories: [] }));
+    if (!form.roleId) {
+      setLoadingCategories(false);
+      return undefined;
+    }
+
+    const loadCategories = async () => {
+      setLoadingCategories(true);
+      try {
+        const response = await jobCategoryApi.getByJobRole(Number(form.roleId));
+        if (!cancelled) {
+          setSources((current) => ({
+            ...current,
+            categories: options(
+              response,
+              [
+                "jC_job_category_id",
+                "JC_job_category_id",
+                "jobCategoryId",
+                "id",
+              ],
+              ["jC_name", "JC_name", "JC_job_category_name", "name"],
+            ),
+          }));
+        }
+      } catch (err) {
+        if (!cancelled)
+          setError(getApiErrorMessage(err) || "Unable to load job categories.");
+      } finally {
+        if (!cancelled) setLoadingCategories(false);
+      }
+    };
+
+    loadCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.roleId]);
+
   const set = (name, value) => {
     setForm((current) => ({
       ...current,
@@ -173,8 +368,10 @@ export default function JobRequirementCreate() {
     }));
     setErrors((current) => ({ ...current, [name]: undefined }));
   };
+
   const submit = async (event) => {
     event.preventDefault();
+    if (isView) return;
     const required = [
       "employerId",
       "instituteTypeId",
@@ -206,6 +403,7 @@ export default function JobRequirementCreate() {
       JQ_qualification_required: form.qualificationRequired.trim(),
       JQ_experience_required: form.experienceRequired.trim(),
       JQ_salary_range: form.salaryRange.trim(),
+      JQ_deadline: form.postExpireDedline || "",
       JQ_job_location: form.jobLocation ? Number(form.jobLocation) : "",
       JQ_employment_type_id: Number(form.employmentTypeId),
       JQ_duty_hours: form.dutyHours.trim(),
@@ -223,8 +421,14 @@ export default function JobRequirementCreate() {
     try {
       setSaving(true);
       setError("");
-      await jobRequirementApi.create(data);
-      toast.success("Job requirement created successfully.");
+      if (isCreate) {
+        await jobRequirementApi.create(data);
+      } else {
+        await jobRequirementApi.update(id, data);
+      }
+      toast.success(
+        `Job requirement ${isCreate ? "created" : "updated"} successfully.`,
+      );
       navigate("/admin/job-requirement-list");
     } catch (err) {
       setError(getApiErrorMessage(err) || "Unable to create job requirement.");
@@ -232,226 +436,324 @@ export default function JobRequirementCreate() {
       setSaving(false);
     }
   };
-  const field = (name, label, children, full = false) => (
+
+  const star = <span className="ml-1 text-red-500">*</span>;
+
+  const field = (
+    name,
+    label,
+    children,
+    { full = false, required = false } = {},
+  ) => (
     <div className={full ? "md:col-span-2" : ""} key={name}>
       <label className="mb-1.5 block text-sm font-medium text-slate-700">
         {label}
-        {errors[name] && <span className="text-red-500"> *</span>}
+        {required && star}
       </label>
       {children}
       {errors[name] && (
-        <p className="mt-1 text-xs text-red-500">{errors[name]}</p>
+        <span className="mt-1 block text-xs text-red-500">{errors[name]}</span>
       )}
     </div>
   );
+
   const select = (name, items, placeholder) => (
-    <select
-      value={form[name]}
-      onChange={(e) => set(name, e.target.value)}
-      className={inputClass}
-      disabled={loading || saving}
-    >
-      <option value="">{placeholder}</option>
-      {items.map((item) => (
-        <option key={item.id} value={item.id}>
-          {item.name}
+    <div className="relative">
+      <select
+        value={form[name]}
+        onChange={(e) => set(name, e.target.value)}
+        className={selectClass}
+        disabled={
+          loading ||
+          loadingRecord ||
+          loadingRoles ||
+          loadingCategories ||
+          saving ||
+          isView
+        }
+      >
+        <option value="">
+          {loading || loadingRoles || loadingCategories
+            ? "Loading..."
+            : placeholder}
         </option>
-      ))}
-    </select>
+        {items.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.name}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={17}
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+      />
+    </div>
   );
-  const text = (name, type = "text") => (
+
+  const text = (name, type = "text", placeholder = "") => (
     <input
       type={type}
       value={form[name]}
       onChange={(e) => set(name, e.target.value)}
       min={type === "number" ? 1 : undefined}
+      placeholder={placeholder}
       className={inputClass}
-      disabled={saving}
+      disabled={saving || loadingRecord || isView}
     />
   );
 
   return (
-    <div className="text-[#1e2b36]">
-      <header
-        className="ep-hero relative mb-4 overflow-hidden rounded-2xl p-4 text-white shadow-sm sm:px-0 sm:py-2"
-        style={{
-          backgroundImage:
-            "linear-gradient(110deg,#17405a 0%,#2f6b8a 40%,#4a9bb3 70%,#2f6b8a 100%)",
-        }}
-      >
-        <div className="relative flex items-center gap-3.5">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="grid h-8 w-8 place-items-center rounded-xl bg-white/15"
-          >
-            <ChevronsLeft size={18} />
-          </button>
-          <h1 className="m-0 text-[22px] font-extrabold sm:text-[26px]">
-            Add Job Requirement
-          </h1>
-        </div>
-      </header>
-      <main className="mx-auto max-w-[1300px]">
-        <form
-          onSubmit={submit}
-          noValidate
-          className="rounded-xl border border-[#e2e8ee] bg-white p-5 shadow-sm"
-        >
+    <div className="min-h-full bg-[#f4f8fb]">
+      <div className="mx-auto max-w-[1300px]">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* HEADER */}
+          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                title="Back"
+                aria-label="Back"
+                className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
+              >
+                <ChevronsLeft size={18} strokeWidth={2} />
+              </button>
+              
+              <h2 className="font-semibold text-slate-800">
+                {isCreate
+                  ? "Add Job Requirement"
+                  : isView
+                    ? "View Job Requirement"
+                    : "Edit Job Requirement"}
+              </h2>
+            </div>
+          </div>
+
           {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
               {error}
             </div>
           )}
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {field(
-              "employerId",
-              "Employer",
-              select("employerId", sources.employers, "Select employer"),
-            )}
-            {field(
-              "instituteTypeId",
-              "Institute Type",
-              select(
+
+          <form onSubmit={submit} noValidate className="p-4">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              {field(
+                "employerId",
+                "Employer",
+                select("employerId", sources.employers, "Select employer"),
+                { required: true },
+              )}
+              {field(
                 "instituteTypeId",
-                sources.institutes,
-                "Select institute type",
-              ),
-            )}
-            {field(
-              "roleId",
-              "Job Role",
-              select("roleId", roles, "Select job role"),
-            )}
-            {field(
-              "categoryId",
-              "Job Category",
-              select("categoryId", categories, "Select job category"),
-            )}
-            {field(
-              "employmentTypeId",
-              "Employment Type",
-              select(
+                "Institute Type",
+                select(
+                  "instituteTypeId",
+                  sources.institutes,
+                  "Select institute type",
+                ),
+                { required: true },
+              )}
+              {field(
+                "roleId",
+                "Job Role",
+                select("roleId", sources.roles, "Select job role"),
+                { required: true },
+              )}
+              {field(
+                "categoryId",
+                "Job Category",
+                select("categoryId", sources.categories, "Select job category"),
+                { required: true },
+              )}
+              {field(
                 "employmentTypeId",
-                sources.employmentTypes,
-                "Select employment type",
-              ),
-            )}
-            {field("positionTitle", "Position Title", text("positionTitle"))}
-            {field(
-              "departmentSpeciality",
-              "Department / Speciality",
-              text("departmentSpeciality"),
-            )}
-            {field(
-              "vacancies",
-              "Number of Vacancies",
-              text("vacancies", "number"),
-            )}
-            {field(
-              "qualificationRequired",
-              "Qualification Required",
-              text("qualificationRequired"),
-            )}
-            {field(
-              "experienceRequired",
-              "Experience Required",
-              text("experienceRequired"),
-            )}
-            {field("salaryRange", "Salary Range", text("salaryRange"))}
-            {field(
-              "jobLocation",
-              "Job Location",
-              select("jobLocation", sources.cities, "Select city"),
-            )}
-            {field("dutyHours", "Duty Hours", text("dutyHours"))}
-            {field(
-              "expectedJoiningDate",
-              "Expected Joining Date",
-              text("expectedJoiningDate", "date"),
-            )}
-            {field(
-              "assignedTo",
-              "Assign To (optional)",
-              text("assignedTo", "number"),
-            )}
-            {field(
-              "accommodation",
-              "Accommodation",
-              <label className="flex items-center gap-2 pt-2 text-sm">
+                "Employment Type",
+                select(
+                  "employmentTypeId",
+                  sources.employmentTypes,
+                  "Select employment type",
+                ),
+                { required: true },
+              )}
+              {field(
+                "positionTitle",
+                "Position Title",
+                text("positionTitle", "text", "e.g. Staff Nurse"),
+                { required: true },
+              )}
+              {field(
+                "departmentSpeciality",
+                "Department / Speciality",
+                text("departmentSpeciality", "text", "e.g. ICU, Cardiology"),
+              )}
+              {field(
+                "vacancies",
+                "Number of Vacancies",
+                text("vacancies", "number", "e.g. 3"),
+                { required: true },
+              )}
+              {field(
+                "qualificationRequired",
+                "Qualification Required",
+                text("qualificationRequired", "text", "e.g. B.Sc Nursing"),
+              )}
+              {field(
+                "experienceRequired",
+                "Experience Required",
+                text("experienceRequired", "text", "e.g. 2+ years"),
+              )}
+              {field(
+                "salaryRange",
+                "Salary Range",
+                text("salaryRange", "text", "e.g. ₹25k–₹40k"),
+              )}
+              {field(
+                "jobLocation",
+                "Job Location",
+                select("jobLocation", sources.cities, "Select city"),
+              )}
+              {field(
+                "dutyHours",
+                "Duty Hours",
+                text("dutyHours", "text", "e.g. 8 hrs / shift"),
+              )}
+              {field(
+                "expectedJoiningDate",
+                "Expected Joining Date",
+                text("expectedJoiningDate", "date"),
+              )}
+              {field(
+                "postExpireDedline",
+                "Post Expiry Date",
+                text("postExpireDedline", "date"),
+              )}
+              {/* {field(
+                "assignedTo",
+                "Assign To (optional)",
+                text("assignedTo", "number", "Recruiter ID"),
+              )} */}
+
+              {/* Toggles */}
+              {field(
+                "accommodation",
+                "Accommodation",
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={form.accommodation}
+                    onChange={(e) => set("accommodation", e.target.checked)}
+                    disabled={saving || isView}
+                    className="h-4 w-4 accent-[#2f6b8a]"
+                  />
+                  Available
+                </label>,
+              )}
+              {field(
+                "foodFacility",
+                "Food Facility",
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={form.foodFacility}
+                    onChange={(e) => set("foodFacility", e.target.checked)}
+                    disabled={saving || isView}
+                    className="h-4 w-4 accent-[#2f6b8a]"
+                  />
+                  Available
+                </label>,
+              )}
+
+              {field(
+                "description",
+                "Job Description / Special Requirements",
+                <textarea
+                  rows={5}
+                  value={form.description}
+                  onChange={(e) => set("description", e.target.value)}
+                  placeholder="Describe responsibilities, shifts, special requirements..."
+                  className={inputClass}
+                  disabled={saving || isView}
+                />,
+                { full: true },
+              )}
+
+              {/* Attachment */}
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Job Description Attachment
+                </label>
                 <input
-                  type="checkbox"
-                  checked={form.accommodation}
-                  onChange={(e) => set("accommodation", e.target.checked)}
-                />{" "}
-                Available
-              </label>,
-            )}
-            {field(
-              "foodFacility",
-              "Food Facility",
-              <label className="flex items-center gap-2 pt-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.foodFacility}
-                  onChange={(e) => set("foodFacility", e.target.checked)}
-                />{" "}
-                Available
-              </label>,
-            )}
-            {field(
-              "description",
-              "Job Description / Special Requirements",
-              <textarea
-                rows={5}
-                value={form.description}
-                onChange={(e) => set("description", e.target.value)}
-                className={inputClass}
-              />,
-              true,
-            )}
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Job Description Attachment
-              </label>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-[#2f6b8a] bg-[#f4f9fb] px-4 py-2 text-sm font-medium text-[#2f6b8a]">
-                <Paperclip size={15} /> Choose file
-                <input
+                  id="job-attachment"
                   type="file"
                   accept=".pdf,.doc,.docx"
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  className="sr-only"
+                  disabled={saving || isView}
+                  hidden
                 />
-              </label>
-              {file && (
-                <span className="ml-3 inline-flex items-center gap-2 rounded-full bg-[#e8f1f6] px-3 py-1 text-xs">
-                  {file.name}
-                  <button type="button" onClick={() => setFile(null)}>
-                    <CloseIcon size={14} />
-                  </button>
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5">
+                  <label
+                    htmlFor="job-attachment"
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-4 py-2 text-sm font-medium text-[#2f6b8a] transition hover:bg-[#eaf2f7]"
+                  >
+                    <Paperclip size={15} />
+                    {file ? "Change file" : "Choose file"}
+                  </label>
+                  <span className="truncate text-sm text-slate-600">
+                    {file ? file.name : "No file chosen"}
+                  </span>
+                  {file && (
+                    <button
+                      type="button"
+                      onClick={() => setFile(null)}
+                      className="ml-auto inline-flex h-7 w-7 cursor-pointer place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                      title="Remove file"
+                      aria-label="Remove file"
+                    >
+                      <CloseIcon size={16} />
+                    </button>
+                  )}
+                </div>
+                <span className="mt-1 block text-xs text-slate-500">
+                  PDF, DOC or DOCX only
                 </span>
+              </div>
+            </div>
+
+            {/* FOOTER */}
+            <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => navigate(listPath)}
+                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+              >
+                {isView ? "Back" : "Cancel"}
+              </button>
+
+              {isView && (
+                <button
+                  type="button"
+                  onClick={handleEditClick}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
+                >
+                  <Pencil size={16} />
+                  Edit
+                </button>
+              )}
+
+              {!isView && (
+                <button
+                  type="submit"
+                  disabled={disabled}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Plus size={16} />
+                  {saving ? "Saving..." : isCreate ? "Create" : "Update"}
+                </button>
               )}
             </div>
-          </div>
-          <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
-            <button
-              type="button"
-              onClick={() => navigate("/admin/job-requirement-list")}
-              className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-600"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              <Plus size={16} />
-              {saving ? "Saving..." : "Add Job Requirement"}
-            </button>
-          </div>
-        </form>
-      </main>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

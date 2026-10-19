@@ -14,10 +14,7 @@ import EmployerProfile from "../pages/admin/Employer/EmployerDetails";
 
 import ResetPassword from "../pages/admin/ResetPassword/ResetPassword";
 import JobRequirementList from "../pages/admin/JobRequirement/JobRequirementList";
-import JobRequirementView from "../pages/admin/JobRequirement/Jobrequirementview";
-import JobRequirementEdit from "../pages/admin/JobRequirement/Jobrequirementedit";
 import JobRequirementCreate from "../pages/admin/JobRequirement/Jobrequirementcreate";
-import JobApplicantsList from "../pages/admin/JobRequirement/JobApplicantsList";
 
 // master data imports
 import ComplaintCategoryList from "../pages/admin/MasterData/ComplaintCategory/ComplaintCategoryList";
@@ -57,6 +54,10 @@ const AdminRoutes = (
       {/* Employer */}
       <Route path="employer" element={<EmployerList />} />
       <Route path="employers/:id" element={<EmployerProfile />} />
+      <Route
+        path="employers/:id/edit"
+        element={<CreateEmployer mode="edit" />}
+      />
       {/* Settings */}
       <Route path="userList" element={<Navigate to="/admin/users" replace />} />
       <Route path="reset-password" element={<ResetPassword />} />
@@ -70,16 +71,18 @@ const AdminRoutes = (
       />
       <Route path="job-requirement-list" element={<JobRequirementList />} />
       {/* <Route path="/admin/job-requirements" element={<JobRequirementList />} /> */}
-      <Route path="job-requirements/:id" element={<JobRequirementView />} />
+      <Route
+        path="job-requirements/:id"
+        element={<JobRequirementCreate mode="view" />}
+      />
       <Route
         path="job-requirements/:id/edit"
-        element={<JobRequirementEdit />}
+        element={<JobRequirementCreate mode="edit" />}
       />
       <Route
         path="job-requirements/create"
-        element={<JobRequirementCreate />}
+        element={<JobRequirementCreate mode="create" />}
       />
-      <Route path="job-applicant/:jobId" element={<JobApplicantsList />} />
       {/* master data routes */}
       <Route
         path="settings/master/complaintCategory"

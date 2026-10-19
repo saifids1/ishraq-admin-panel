@@ -490,7 +490,7 @@ const CreateJobCategory = ({ mode }) => {
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Value
+                  Category Name
                   {!isView && <span className="ml-1 text-red-500">*</span>}
                 </label>
 

@@ -160,7 +160,7 @@ const ResumeBox = ({ doc, big = false }) => {
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13.5px] font-semibold text-[#1e2b36]">
-            {doc.name}
+            jaeheoiauwv hr8otuhqnqewrioutbv eg
           </p>
           <p className="text-[12px] text-[#6b7a88]">Resume / CV</p>
         </div>
