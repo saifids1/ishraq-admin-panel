@@ -14,12 +14,11 @@ export const getJobRequirements = async (filters = {}) => {
 
 /* ======================== GET EMPLOYER JOB REQUIREMENTS WITH PAGINATION ======================== */
 
-
 /* ======================== EMPLOYER JOB REQUIREMENTS WITH PAGINATION ======================== */
 
 export const getEmployerJobRequirementsPaginated = async (
   employerId,
-  { pageNo = 1, pageSize = 10 } = {}
+  { pageNo = 1, pageSize = 10 } = {},
 ) => {
   if (!employerId) {
     throw new Error("Employer ID is required.");
@@ -35,7 +34,6 @@ export const getEmployerJobRequirementsPaginated = async (
 
   return response.data;
 };
-
 
 /* ======================== GET ALL LIST ======================== */
 
@@ -136,7 +134,9 @@ export const getJobsForJobseeker = async ({
   pageSize = 10,
 }) => {
   if (!instituteTypeId || !jobRoleId || !jobCategoryId) {
-    throw new Error("Jobseeker institute type, job role, and category are required.");
+    throw new Error(
+      "Jobseeker institute type, job role, and category are required.",
+    );
   }
 
   const response = await axiosInstance.get(API, {
@@ -147,6 +147,7 @@ export const getJobsForJobseeker = async ({
       jobseekerId,
       pageNo,
       pageSize,
+      IsActive: true,
     },
   });
 
