@@ -1,377 +1,526 @@
-import React, { useState } from "react";
-import { ChevronsLeft} from "lucide-react"
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  AlignLeft,
+  Building2,
+  FileText,
+  LoaderCircle,
+  Mail,
+  Paperclip,
+  Phone,
+  Plus,
+  Tag,
+  UserRound,
+  X as CloseIcon,
+} from "lucide-react";
 
-const CATEGORIES = [
-  "Product quality",
-  "Service",
-  "Billing or refund",
-  "Delivery",
-  "Staff behavior",
-  "Website or app",
-  "Other",
-];
+import jobseekerApi from "../../../api/Services/adjobseekerApi.js";
 
-const PRIORITIES = [
-  { value: "low", label: "Low", hint: "Minor issue" },
-  { value: "medium", label: "Medium", hint: "Affects me" },
-  { value: "high", label: "High", hint: "Urgent" },
-];
+import {
+  getComplaintCategories,
+  submitComplaint,
+} from "../../../api/complaintApi";
+import { getCurrentUserId } from "../../../utils/authUtils";
+import {
+  ACCENT,
+  Card,
+  Field,
+  IconField,
+  PageHeader,
+  inputClass,
+} from "../../../components/common/FormUi";
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 const initialForm = {
   name: "",
-  email: "",
   phone: "",
-  category: "",
-  reference: "",
-  incidentDate: "",
-  priority: "medium",
-  subject: "",
-  description: "",
-  resolution: "",
-  contactBack: true,
+  email: "",
+  categoryId: "",
+  details: "",
+};
+const getCategoryId = (category) =>
+  category.cC_complaint_category_id ??
+  category.CC_Complaint_Category_Id ??
+  category.CC_Id;
+
+const getCategoryName = (category) =>
+  category.cC_name ?? category.CC_Name ?? category.CC_ComplaintCategoryName;
+
+let complaintCategoriesPromise = null;
+let complaintCategoriesCache = null;
+
+const loadComplaintCategoriesOnce = async () => {
+  if (complaintCategoriesCache) {
+    return complaintCategoriesCache;
+  }
+
+  if (complaintCategoriesPromise) {
+    return complaintCategoriesPromise;
+  }
+
+  complaintCategoriesPromise = getComplaintCategories()
+    .then((response) => {
+      if (response?.success === false || response?.Success === false) {
+        throw new Error(
+          response.message ||
+            response.Message ||
+            "Unable to load complaint categories.",
+        );
+      }
+
+      const records = Array.isArray(response)
+        ? response
+        : (response?.data ?? response?.Data);
+
+      if (!Array.isArray(records)) {
+        throw new Error("Invalid complaint category response.");
+      }
+
+      const activeCategories = records.filter(
+        (item) => item.cC_is_active !== false && item.CC_IsActive !== false,
+      );
+
+      complaintCategoriesCache = activeCategories;
+      return activeCategories;
+    })
+    .finally(() => {
+      complaintCategoriesPromise = null;
+    });
+
+  return complaintCategoriesPromise;
 };
 
-const Field = ({ id, label, error, optional, children }) => (
-  <div>
-    <label
-      htmlFor={id}
-      className="mb-1.5 block text-sm font-medium text-slate-700"
-    >
-      {label}
-      {optional && (
-        <span className="ml-1 font-normal text-slate-400">(optional)</span>
-      )}
-    </label>
-    {children}
-    {error && (
-      <p className="mt-1.5 text-sm text-red-600" role="alert">
-        {error}
-      </p>
-    )}
-  </div>
-);
+const CreateComplaint = () => {
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
-const CreateComplaint = ({ onSubmit }) => {
-  const navigate = useNavigate()
   const [form, setForm] = useState(initialForm);
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [attachment, setAttachment] = useState(null);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
 
-  const today = new Date().toISOString().split("T")[0];
+  useEffect(() => {
+    let active = true;
+
+    const loadCategories = async () => {
+      setCategoriesLoading(true);
+
+      try {
+        const activeCategories = await loadComplaintCategoriesOnce();
+
+        if (active) {
+          setCategories(activeCategories);
+
+          setErrors((prev) => ({
+            ...prev,
+            categories: undefined,
+          }));
+        }
+      } catch (error) {
+        console.error("Failed to load complaint categories:", error);
+
+        if (active) {
+          setErrors((prev) => ({
+            ...prev,
+            categories:
+              error.response?.data?.message ||
+              error.response?.data?.Message ||
+              error.message ||
+              "Unable to load complaint categories.",
+          }));
+        }
+      } finally {
+        if (active) {
+          setCategoriesLoading(false);
+        }
+      }
+    };
+
+    loadCategories();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadJobseekerDetails = async () => {
+      try {
+        const userId = getCurrentUserId();
+
+        if (userId == null || userId === "") {
+          console.error("Unable to identify the logged-in jobseeker.");
+          return;
+        }
+
+        const response = await jobseekerApi.getById(userId);
+
+        // Response: { success, message, data: { ...jobseeker } }
+        const record = response?.data?.data;
+
+        if (!record || cancelled) return;
+
+        setForm((prev) => ({
+          ...prev,
+          name: record.fullName || "",
+          phone: record.mobile || "",
+          email: record.email || record.userName || "",
+        }));
+
+        // Keep the jobseeker reference available if needed elsewhere.
+        localStorage.setItem("jobseekerNumber", record.jB_jobseeker_no || "");
+      } catch (error) {
+        console.error(
+          "Failed to load jobseeker details:",
+          error.response?.data || error.message,
+        );
+      }
+    };
+
+    loadJobseekerDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const update = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
-    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
+    setErrors((prev) => ({ ...prev, [field]: undefined, form: undefined }));
+  };
+
+  const onFileChange = (event) => {
+    const selected = event.target.files?.[0] || null;
+
+    if (selected && selected.size > MAX_ATTACHMENT_BYTES) {
+      setErrors((prev) => ({
+        ...prev,
+        attachment: "The attachment must be 10 MB or smaller.",
+      }));
+      event.target.value = "";
+      setAttachment(null);
+      return;
+    }
+
+    setAttachment(selected);
+    setErrors((prev) => ({ ...prev, attachment: undefined, form: undefined }));
+  };
+
+  const removeAttachment = () => {
+    setAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const validate = () => {
     const next = {};
+
     if (!form.name.trim()) next.name = "Enter your name.";
-    if (!form.email.trim()) next.email = "Enter your email address.";
-    else if (!/^\S+@\S+\.\S+$/.test(form.email))
-      next.email = "Enter a valid email, like name@example.com.";
-    if (form.phone && !/^[0-9+\-\s()]{7,15}$/.test(form.phone))
+
+    if (!form.email.trim()) {
+      next.email = "Enter your email address.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      next.email = "Enter a valid email address.";
+    }
+
+    if (form.phone.trim() && !/^[0-9+\-\s()]{7,20}$/.test(form.phone.trim())) {
       next.phone = "Enter a valid phone number.";
-    if (!form.category) next.category = "Choose a category.";
-    if (!form.incidentDate) next.incidentDate = "Select the date it happened.";
-    else if (form.incidentDate > today)
-      next.incidentDate = "The date cannot be in the future.";
-    if (!form.subject.trim()) next.subject = "Add a short subject.";
-    if (form.description.trim().length < 20)
-      next.description =
-        "Write at least 20 characters so we can understand what happened.";
+    }
+
+    if (!form.categoryId) next.categoryId = "Choose a complaint category.";
+
+    if (!form.details.trim()) {
+      next.details = "Enter your complaint details.";
+    } else if (form.details.trim().length < 20) {
+      next.details =
+        "Please enter at least 20 characters describing your complaint.";
+    }
+
     return next;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const found = validate();
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    const validationErrors = validate();
+    setErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) return;
+
+    const rawUserId = getCurrentUserId();
+    const userId = Number(rawUserId);
+
+    if (!rawUserId || !Number.isInteger(userId) || userId <= 0) {
+      setErrors({
+        form: "Unable to identify the logged-in user. Please log in again.",
+      });
+      return;
+    }
+
+    const categoryId = Number(form.categoryId);
+
+    if (!Number.isInteger(categoryId) || categoryId <= 0) {
+      setErrors({ categoryId: "Please select a valid complaint category." });
+      return;
+    }
+
+    const formData = new FormData();
+
+    formData.append("CP_full_name", form.name.trim());
+    formData.append("CP_mobile", form.phone.trim());
+    formData.append("CP_email", form.email.trim());
+    formData.append("CP_complaint_category_id", String(categoryId));
+    formData.append("CP_details", form.details.trim());
+    formData.append("complainer", String(userId));
+    formData.append("CP_user_type_id", "1");
+
+    if (attachment) {
+      formData.append("Attachment", attachment, attachment.name);
+    }
 
     setSubmitting(true);
+
     try {
-      // Replace with your API call, e.g. await axios.post('/api/complaints', form)
-      if (onSubmit) await onSubmit(form);
-      else await new Promise((r) => setTimeout(r, 800));
-      setSubmitted(true);
-    } catch (err) {
+      const response = await submitComplaint(formData);
+
+      if (response?.success === false || response?.Success === false) {
+        throw new Error(
+          response.message ||
+            response.Message ||
+            "Failed to submit the complaint.",
+        );
+      }
+
+      navigate("/jobseeker/complaint-list", {
+        replace: true,
+        state: { successMessage: "Complaint submitted successfully." },
+      });
+    } catch (error) {
+      console.error("Complaint submission failed:", error);
+
+      const apiErrors = error.response?.data?.errors;
+      const validationMessage =
+        apiErrors && typeof apiErrors === "object"
+          ? Object.values(apiErrors).flat().join(" ")
+          : "";
+
       setErrors({
-        form: "We could not submit your complaint. Check your connection and try again.",
+        form:
+          validationMessage ||
+          error.response?.data?.message ||
+          error.response?.data?.Message ||
+          error.response?.data?.title ||
+          error.message ||
+          "Unable to submit your complaint. Please try again.",
       });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const reset = () => {
-    setForm(initialForm);
-    setErrors({});
-    setSubmitted(false);
-  };
-
-  const inputClass = (field) =>
-    `w-full rounded-lg border bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 shadow-sm outline-none transition focus:ring-2 ${
-      errors[field]
-        ? "border-red-400 focus:border-red-500 focus:ring-red-200"
-        : "border-slate-300 focus:border-rose-500 focus:ring-rose-200"
-    }`;
-
-  if (submitted) {
-    return (
-      <div className="mx-auto  rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
-          <svg
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-        </div>
-        <h2 className="text-xl font-semibold text-slate-900">
-          Complaint received
-        </h2>
-        <p className="mt-2 text-sm text-slate-600">
-          {form.contactBack
-            ? `We'll review it and reply to ${form.email}.`
-            : "Our team will review it. You chose not to be contacted by email."}
-        </p>
-        <button
-          type="button"
-          onClick={reset}
-          className="mt-6 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
-        >
-          Submit another complaint
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto">
-      {/* HERO */}
-      <header
-        className="ep-hero relative mb-4 overflow-hidden rounded-2xl p-4 text-white shadow-sm sm:px-4 sm:py-2"
-        style={{
-          backgroundImage:
-            "linear-gradient(110deg,#17405a 0%,#2f6b8a 40%,#4a9bb3 70%,#2f6b8a 100%)",
-        }}
-      >
-        <span className="ep-orb ep-orb-a !h-40 !w-40" />
-        <span className="ep-orb ep-orb-b !h-24 !w-24" />
-        <div className="relative flex flex-wrap items-center gap-3.5">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            title="Back"
-            aria-label="Back"
-            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-white/15 text-white backdrop-blur-sm transition hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-          >
-            <ChevronsLeft size={18} />
-          </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="m-0 text-[22px] font-extrabold tracking-tight sm:text-[26px]">
-              Add Complaint
-            </h1>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-full bg-white text-slate-800">
+      <PageHeader title="Add Complaint" onBack={() => navigate(-1)} />
 
-      <form
-        onSubmit={handleSubmit}
-        noValidate
-        className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field id="name" label="Name" error={errors.name}>
-            <input
-              id="name"
-              type="text"
-              value={form.name}
-              onChange={(e) => update("name", e.target.value)}
-              placeholder="Your full name"
-              className={inputClass("name")}
-            />
-          </Field>
-          <Field id="email" label="Email" error={errors.email}>
-            <input
-              id="email"
-              type="email"
-              value={form.email}
-              onChange={(e) => update("email", e.target.value)}
-              placeholder="name@example.com"
-              className={inputClass("email")}
-            />
-          </Field>
-        </div>
-
-        <Field id="phone" label="Phone" optional error={errors.phone}>
-          <input
-            id="phone"
-            type="tel"
-            value={form.phone}
-            onChange={(e) => update("phone", e.target.value)}
-            placeholder="+91 98765 43210"
-            className={inputClass("phone")}
-          />
-        </Field>
-
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field id="category" label="Category" error={errors.category}>
-            <select
-              id="category"
-              value={form.category}
-              onChange={(e) => update("category", e.target.value)}
-              className={inputClass("category")}
-            >
-              <option value="">Select a category</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field
-            id="incidentDate"
-            label="Date it happened"
-            error={errors.incidentDate}
-          >
-            <input
-              id="incidentDate"
-              type="date"
-              max={today}
-              value={form.incidentDate}
-              onChange={(e) => update("incidentDate", e.target.value)}
-              className={inputClass("incidentDate")}
-            />
-          </Field>
-        </div>
-
-        <Field id="reference" label="Order or ticket number" optional>
-          <input
-            id="reference"
-            type="text"
-            value={form.reference}
-            onChange={(e) => update("reference", e.target.value)}
-            placeholder="e.g. ORD-10482"
-            className={inputClass("reference")}
-          />
-        </Field>
-
-        <fieldset>
-          <legend className="mb-1.5 text-sm font-medium text-slate-700">
-            How urgent is this?
-          </legend>
-          <div className="grid grid-cols-3 gap-3">
-            {PRIORITIES.map((p) => {
-              const active = form.priority === p.value;
-              return (
-                <label
-                  key={p.value}
-                  className={`cursor-pointer rounded-lg border p-3 text-center transition focus-within:ring-2 focus-within:ring-rose-200 ${
-                    active
-                      ? "border-rose-500 bg-rose-50"
-                      : "border-slate-300 hover:border-slate-400"
-                  }`}
-                >
+      <form onSubmit={handleSubmit} noValidate>
+        <div className="grid grid-cols-1 gap-4">
+          <Card title="Complainant Information" icon={UserRound}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <Field label="Name" htmlFor="name" required error={errors.name}>
+                <IconField icon={Building2}>
                   <input
-                    type="radio"
-                    name="priority"
-                    value={p.value}
-                    checked={active}
-                    onChange={() => update("priority", p.value)}
-                    className="sr-only"
+                    id="name"
+                    type="text"
+                    value={form.name}
+                    readOnly
+                    placeholder="Your full name"
+                    className={inputClass(Boolean(errors.name))}
                   />
-                  <span className="block text-sm font-medium text-slate-900">
-                    {p.label}
+                </IconField>
+              </Field>
+
+              <Field
+                label="Email"
+                htmlFor="email"
+                required
+                error={errors.email}
+              >
+                <IconField icon={Mail}>
+                  <input
+                    id="email"
+                    type="text"
+                    value={form.email}
+                    readOnly
+                    placeholder="Your Email Adddress"
+                    className={inputClass(Boolean(errors.name))}
+                  />
+                </IconField>
+              </Field>
+
+              <Field label="Mobile Number" htmlFor="phone" error={errors.phone}>
+                <IconField icon={Phone}>
+                  <input
+                    id="phone"
+                    type="text"
+                    value={form.phone}
+                    readOnly
+                    placeholder="Your Phone No."
+                    className={inputClass(Boolean(errors.name))}
+                  />
+                </IconField>
+              </Field>
+            </div>
+          </Card>
+
+          <Card title="Complaint Details" icon={FileText}>
+            <div className="grid grid-cols-1 gap-4">
+              <Field
+                label="Complaint Category"
+                htmlFor="categoryId"
+                required
+                error={errors.categoryId || errors.categories}
+              >
+                <IconField icon={Tag}>
+                  <select
+                    id="categoryId"
+                    value={form.categoryId}
+                    onChange={(e) => update("categoryId", e.target.value)}
+                    disabled={categoriesLoading}
+                    className={`${inputClass(Boolean(errors.categoryId || errors.categories))} cursor-pointer disabled:cursor-not-allowed`}
+                  >
+                    <option value="">
+                      {categoriesLoading
+                        ? "Loading categories..."
+                        : "Select a category"}
+                    </option>
+
+                    {categories.map((category) => {
+                      const id = getCategoryId(category);
+                      const name = getCategoryName(category);
+
+                      if (id == null || !name) return null;
+
+                      return (
+                        <option key={id} value={id}>
+                          {name}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </IconField>
+              </Field>
+
+              <Field
+                label="Complaint Description"
+                htmlFor="details"
+                required
+                error={errors.details}
+              >
+                <IconField icon={AlignLeft}>
+                  <textarea
+                    id="details"
+                    rows={6}
+                    value={form.details}
+                    onChange={(e) => update("details", e.target.value)}
+                    placeholder="Describe your complaint in detail."
+                    className={`${inputClass(Boolean(errors.details), false)} resize-y pl-3`}
+                  />
+                </IconField>
+                <p className="mt-1 text-right text-xs text-slate-500">
+                  {form.details.length} characters
+                </p>
+              </Field>
+            </div>
+          </Card>
+
+          <Card title="Supporting Document" icon={Paperclip}>
+            <div>
+              <span className="mb-1.5 block text-xs font-medium text-slate-500">
+                Attachment (optional)
+              </span>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed bg-[#f4f9fb] px-4 text-sm font-medium transition hover:bg-[#eaf3f7]"
+                  style={{ color: ACCENT, borderColor: ACCENT }}
+                >
+                  <Paperclip size={15} />
+                  Choose file
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  id="attachment"
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                  onChange={onFileChange}
+                  className="hidden"
+                />
+
+                {attachment ? (
+                  <span className="inline-flex items-center gap-2 rounded-full bg-[#eaf3f7] px-3 py-1 text-xs text-slate-700">
+                    {attachment.name}
+                    <button
+                      type="button"
+                      onClick={removeAttachment}
+                      aria-label="Remove attachment"
+                      className="text-slate-500 hover:text-red-600"
+                    >
+                      <CloseIcon size={14} />
+                    </button>
                   </span>
-                  <span className="block text-xs text-slate-500">{p.hint}</span>
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
+                ) : (
+                  <span className="text-xs text-slate-500">
+                    PDF, images, or documents. Maximum 10 MB.
+                  </span>
+                )}
+              </div>
 
-        <Field id="subject" label="Subject" error={errors.subject}>
-          <input
-            id="subject"
-            type="text"
-            value={form.subject}
-            onChange={(e) => update("subject", e.target.value)}
-            placeholder="Summarize the problem"
-            className={inputClass("subject")}
-          />
-        </Field>
-
-        <Field
-          id="description"
-          label="What happened?"
-          error={errors.description}
-        >
-          <textarea
-            id="description"
-            rows={5}
-            value={form.description}
-            onChange={(e) => update("description", e.target.value)}
-            placeholder="Include what you expected, what actually happened, and anyone you spoke to."
-            className={`${inputClass("description")} resize-y`}
-          />
-          <p className="mt-1 text-right text-xs text-slate-400">
-            {form.description.length} characters
-          </p>
-        </Field>
-
-        <Field
-          id="resolution"
-          label="How would you like us to resolve this?"
-          optional
-        >
-          <textarea
-            id="resolution"
-            rows={3}
-            value={form.resolution}
-            onChange={(e) => update("resolution", e.target.value)}
-            placeholder="For example: a refund, a replacement, or an apology."
-            className={`${inputClass("resolution")} resize-y`}
-          />
-        </Field>
-
-        <label className="flex items-start gap-2.5 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={form.contactBack}
-            onChange={(e) => update("contactBack", e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-300"
-          />
-          <span>Contact me by email about this complaint</span>
-        </label>
+              {errors.attachment && (
+                <p className="mt-1 text-xs text-red-600">{errors.attachment}</p>
+              )}
+            </div>
+          </Card>
+        </div>
 
         {errors.form && (
           <div
-            className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700"
             role="alert"
+            className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700"
           >
             {errors.form}
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? "Submitting…" : "Submit complaint"}
-        </button>
+        <div className="mt-4 flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-end">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            disabled={submitting}
+            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            disabled={submitting || categoriesLoading}
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ backgroundColor: ACCENT }}
+          >
+            {submitting ? (
+              <LoaderCircle size={15} className="animate-spin" />
+            ) : (
+              <Plus size={15} />
+            )}
+            {submitting ? "Submitting..." : "Submit Complaint"}
+          </button>
+        </div>
       </form>
     </div>
   );
