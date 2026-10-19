@@ -109,3 +109,30 @@ export const updateJobRequirementStatusAndDeadline = async (id, payload) => {
 
   return response.data;
 };
+
+
+export const getJobsForJobseeker = async ({
+  instituteTypeId,
+  jobRoleId,
+  jobCategoryId,
+  jobseekerId,
+  pageNo = 1,
+  pageSize = 10,
+}) => {
+  if (!instituteTypeId || !jobRoleId || !jobCategoryId) {
+    throw new Error("Jobseeker institute type, job role, and category are required.");
+  }
+
+  const response = await axiosInstance.get(API, {
+    params: {
+      JQ_institute_type_id: instituteTypeId,
+      JQ_job_role_id: jobRoleId,
+      JQ_job_category_id: jobCategoryId,
+      jobseekerId,
+      pageNo,
+      pageSize,
+    },
+  });
+
+  return response.data;
+};

@@ -1,489 +1,260 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import {
-  FileText as FileIcon,
-  ChevronsLeft,
-  Mail,
-  Phone,
-  MessageCircle,
-  MapPin,
-  Download,
-  Eye,
-  GraduationCap,
-  Briefcase,
-  Wallet,
-  Clock3,
-  Plane,
-  UserRound,
-  Navigation,
-  SquarePen,
-} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ChevronsLeft, Download, ExternalLink, UserRound } from "lucide-react";
+import { getCurrentUserId } from "../../../utils/authUtils";
+import  jobseekerApi  from "../../../api/Services/adjobseekerApi"; // adjust to your API function name
 
-/* Must match the key used in the Jobseeker list page */
-const STORAGE_KEY = "ishraq_jobseekers";
-
-const EMPTY_FORM = {
-  fullName: "",
-  mobile: "",
-  whatsapp: "",
-  email: "",
-  jobCategory: "",
-  highestQualification: "",
-  speciality: "",
-  professionalRegistrationNumber: "",
-  totalExperience: "",
-  currentDesignation: "",
-  currentCity: "",
-  state: "",
-  expectedSalary: "",
-  preferredJobLocation: "",
-  willingToRelocate: "",
-  employmentPreference: "",
-  availabilityToJoin: "",
-  document: null,
+/* ---------------- Design tokens (same as employer/admin profile) ---------------- */
+const T = {
+  radius: "rounded-lg",
+  border: "border-[#e3e8ee]",
+  bg: "bg-[#f4f8fb]",
+  text: "text-[#1a2b3c]",
+  textMuted: "text-[#5b6b7c]",
+  textFaint: "text-[#8895a4]",
 };
 
-const getUsers = () => {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return Array.isArray(saved) ? saved : [];
-  } catch {
-    return [];
-  }
+const FIELD_LABEL = `text-[11.5px] font-semibold uppercase tracking-wide ${T.textFaint}`;
+const FIELD_BOX = (mono) =>
+  `flex h-9 items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
+    mono ? "font-mono text-[12.5px]" : ""
+  }`;
+
+const BTN_PRIMARY =
+  "inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
+
+/* ---------------- Formatters ---------------- */
+const isBlank = (v) => v === null || v === undefined || String(v).trim() === "";
+
+const val = (v) => (isBlank(v) ? "—" : String(v).trim());
+
+const formatDate = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
 };
 
-const AVATAR_GRADIENTS = [
-  "from-[#2c6b8a] to-[#5ba6bd]",
-  "from-violet-500 to-indigo-400",
-  "from-emerald-500 to-teal-400",
-  "from-amber-500 to-orange-400",
-  "from-rose-500 to-pink-400",
-  "from-sky-500 to-cyan-400",
-];
+const formatYears = (v) => (isBlank(v) ? "—" : `${Number(v)} yrs`);
 
-const initials = (name = "") =>
-  name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
+const formatMoney = (v) =>
+  isBlank(v) || Number.isNaN(Number(v))
+    ? "—"
+    : `₹ ${Number(v).toLocaleString("en-IN")}`;
 
-const val = (v) => (v && String(v).trim() ? v : "-");
+const yesNo = (v) => (v === true ? "Yes" : v === false ? "No" : "—");
 
-const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "preferences", label: "Location & Preferences" },
-  { id: "resume", label: "Resume" },
-  // { id: "jobs", label: "Interested Jobs" },
-];
-
-/* ------------------------------------------------------------------ */
-/* Small building blocks                                               */
-/* ------------------------------------------------------------------ */
-
-const Card = ({ title, icon: Icon, children, delay = 0, className = "" }) => (
-  <section
-    style={{ animationDelay: `${delay}ms` }}
-    className={`jp-up min-w-0 h-[63vh] rounded-2xl border border-[#e2e8ee] bg-white p-4 shadow-sm transition duration-300 hover:shadow-md ${className}`}
-  >
-    <h2 className="mb-2 flex items-center gap-2.5 text-[15px] font-bold text-[#1e2b36]">
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[#2c6b8a] to-[#5ba6bd] text-white shadow-sm">
-        <Icon size={15} />
-      </span>
-      {title}
-    </h2>
-    <div className="divide-y divide-[#eef2f6]">{children}</div>
-  </section>
-);
-
-const Row = ({ label, value }) => (
-  <div className="grid grid-cols-1 gap-0.5 py-2.5 text-[13.5px] transition-colors hover:bg-[#f7fafc] sm:grid-cols-[190px_1fr] sm:gap-3 sm:px-1.5">
-    <span className="font-medium text-[#6b7a88]">{label}</span>
-    <span className="min-w-0 whitespace-pre-wrap break-words font-semibold text-[#1e2b36]">
-      {val(value)}
-    </span>
-  </div>
-);
-
-const ContactLine = ({ icon: Icon, children, href }) => {
-  const inner = (
-    <>
-      <Icon size={14} className="mt-0.5 shrink-0 text-[#2c6b8a]" />
-      <span className="min-w-0 break-words">{children}</span>
-    </>
-  );
-  const cls = "flex items-start gap-2.5 text-[13px] font-medium text-[#34445a]";
-  return href ? (
-    <a
-      href={href}
-      className={`${cls} transition hover:text-[#2c6b8a] hover:underline`}
-    >
-      {inner}
-    </a>
-  ) : (
-    <div className={cls}>{inner}</div>
-  );
+// Joins the stored file path with the API base URL, as in the job requirement view.
+const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || "").replace(/\/+$/, "");
+const buildFileUrl = (path) => {
+  if (isBlank(path)) return "";
+  const value = String(path).trim();
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${API_BASE_URL}/${value.replace(/\\/g, "/").replace(/^\/+/, "")}`;
 };
 
-const Tag = ({ children, i }) => (
-  <span
-    style={{ animationDelay: `${300 + i * 70}ms` }}
-    className="jp-pop rounded-full bg-gradient-to-r from-[#e8f1f6] to-[#e3f5ec] px-3 py-1 text-[12px] font-semibold text-[#2c6b8a] ring-1 ring-[#cbe1f4]"
-  >
-    {children}
-  </span>
-);
+/* ---------------- Request helper (dedupes StrictMode double calls) ---------------- */
+const jobseekerRequests = new Map();
 
-const ResumeBox = ({ doc, big = false }) => {
-  if (!doc) {
-    return (
-      <div className="rounded-xl border border-dashed border-[#cfd9e2] bg-[#f7f9fb] px-4 py-5 text-center text-[13px] font-medium text-[#6b7a88]">
-        Not uploaded
-      </div>
+const getJobseekerRequest = (userId) => {
+  if (!jobseekerRequests.has(userId)) {
+    const request = jobseekerApi.getById(userId).then(
+      (response) => {
+        jobseekerRequests.delete(userId);
+        return response;
+      },
+      (error) => {
+        jobseekerRequests.delete(userId);
+        throw error;
+      },
     );
+    jobseekerRequests.set(userId, request);
   }
-  return (
-    <div
-      className={`rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] ${big ? "p-5" : "p-3"}`}
-    >
-      <div className="flex items-center gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#2c6b8a] to-[#35b8c4] text-white shadow-md">
-          <FileIcon size={20} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-semibold text-[#1e2b36]">
-            {doc.name}
-          </p>
-          <p className="text-[12px] text-[#6b7a88]">Resume / CV</p>
-        </div>
-      </div>
-      {doc.url ? (
-        <div className="mt-3 flex gap-2">
-          <a
-            href={doc.url}
-            download={doc.name}
-            className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-          >
-            <Download size={14} /> Download
-          </a>
-          <a
-            href={doc.url}
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#dce3eb] bg-white px-3 text-[13px] font-semibold text-[#34445a] transition hover:bg-[#f7f9fb]"
-          >
-            <Eye size={14} /> View
-          </a>
-        </div>
-      ) : (
-        <p className="mt-3 rounded-lg bg-white px-3 py-2 text-[12px] text-[#6b7a88] ring-1 ring-[#e2e8ee]">
-          File name saved. No download link is available yet.
-        </p>
-      )}
-    </div>
-  );
+  return jobseekerRequests.get(userId);
 };
 
+const getErrorMessage = (error) =>
+  error?.response?.data?.message ??
+  error?.response?.data?.Message ??
+  error?.message ??
+  "Unable to load jobseeker details. Please try again.";
 
-/* ------------------------------------------------------------------ */
-/* Page                                                                */
-/* ------------------------------------------------------------------ */
-
-const MyDetails = () => {
+/* ---------------- Page ---------------- */
+const JobseekerOverview = () => {
   const navigate = useNavigate();
-  const { id } = useParams();
 
-  const [user, setUser] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [tab, setTab] = useState("overview");
+  const [jobseeker, setJobseeker] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const found = getUsers().find((item) => String(item.id) === String(id));
-    if (found) {
-      setUser(found);
-      setForm({ ...EMPTY_FORM, ...found });
-    }
-  }, [id]);
+    let cancelled = false;
 
-  const Styles = (
-    <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-      .jp-page { font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif; }
-      @keyframes jp-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-      @keyframes jp-pop { from { opacity: 0; transform: scale(.8); } to { opacity: 1; transform: none; } }
-      @keyframes jp-fade { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
-      @keyframes jp-halo { 0%,100% { transform: scale(1); opacity: .55; } 50% { transform: scale(1.15); opacity: .15; } }
-      @keyframes jp-ping { 75%,100% { transform: scale(2.4); opacity: 0; } }
-      @keyframes jp-float { 50% { transform: translateY(10px) scale(1.1); } }
-      @keyframes jp-bob { 50% { transform: translateY(-3px) rotate(-8deg); } }
-      @keyframes jp-shift { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
-      .jp-up { animation: jp-up .55s cubic-bezier(.2,.8,.2,1) both; }
-      .jp-pop { animation: jp-pop .35s cubic-bezier(.3,1.4,.5,1) both; }
-      .jp-tab { animation: jp-fade .35s ease both; }
-      .jp-halo { animation: jp-halo 2.4s ease-in-out infinite; }
-      .jp-ping { animation: jp-ping 1.6s cubic-bezier(0,0,.2,1) infinite; }
-      .jp-bob { animation: jp-bob 2.6s ease-in-out infinite; }
-      .jp-orb { position: absolute; border-radius: 9999px; pointer-events: none; background: rgba(255,255,255,.16); }
-      .jp-orb-a { width: 86px; height: 86px; right: -24px; top: -28px; animation: jp-float 4s ease-in-out infinite; }
-      .jp-orb-b { width: 56px; height: 56px; right: 34px; bottom: -32px; background: rgba(255,255,255,.10); animation: jp-float 5s ease-in-out infinite reverse; }
-      .jp-hero { background-size: 200% 200%; animation: jp-shift 10s linear infinite alternate; }
-      @media (prefers-reduced-motion: reduce) {
-        .jp-up,.jp-pop,.jp-tab,.jp-halo,.jp-ping,.jp-bob,.jp-orb,.jp-hero { animation: none !important; }
+    const load = async () => {
+      setLoading(true);
+      setError("");
+
+      try {
+        const userId = getCurrentUserId();
+        if (!userId) {
+          throw new Error("Your login session could not be identified. Please sign in again.");
+        }
+
+        const response = await getJobseekerRequest(userId);
+        // Handles { success, data: {...} } whether or not the axios wrapper is present.
+        const record = response?.data?.data ?? response?.data ?? response;
+
+        if (!record || record.jB_jobseeker_id === undefined) {
+          throw new Error("The jobseeker details were not returned by the API.");
+        }
+
+        if (!cancelled) setJobseeker(record);
+      } catch (err) {
+        if (!cancelled) {
+          setJobseeker(null);
+          setError(getErrorMessage(err));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    `}</style>
-  );
+    };
 
-  const BackBtn = (
-    <button
-      type="button"
-      onClick={() => navigate(-1)}
-      title="Back"
-      aria-label="Back"
-      className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-xl bg-white/15 text-white backdrop-blur-sm transition hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-    >
-      <ChevronsLeft size={20} strokeWidth={2} />
-    </button>
-  );
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  if (!user) {
+  /* ---------- Loading ---------- */
+  if (loading) {
     return (
-      <div className="jp-page min-h-full bg-[#f7f9fb]">
-        {Styles}
-        <div className="rounded-2xl bg-gradient-to-r from-[#17405a] to-[#4a9bb3] p-4">
-          {/* {BackBtn} */}
+      <div className={`min-h-full ${T.bg} p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+          <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#2f6b8a] border-t-transparent" />
+          <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>Loading jobseeker…</p>
         </div>
-        <p className="px-4 py-12 text-center text-[#6b7a88]">
-          This jobseeker was not found.
-        </p>
       </div>
     );
   }
 
-  const active = user.status === "Active";
-  const exp = /^\d+(\.\d+)?$/.test(String(form.totalExperience).trim())
-    ? `${form.totalExperience} yrs`
-    : val(form.totalExperience);
-  const location = [form.currentCity, form.state].filter(Boolean).join(", ");
-  const tags = [
-    form.jobCategory,
-    form.speciality,
-    form.employmentPreference,
-    form.availabilityToJoin,
-  ].filter(Boolean);
-  const wa = (form.whatsapp || "").replace(/\D/g, "");
+  /* ---------- Error ---------- */
+  if (error || !jobseeker) {
+    return (
+      <div className={`min-h-full ${T.bg} p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+          <UserRound size={28} className="mx-auto text-[#8895a4]" />
+          <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
+            {error || "Jobseeker not found"}
+          </p>
+          <p className={`mt-1 text-[13px] ${T.textMuted}`}>
+            The details could not be loaded right now.
+          </p>
+          <button type="button" onClick={() => window.location.reload()} className={`mt-4 ${BTN_PRIMARY}`}>
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const cvUrl = buildFileUrl(jobseeker.jB_cv_file_path);
+  const cvName = isBlank(jobseeker.jB_cv_file_path)
+    ? ""
+    : jobseeker.jB_cv_file_path.split("/").pop();
+
+  const fields = [
+    // { label: "Jobseeker No.", value: jobseeker.jB_jobseeker_no, mono: true },
+    { label: "Full Name", value: jobseeker.fullName },
+    // { label: "Username", value: jobseeker.userName },
+    { label: "Email", value: jobseeker.email },
+    { label: "Mobile", value: jobseeker.mobile, mono: true },
+    { label: "WhatsApp", value: jobseeker.jB_whatsapp, mono: true },
+    { label: "Country", value: jobseeker.countryName },
+    { label: "State", value: jobseeker.stateName },
+    { label: "City", value: jobseeker.cityName },
+    { label: "Institute Type", value: jobseeker.instituteTypeName },
+    { label: "Job Category", value: jobseeker.jobCategoryName },
+    { label: "Job Role", value: jobseeker.jobRoleName },
+    { label: "Highest Qualification", value: jobseeker.jB_highest_qualification },
+    { label: "Speciality", value: jobseeker.jB_speciality },
+    { label: "Professional Registration Number", value: jobseeker.jB_registration_number, mono: true },
+    { label: "Total Experience", value: formatYears(jobseeker.jB_total_experience) },
+    { label: "Current Designation", value: jobseeker.jB_current_designation },
+    { label: "Current Employer", value: jobseeker.jB_current_employer },
+    { label: "Current Salary", value: formatMoney(jobseeker.jB_current_salary) },
+    { label: "Expected Salary", value: formatMoney(jobseeker.jB_expected_salary) },
+    { label: "Preferred Location", value: jobseeker.jB_preferredLocationName ?? jobseeker.jB_preferred_locationName },
+    { label: "Willing to Relocate", value: yesNo(jobseeker.jB_willing_to_relocate) },
+    { label: "Availability to Join", value: formatDate(jobseeker.jB_availability_to_join) },
+    { label: "Consent Given", value: yesNo(jobseeker.jB_consent_given) },
+    { label: "Consent At", value: formatDate(jobseeker.jB_consent_at) },
+    { label: "Created At", value: formatDate(jobseeker.jB_created_at) },
+    { label: "Updated At", value: formatDate(jobseeker.jB_updated_at) },
+    { label: "Status", value: jobseeker.jB_is_active ? "Active" : "Inactive" },
+  ];
 
   return (
-    <div className="jp-page min-h-full bg-[#f7f9fb] text-[#1e2b36]">
-      {Styles}
+    <div className={`min-h-full ${T.bg}`}>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
+          <div className="flex items-center gap-3">
+         
 
-      {/* HERO HEADER */}
-      <header
-        className="jp-hero relative mb-4 overflow-hidden rounded-2xl p-4 text-white shadow-sm sm:px-4 sm:py-2"
-        style={{
-          backgroundImage:
-            "linear-gradient(110deg,#17405a 0%,#2f6b8a 40%,#4a9bb3 70%,#2f6b8a 100%)",
-        }}
-      >
-        <span className="jp-orb jp-orb-a !h-40 !w-40" />
-        <span className="jp-orb jp-orb-b !h-24 !w-24" />
-        <div className="relative flex flex-wrap items-center gap-3.5">
-          {/* {BackBtn} */}
-          <div className="min-w-0 flex-1">
-            <h1 className="m-0 text-[22px] font-extrabold tracking-tight sm:text-[26px]">
-              User Detail
-            </h1>
+            <h2 className="font-semibold text-slate-800">My Profile Details</h2>
           </div>
-          <div>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(`/jobseeker/profile/1/edit`)
-              }
-              title="Edit"
-              className="group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[15px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {/* <SquarePen /> */}
-              <SquarePen
-                size={15}
-                strokeWidth={2.2}
-                className="transition-transform group-hover:scale-110"
-              />
-              <span className="hidden sm:inline">Edit</span>
-            </button>
-          </div>
-        </div>
-      </header>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px_1fr]">
-        {/* SIDEBAR */}
-        <aside className="jp-up h-[73vh] overflow-hidden rounded-2xl border border-[#e2e8ee] bg-white shadow-sm lg:sticky lg:top-3">
-          <div className="h-20 bg-gradient-to-r from-[#2c6b8a] via-[#4a9bb3] to-[#73c8a4]" />
-          <div className="px-4 pb-4">
-            <div className="relative -mt-11 flex flex-col items-center text-center">
-              <div className="relative grid h-[150px] w-[150px] place-items-center">
-                <span
-                  className={`jp-halo absolute inset-0 rounded-full bg-gradient-to-br ${AVATAR_GRADIENTS[user.id % AVATAR_GRADIENTS.length]}`}
-                />
-                <span
-                  className={`relative grid h-[140px] w-[140px] place-items-center rounded-full bg-gradient-to-br ${
-                    AVATAR_GRADIENTS[user.id % AVATAR_GRADIENTS.length]
-                  } text-[26px] font-extrabold text-white shadow-lg ring-4 ring-white`}
-                >
-                  {initials(form.fullName) || <UserRound size={30} />}
-                </span>
-              </div>
-              <h2 className="mt-2.5 text-[17px] font-extrabold text-[#1e2b36]">
-                {val(form.fullName)}
-              </h2>
-              <p className="text-[13px] font-medium text-[#6b7a88]">
-                {val(form.currentDesignation)}
-              </p>
-            </div>
-
-            <div className="mt-4 space-y-2.5 border-t border-[#eef2f6] pt-4">
-              <ContactLine
-                icon={Mail}
-                href={form.email ? `mailto:${form.email}` : undefined}
-              >
-                {val(form.email)}
-              </ContactLine>
-              <ContactLine
-                icon={Phone}
-                href={
-                  form.mobile
-                    ? `tel:${form.mobile.replace(/\s/g, "")}`
-                    : undefined
-                }
-              >
-                {val(form.mobile)}
-              </ContactLine>
-              <ContactLine icon={MapPin}>{val(location)}</ContactLine>
-            </div>
-          </div>
-        </aside>
-
-        {/* MAIN */}
-        <main className="min-w-0">
-          {/* TABS */}
-          <div
-            role="tablist"
-            aria-label="Profile sections"
-            className="mb-4  flex gap-1 overflow-x-auto rounded-xl border border-[#e2e8ee] bg-white p-1 shadow-sm"
+          <button
+            type="button"
+            onClick={() => navigate(`/jobseeker/profile/${jobseeker.jB_jobseeker_id}/edit`)}
+            className={BTN_PRIMARY}
           >
-            {TABS.map((t) => {
-              const on = tab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={on}
-                  onClick={() => setTab(t.id)}
-                  className={`relative shrink-0 cursor-pointer rounded-lg px-4 py-2 text-[13px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] ${
-                    on
-                      ? "bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] text-white shadow-sm"
-                      : "text-[#53677f] hover:bg-[#f2f6f9]"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
+            Edit Profile
+          </button>
+        </div>
 
-          {/* PANELS (key re-triggers the animation on every tab change) */}
-          <div key={tab} className="jp-tab ">
-            {tab === "overview" && (
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                <Card title="Personal Details" icon={UserRound} delay={0}>
-                  <Row label="Full Name" value={form.fullName} />
-                  <Row label="Mobile Number" value={form.mobile} />
-                  <Row label="WhatsApp Number" value={form.whatsapp} />
-                  <Row label="Email Address" value={form.email} />
-                </Card>
-
-                <Card
-                  title="Professional Details"
-                  icon={GraduationCap}
-                  delay={90}
-                >
-                  <Row
-                    label="Profession / Job Category"
-                    value={form.jobCategory}
-                  />
-                  <Row
-                    label="Highest Qualification"
-                    value={form.highestQualification}
-                  />
-                  <Row
-                    label="Speciality / Department"
-                    value={form.speciality}
-                  />
-                  <Row
-                    label="Professional Registration Number"
-                    value={form.professionalRegistrationNumber}
-                  />
-                  <Row
-                    label="Total Experience (Years)"
-                    value={form.totalExperience}
-                  />
-                  <Row
-                    label="Current Designation"
-                    value={form.currentDesignation}
-                  />
-                </Card>
-              </div>
-            )}
-
-            {tab === "preferences" && (
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                <Card title="Location" icon={MapPin} delay={0}>
-                  {/* <Row label="Address" value={form.address} /> */}
-                  <Row label="Current City" value={form.currentCity} />
-                  <Row label="State" value={form.state} />
-                  <Row
-                    label="Preferred Job Location"
-                    value={form.preferredJobLocation}
-                  />
-                </Card>
-
-                <Card title="Preferences" icon={Navigation} delay={90}>
-                  <Row label="Expected Salary" value={form.expectedSalary} />
-                  <Row
-                    label="Willing to Relocate?"
-                    value={form.willingToRelocate}
-                  />
-                  <Row
-                    label="Employment Preference"
-                    value={form.employmentPreference}
-                  />
-                  <Row
-                    label="Availability to Join"
-                    value={form.availabilityToJoin}
-                  />
-                </Card>
-              </div>
-            )}
-
-            {tab === "resume" && (
-              <Card title="Document Upload" icon={FileIcon}>
-                <div className="pt-3">
-                  <p className="mb-2 text-[13px] font-medium text-[#6b7a88]">
-                    Resume / CV
-                  </p>
-                  <ResumeBox doc={form.document} big />
+        {/* Body */}
+        <section className="p-4">
+          <div className={`${T.radius} border ${T.border} bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {fields.map((field) => (
+                <div key={field.label} className="flex flex-col gap-1.5">
+                  <label className={FIELD_LABEL}>{field.label}</label>
+                  <div className={FIELD_BOX(field.mono)}>
+                    <span className="min-w-0 flex-1 truncate">{val(field.value)}</span>
+                  </div>
                 </div>
-              </Card>
-            )}
+              ))}
 
-           
+              {/* CV spans the full row */}
+              <div className="flex flex-col gap-1.5 sm:col-span-2 xl:col-span-3">
+                <label className={FIELD_LABEL}>CV / Resume</label>
+                <div className={FIELD_BOX()}>
+                  {cvUrl ? (
+                    <a
+                      href={cvUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open CV in a new tab"
+                      className="inline-flex min-w-0 items-center gap-2 truncate text-[#1e5a7a] hover:underline"
+                    >
+                      <Download size={13} className="shrink-0" />
+                      <span className="truncate">{cvName}</span>
+                      <ExternalLink size={11} className="shrink-0" />
+                    </a>
+                  ) : (
+                    <span className="text-[#8895a4]">Not uploaded</span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </main>
+        </section>
       </div>
     </div>
   );
 };
 
-export default MyDetails;
+export default JobseekerOverview;
