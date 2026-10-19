@@ -276,7 +276,10 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
     setNotice("");
 
     try {
-      const userId = Number(getCurrentUserId()) || 0;
+      const userId = Number(getCurrentUserId());
+      if (!Number.isInteger(userId) || userId <= 0) {
+        throw new Error("Unable to identify the current user. Please sign in again.");
+      }
       await adminEnquiryService.updateCareerResponse(id, trimmed, userId);
       setNotice("Response submitted successfully.");
       setResponseSaved(true);
@@ -294,21 +297,45 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
   const handleSaveStatus = async () => {
     // Locked once the request is Closed.
     if (savingStatus || isClosed) return;
+    if (!status) {
+      setError("Select a request status before saving.");
+      return;
+    }
 
     setSavingStatus(true);
     setError("");
     setNotice("");
 
     try {
-      const userId = getCurrentUserId();
+      const userId = Number(getCurrentUserId());
+      if (!Number.isInteger(userId) || userId <= 0) {
+        throw new Error("Unable to identify the current user. Please sign in again.");
+      }
+      const selectedStatus = statusOptions.find(
+        (option) => Number(option.value) === Number(status),
+      );
+      if (!selectedStatus) {
+        throw new Error("The selected request status is unavailable. Refresh and try again.");
+      }
+
       await adminEnquiryService.updateCareerStatus(id, {
         statusId: Number(status),
-        userId: Number(userId) || 0,
+        userId,
         changedAt: new Date().toISOString(),
       });
       setNotice("Status updated successfully.");
-      setRecord((prev) =>
-        prev ? { ...prev, statusId: Number(status) } : prev,
+      setRecord((prev) => prev
+        ? {
+            ...prev,
+            requestStatusId: Number(status),
+            RequestStatusId: Number(status),
+            statusId: Number(status),
+            requestStatusName: selectedStatus.label,
+            RequestStatusName: selectedStatus.label,
+            statusName: selectedStatus.label,
+            status: selectedStatus.label,
+          }
+        : prev,
       );
     } catch (err) {
       setError(err?.message || "Failed to update status.");
@@ -431,7 +458,7 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
                         rows={4}
                         placeholder="Type your response to this enquiry..."
                         className={inputClass}
-                        disabled={savingResponse || savingStatus}
+                        disabled={savingResponse}
                       />
                     )}
                   </div>
@@ -450,12 +477,7 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
                         value={status}
                         onChange={(event) => setStatus(event.target.value)}
                         className={selectClass}
-                        disabled={
-                          statusLoading ||
-                          savingResponse ||
-                          savingStatus ||
-                          isClosed
-                        }
+                        disabled={statusLoading || savingStatus || isClosed}
                       >
                         {statusLoading ? (
                           <option value="">Loading statuses...</option>
@@ -487,7 +509,7 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
                     <button
                       type="button"
                       onClick={handleSaveStatus}
-                      disabled={savingStatus || savingResponse || isClosed}
+                      disabled={savingStatus || isClosed}
                       className="inline-flex items-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-5 py-2.5 text-sm font-semibold text-[#2f6b8a] transition hover:bg-[#e9f4f7] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {savingStatus
@@ -500,7 +522,7 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
                     <button
                       type="button"
                       onClick={handleSubmitResponse}
-                      disabled={savingResponse || savingStatus || responseSaved}
+                      disabled={savingResponse || responseSaved}
                       className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {savingResponse

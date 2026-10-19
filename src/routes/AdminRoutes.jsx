@@ -16,6 +16,7 @@ import EmployerProfile from "../pages/admin/Employer/EmployerDetails";
 import ResetPassword from "../pages/admin/ResetPassword/ResetPassword";
 import JobRequirementList from "../pages/admin/JobRequirement/JobRequirementList";
 import JobRequirementCreate from "../pages/admin/JobRequirement/Jobrequirementcreate";
+import JobApplicantList from "../pages/admin/JobRequirement/JobApplicantList";
 
 // master data imports
 import ComplaintCategoryList from "../pages/admin/MasterData/ComplaintCategory/ComplaintCategoryList";
@@ -79,6 +80,10 @@ const AdminRoutes = (
       <Route
         path="job-requirements/:id"
         element={<JobRequirementCreate mode="view" />}
+      />
+      <Route
+        path="job-applicant/:jobdescId"
+        element={<JobApplicantList />}
       />
       <Route
         path="job-requirements/:id/edit"

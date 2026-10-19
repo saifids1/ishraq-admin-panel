@@ -4,7 +4,7 @@ import axios from "axios";
 const axiosInstance = axios.create({
   // baseURL:
   //   process.env.REACT_APP_API_BASE_URL ||
-  //   "http://hr-ishraq-admin.i-diligence.com/api/",
+  //   "https://ishraqhr-api.ishraqhr.com/api/",
   // headers: {
   //   "Content-Type": "application/json",
   // },
@@ -14,6 +14,7 @@ const axiosInstance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  
   
   timeout: 60000,
 });
