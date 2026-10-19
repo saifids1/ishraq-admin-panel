@@ -1,8 +1,49 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronsLeft, FileText } from "lucide-react";
-import { ENQUIRY_CONFIGS, formatDate } from "../../../../config/enquiryConfig";
+import { ChevronDown, ChevronsLeft, FileText } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
+import { getCurrentUserId } from "../../../../utils/authUtils";
+
+const formatDate = (value) => {
+  if (!value || Number.isNaN(new Date(value).getTime())) return "-";
+  return new Date(value).toLocaleDateString("en-GB");
+};
+
+const cfg = {
+  title: "Feedback",
+  activeField: "FB_is_active",
+  detailFields: [
+    { key: "FB_request_no", label: "Request ID" },
+    { key: "FB_name", label: "Name" },
+    { key: "FB_contact", label: "Contact" },
+    { key: "UserTypeName", label: "You are" },
+    { key: "FB_rating", label: "Overall Experience", type: "rating" },
+    { key: "FB_overall_experience", label: "Overall Experience (text)", type: "multiline" },
+    { key: "FB_useful_text", label: "What did you find useful?", type: "multiline" },
+    { key: "FB_improve_text", label: "What can we improve?", type: "multiline" },
+    { key: "FB_suggestions", label: "Additional Suggestions", type: "multiline" },
+    { key: "FB_created_at", label: "Submitted", type: "date" },
+  ],
+};
+
+const inputClass =
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+
+const selectClass =
+  "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+
+const STATUS_OPTIONS = [
+  { value: 1, label: "In Progress" },
+  { value: 2, label: "On Hold" },
+  { value: 3, label: "Closed" },
+];
+
+const statusIdFromName = (value) => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return STATUS_OPTIONS.find(
+    (option) => option.label.toLowerCase() === normalized,
+  )?.value ?? 1;
+};
 
 const Stars = ({ value }) => (
   <span className="inline-flex items-center gap-2">
@@ -17,11 +58,15 @@ const Stars = ({ value }) => (
 const FeedbackDetails = ({ formType = "feedback" }) => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const cfg = ENQUIRY_CONFIGS[formType];
 
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [responseText, setResponseText] = useState("");
+  const [status, setStatus] = useState("1");
+  const [savingResponse, setSavingResponse] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -38,6 +83,22 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
           setRecord(data);
           if (!data) {
             setError("Record not found.");
+          } else {
+            setResponseText(
+              data?.responseRetun ??
+                data?.responseReturn ??
+                data?.response ??
+                data?.admin_response ??
+                "",
+            );
+            setStatus(
+              String(
+                data?.statusId ??
+                  data?.FB_status_id ??
+                  data?.fb_status_id ??
+                  statusIdFromName(data?.statusName ?? data?.status),
+              ),
+            );
           }
         }
       } catch (err) {
@@ -63,6 +124,52 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
       await adminEnquiryService.openFile(formType, id);
     } catch (err) {
       setError(err?.message || "Could not open the document.");
+    }
+  };
+
+  const handleSubmitResponse = async () => {
+    if (savingResponse) return;
+    const trimmed = responseText.trim();
+    if (!trimmed) {
+      setError("Response cannot be empty.");
+      return;
+    }
+
+    setSavingResponse(true);
+    setError("");
+    setNotice("");
+    try {
+      await adminEnquiryService.updateEnquiryResponse(
+        formType,
+        id,
+        trimmed,
+        Number(getCurrentUserId()) || 0,
+      );
+      setResponseText(trimmed);
+      setNotice("Response submitted successfully.");
+    } catch (err) {
+      setError(err?.message || "Failed to submit response.");
+    } finally {
+      setSavingResponse(false);
+    }
+  };
+
+  const handleSaveStatus = async () => {
+    if (savingStatus) return;
+    setSavingStatus(true);
+    setError("");
+    setNotice("");
+    try {
+      await adminEnquiryService.updateEnquiryStatus(formType, id, {
+        statusId: Number(status),
+        userId: Number(getCurrentUserId()) || 0,
+        changedAt: new Date().toISOString(),
+      });
+      setNotice("Status updated successfully.");
+    } catch (err) {
+      setError(err?.message || "Failed to update status.");
+    } finally {
+      setSavingStatus(false);
     }
   };
 
@@ -179,6 +286,62 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          {error && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+              {error}
+            </div>
+          )}
+          {notice && (
+            <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
+              {notice}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <label htmlFor="feedback-response" className="mb-1.5 block text-sm font-medium text-slate-700">
+                Response
+              </label>
+              <textarea
+                id="feedback-response"
+                value={responseText}
+                onChange={(event) => setResponseText(event.target.value)}
+                rows={4}
+                placeholder="Type your response to this feedback..."
+                className={inputClass}
+                disabled={savingResponse || savingStatus}
+              />
+            </div>
+            <div>
+              <label htmlFor="feedback-status" className="mb-1.5 block text-sm font-medium text-slate-700">
+                Request Status
+              </label>
+              <div className="relative">
+                <select
+                  id="feedback-status"
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                  className={selectClass}
+                  disabled={savingResponse || savingStatus}
+                >
+                  {STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <ChevronDown size={17} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              </div>
+            </div>
+            <div className="flex items-end justify-end gap-3">
+              <button type="button" onClick={handleSaveStatus} disabled={savingStatus || savingResponse} className="rounded-lg border border-[#2f6b8a] bg-white px-5 py-2.5 text-sm font-semibold text-[#2f6b8a] transition hover:bg-[#e9f4f7] disabled:cursor-not-allowed disabled:opacity-60">
+                {savingStatus ? "Saving..." : "Save Status"}
+              </button>
+              <button type="button" onClick={handleSubmitResponse} disabled={savingResponse || savingStatus} className="rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60">
+                {savingResponse ? "Submitting..." : "Submit Response"}
+              </button>
+            </div>
           </div>
         </section>
       </main>

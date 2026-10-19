@@ -7,6 +7,7 @@ import {
   Inbox,
   ChevronsRight,
 } from "lucide-react";
+import { getEmployerById } from "../../../api/employerApi";
 import { getJobRequirementsByEmployer } from "../../../api/jobRequirementApi";
 
 /* ---------------- Design tokens ---------------- */
@@ -114,14 +115,7 @@ const EmployerProfile = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`https://localhost:7023/api/Employer/${id}`, {
-          method: "GET",
-          headers: { accept: "*/*" },
-        });
-
-        if (!res.ok) throw new Error(`Request failed (${res.status})`);
-
-        const json = await res.json();
+        const json = await getEmployerById(id);
 
         if (!json?.success || !json?.data) {
           throw new Error(json?.message || "Employer not found");

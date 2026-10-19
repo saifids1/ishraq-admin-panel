@@ -13,7 +13,6 @@ import {
   Plus,
   Download,
 } from "lucide-react";
-import { ENQUIRY_CONFIGS } from "../../../../config/enquiryConfig";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
 
 /* ------------------------------ HELPERS ------------------------------ */
@@ -74,10 +73,31 @@ const BADGE_BASE =
 const STATUS_TONES = { Active: "success", Inactive: "danger" };
 const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
 
+const cfg = {
+  title: "Feedback",
+  entityName: "Feedback",
+  idField: "FB_feedback_id",
+  activeField: "FB_is_active",
+  titleField: "FB_name",
+  searchPlaceholder: "Search by name, contact or comments",
+  categoryField: null,
+  detailPath: "/admin/feedback",
+  exportFileName: "ishraq-feedback.xlsx",
+  listColumns: [
+    { key: "requestId", label: "Request ID", width: "170px" },
+    { key: "FB_name", label: "Name", width: "200px" },
+    { key: "FB_contact", label: "Contact", width: "180px" },
+    { key: "UserTypeName", label: "You are", width: "130px" },
+    { key: "FB_rating", label: "Rating", width: "110px" },
+    { key: "FB_created_at", label: "Submitted", width: "130px", format: formatDate },
+  ],
+};
+
 /* ------------------------------ NORMALIZE ------------------------------ */
 
 const toListRow = (item, cfg, srNo) => ({
   ...item,
+  requestId: item.FB_request_no ?? item.fb_request_no ?? item.FB_reference_no ?? item.fb_reference_no,
   id: item[cfg.idField],
   status: item[cfg.activeField] ? "Active" : "Inactive",
   srNo,
@@ -87,7 +107,6 @@ const toListRow = (item, cfg, srNo) => ({
 
 const FeedbackList = ({ formType = "feedback" }) => {
   const navigate = useNavigate();
-  const cfg = ENQUIRY_CONFIGS[formType];
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -345,8 +364,8 @@ const FeedbackList = ({ formType = "feedback" }) => {
 
       {/* TABLE â€” sticky header, body-only scroll */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+        <div className="common-scrollbar max-h-[55vh] overflow-auto" style={{ scrollbarGutter: "stable" }}>
+          <table className="w-full min-w-[1200px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               {cfg.listColumns.map((c) => (
@@ -362,22 +381,9 @@ const FeedbackList = ({ formType = "feedback" }) => {
                   <th key={c.key} scope="col" className={thClass}>{c.label}</th>
                 ))}
                 <th scope="col" className={thClass}>Status</th>
-                <th scope="col" className={thClass}>Actions</th>
+                <th scope="col" className={`${thClass} sticky right-0 top-0 z-30`}>Actions</th>
               </tr>
             </thead>
-          </table>
-        </div>
-
-        <div className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto" style={{ scrollbarGutter: "stable" }}>
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
-            <colgroup>
-              <col style={{ width: "60px" }} />
-              {cfg.listColumns.map((c) => (
-                <col key={c.key} style={{ width: c.width || "auto" }} />
-              ))}
-              <col style={{ width: "130px" }} />
-              <col style={{ width: "160px" }} />
-            </colgroup>
             <tbody>
               {loading ? (
                 <tr>
@@ -421,7 +427,7 @@ const FeedbackList = ({ formType = "feedback" }) => {
                       </span>
                     </td>
 
-                    <td className={`${td} justify-center text-center`}>
+                    <td className={`${td} sticky right-0 z-20 justify-center bg-white text-center group-hover:bg-[#e8f1f6]`}>
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"

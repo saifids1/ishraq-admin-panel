@@ -1,8 +1,75 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronsLeft, FileText } from "lucide-react";
-import { ENQUIRY_CONFIGS, formatDate } from "../../config/enquiryConfig";
 import { adminEnquiryService } from "../../api/Services/adminEnquiryService";
+
+const formatDate = (value) => {
+  if (!value || Number.isNaN(new Date(value).getTime())) return "-";
+  return new Date(value).toLocaleDateString("en-GB");
+};
+
+const DETAIL_CONFIGS = {
+  complaint: {
+    title: "Complaints",
+    activeField: "CP_is_active",
+    detailFields: [
+      { key: "CP_reference_no", label: "Request ID" },
+      { key: "CP_full_name", label: "Full Name" },
+      { key: "CP_mobile", label: "Mobile" },
+      { key: "CP_email", label: "Email" },
+      { key: "UserTypeName", label: "You are" },
+      { key: "ComplaintCategoryName", label: "Category" },
+      { key: "CP_details", label: "Complaint Details", type: "multiline" },
+      { key: "CP_file_path", label: "Supporting Document", type: "file" },
+      { key: "CP_created_at", label: "Submitted", type: "date" },
+    ],
+  },
+  career: {
+    title: "Career Enquiries",
+    activeField: "CE_is_active",
+    detailFields: [
+      { key: "CE_request_no", label: "Request ID" },
+      { key: "CE_name", label: "Name" },
+      { key: "CE_age", label: "Age" },
+      { key: "CE_qualification", label: "Qualification" },
+      { key: "CE_mobile", label: "Mobile" },
+      { key: "CE_email", label: "Email" },
+      { key: "CE_course_considered", label: "Course / Career" },
+      { key: "CE_question", label: "Question", type: "multiline" },
+      { key: "CE_created_at", label: "Submitted", type: "date" },
+    ],
+  },
+  contact: {
+    title: "Contact Enquiries",
+    activeField: "CN_is_active",
+    detailFields: [
+      { key: "CN_request_no", label: "Request ID" },
+      { key: "CN_full_name", label: "Full Name" },
+      { key: "CN_mobile", label: "Mobile" },
+      { key: "CN_email", label: "Email" },
+      { key: "UserTypeName", label: "You are" },
+      { key: "CN_subject", label: "Subject" },
+      { key: "CN_message", label: "Message", type: "multiline" },
+      { key: "CN_created_at", label: "Submitted", type: "date" },
+    ],
+  },
+  feedback: {
+    title: "Feedback",
+    activeField: "FB_is_active",
+    detailFields: [
+      { key: "FB_request_no", label: "Request ID" },
+      { key: "FB_name", label: "Name" },
+      { key: "FB_contact", label: "Contact" },
+      { key: "UserTypeName", label: "You are" },
+      { key: "FB_rating", label: "Overall Experience", type: "rating" },
+      { key: "FB_overall_experience", label: "Overall Experience (text)", type: "multiline" },
+      { key: "FB_useful_text", label: "What did you find useful?", type: "multiline" },
+      { key: "FB_improve_text", label: "What can we improve?", type: "multiline" },
+      { key: "FB_suggestions", label: "Additional Suggestions", type: "multiline" },
+      { key: "FB_created_at", label: "Submitted", type: "date" },
+    ],
+  },
+};
 
 const Stars = ({ value }) => (
   <span className="inline-flex items-center gap-2">
@@ -17,7 +84,7 @@ const Stars = ({ value }) => (
 const EnquiryDetails = ({ formType }) => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const cfg = ENQUIRY_CONFIGS[formType];
+  const cfg = DETAIL_CONFIGS[formType] || DETAIL_CONFIGS.contact;
 
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);

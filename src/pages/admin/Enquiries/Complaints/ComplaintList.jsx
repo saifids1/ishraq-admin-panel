@@ -10,10 +10,11 @@ import {
   UserRoundCheck,
   UserRoundX,
   ChevronsRight,
-  Plus,
   Download,
+  Check as CheckIcon,
+  AlertTriangle as AlertIcon,
+  X as XIcon,
 } from "lucide-react";
-import { ENQUIRY_CONFIGS } from "../../../../config/enquiryConfig";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
 
 /* ------------------------------ HELPERS ------------------------------ */
@@ -33,9 +34,8 @@ const formatDate = (value) => {
   if (Number.isNaN(d.getTime())) return "-";
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}-${mm}-${yyyy(d)}`;
+  return `${dd}-${mm}-${d.getFullYear()}`;
 };
-const yyyy = (d) => d.getFullYear();
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
@@ -74,12 +74,49 @@ const BADGE_BASE =
 const STATUS_TONES = { Active: "success", Inactive: "danger" };
 const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
 
+const cfg = {
+  title: "Complaints",
+  entityName: "Complaint",
+  idField: "CP_complaint_id",
+  activeField: "CP_is_active",
+  titleField: "CP_full_name",
+  searchPlaceholder: "Search by reference, name, email or mobile",
+  categoryLabel: "Category",
+  categoryField: "ComplaintCategoryName",
+  detailPath: "/admin/complaints",
+  exportFileName: "ishraq-complaints.xlsx",
+  listColumns: [
+    { key: "requestId", label: "Request ID" },
+    { key: "CP_reference_no", label: "Reference" },
+    { key: "CP_full_name", label: "Name" },
+    { key: "CP_email", label: "Email" },
+    { key: "CP_mobile", label: "Mobile" },
+    { key: "ComplaintCategoryName", label: "Category" },
+    { key: "UserTypeName", label: "You are" },
+    { key: "CP_created_at", label: "Submitted", format: formatDate },
+  ],
+};
+
+const TOAST_ICON = {
+  ok: { bg: "bg-emerald-500", Icon: CheckIcon },
+  warn: { bg: "bg-amber-500", Icon: AlertIcon },
+  err: { bg: "bg-rose-500", Icon: XIcon },
+};
+
 /* ------------------------------ NORMALIZE ------------------------------ */
 
 const toListRow = (item, cfg, srNo) => ({
   ...item,
-  id: item[cfg.idField],
-  status: item[cfg.activeField] ? "Active" : "Inactive",
+  requestId: item.CP_reference_no,
+  id: item.CP_complaint_id ?? item[cfg.idField],
+  name: item.CP_full_name,
+  email: item.CP_email,
+  mobile: item.CP_mobile,
+  reference: item.CP_reference_no,
+  category: item.ComplaintCategoryName,
+  details: item.CP_details,
+  createdAt: item.CP_created_at,
+  status: item.CP_is_active ? "Active" : "Inactive",
   srNo,
 });
 
@@ -87,7 +124,6 @@ const toListRow = (item, cfg, srNo) => ({
 
 const ComplaintList = ({ formType = "complaint" }) => {
   const navigate = useNavigate();
-  const cfg = ENQUIRY_CONFIGS[formType];
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -98,7 +134,11 @@ const ComplaintList = ({ formType = "complaint" }) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
-  const [query, setQuery] = useState({ search: "", status: "All", category: "All" });
+  const [query, setQuery] = useState({
+    search: "",
+    status: "All",
+    category: "All",
+  });
 
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -113,9 +153,16 @@ const ComplaintList = ({ formType = "complaint" }) => {
     try {
       const result = await adminEnquiryService.list(formType, page, pageSize);
       const list = result.data ?? [];
-      setRows(list.map((item, i) => toListRow(item, cfg, (page - 1) * pageSize + i + 1)));
+      setRows(
+        list.map((item, i) =>
+          toListRow(item, cfg, (page - 1) * pageSize + i + 1),
+        ),
+      );
       setTotalRecords(result.totalRecords ?? list.length);
-      setTotalPages(result.totalPages ?? Math.max(1, Math.ceil((result.totalRecords ?? list.length) / pageSize)));
+      setTotalPages(
+        result.totalPages ??
+          Math.max(1, Math.ceil((result.totalRecords ?? list.length) / pageSize)),
+      );
     } catch (err) {
       setRows([]);
       setTotalRecords(0);
@@ -126,32 +173,61 @@ const ComplaintList = ({ formType = "complaint" }) => {
     }
   }, [formType, cfg, page, pageSize]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   /* --------------------------- CATEGORIES --------------------------- */
 
   const categories = useMemo(() => {
     if (!cfg.categoryField) return [];
-    return [...new Set(rows.map((r) => r[cfg.categoryField]).filter(Boolean))].sort();
+    return [
+      ...new Set(rows.map((r) => r[cfg.categoryField]).filter(Boolean)),
+    ].sort();
   }, [rows, cfg]);
 
   /* --------------------------- FILTERED ROWS --------------------------- */
 
+  // Hardcoded searchable keys — no COLUMNS array anymore.
   const filteredRows = useMemo(() => {
     const q = query.search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (q && !cfg.listColumns.some((c) => String(r[c.key] ?? "").toLowerCase().includes(q))) return false;
+      if (
+        q &&
+        ![
+          r.name,
+          r.email,
+          r.mobile,
+          r.reference,
+          r.category,
+          r.UserTypeName,
+          formatDate(r.createdAt),
+        ].some((v) => String(v ?? "").toLowerCase().includes(q))
+      )
+        return false;
       if (query.status !== "All" && r.status !== query.status) return false;
-      if (query.category !== "All" && cfg.categoryField && r[cfg.categoryField] !== query.category) return false;
+      if (
+        query.category !== "All" &&
+        cfg.categoryField &&
+        r[cfg.categoryField] !== query.category
+      )
+        return false;
       return true;
     });
   }, [rows, query, cfg]);
 
   const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
+  const totalPagesLocal = Math.max(
+    1,
+    totalPages || Math.ceil(count / pageSize),
+  );
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
   const pageRows = filteredRows.slice(start, start + pageSize);
+
+  useEffect(() => {
+    if (page > totalPagesLocal) setPage(totalPagesLocal);
+  }, [page, totalPagesLocal]);
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -215,31 +291,36 @@ const ComplaintList = ({ formType = "complaint" }) => {
 
   /* --------------------------- EXPORT --------------------------- */
 
+  // Hardcoded export — no COLUMNS.map.
   const handleExport = async () => {
     if (!cfg.exportFileName) return;
     setExporting(true);
     try {
       const toExportRow = (row, index) => ({
-        "Sr.No": (page - 1) * pageSize + index + 1,
-        ...Object.fromEntries(
-          cfg.listColumns.map((c) => [
-            c.label,
-            c.format ? c.format(row[c.key], row) : row[c.key] ?? "",
-          ]),
-        ),
+        "Sr.No": (currentPage - 1) * pageSize + index + 1,
+        "Request ID": row.requestId ?? row.reference ?? "",
+        Name: row.name ?? "",
+        Email: row.email ?? "",
+        Mobile: row.mobile ?? "",
+        Category: row.category ?? "",
+        "User Type": row.UserTypeName ?? "",
+        Submitted: formatDate(row.createdAt),
         Status: row.status,
       });
 
-      // Lazy import so we don't force xlsx on every page load.
       const XLSX = await import("xlsx");
-      const data = rows.map(toExportRow);
+      const data = filteredRows.map(toExportRow);
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, cfg.title || "Sheet1");
       XLSX.writeFile(wb, `${cfg.exportFileName}.xlsx`);
       setToast({ id: Date.now(), tone: "ok", msg: "Export ready" });
     } catch (err) {
-      setToast({ id: Date.now(), tone: "err", msg: err?.message || "Export failed" });
+      setToast({
+        id: Date.now(),
+        tone: "err",
+        msg: err?.message || "Export failed",
+      });
     } finally {
       setExporting(false);
     }
@@ -250,11 +331,13 @@ const ComplaintList = ({ formType = "complaint" }) => {
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
-  const td = "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
-  const btnPrimary =
-    "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2 disabled:opacity-60 disabled:hover:translate-y-0";
+  const td =
+    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
+
+  // 1 Sr.No + 6 data columns + Status + Actions = 9
+  const colSpan = 10;
 
   /* --------------------------- RENDER --------------------------- */
 
@@ -307,9 +390,13 @@ const ComplaintList = ({ formType = "complaint" }) => {
                 onChange={(e) => patchFilter({ category: e.target.value })}
                 className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[15px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
               >
-                <option value="All">{cfg.categoryLabel || "Category"}: All</option>
+                <option value="All">
+                  {cfg.categoryLabel || "Category"}: All
+                </option>
                 {categories.map((o) => (
-                  <option key={o} value={o}>{o}</option>
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
                 ))}
               </select>
               <ChevronDown
@@ -327,107 +414,152 @@ const ComplaintList = ({ formType = "complaint" }) => {
               disabled={exporting || loading}
               className="group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#dce3eb] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:opacity-60 disabled:hover:translate-y-0"
             >
-              <Download size={15} strokeWidth={2.2} className="transition-transform group-hover:scale-110" />
-              <span className="hidden sm:inline">{exporting ? "Exporting..." : "Export"}</span>
+              <Download
+                size={15}
+                strokeWidth={2.2}
+                className="transition-transform group-hover:scale-110"
+              />
+              <span className="hidden sm:inline">
+                {exporting ? "Exporting..." : "Export"}
+              </span>
             </button>
           )}
         </div>
       </div>
-      <div aria-hidden="true" className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent" />
+      <div
+        aria-hidden="true"
+        className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent"
+      />
 
       {/* ERROR */}
       {error && (
         <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <span>{error}</span>
-          <button type="button" onClick={load} className="font-semibold underline">Retry</button>
+          <button
+            type="button"
+            onClick={load}
+            className="font-semibold underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      {/* TABLE â€” sticky header, body-only scroll */}
+      {/* TABLE — hardcoded colgroup widths, no .map */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+        <div
+          className="common-scrollbar max-h-[55vh] overflow-auto"
+          style={{ scrollbarGutter: "stable" }}
+        >
+          <table className="w-full min-w-[1280px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
-              {cfg.listColumns.map((c) => (
-                <col key={c.key} style={{ width: c.width || "auto" }} />
-              ))}
-              <col style={{ width: "130px" }} />
-              <col style={{ width: "160px" }} />
+              <col style={{ width: "140px" }} />
+              <col style={{ width: "200px" }} />
+              <col style={{ width: "200px" }} />
+              <col style={{ width: "100px" }} />
+              <col style={{ width: "100px" }} />
+              <col style={{ width: "110px" }} />
+              <col style={{ width: "110px" }} />
             </colgroup>
             <thead className="sticky top-0 z-10">
               <tr>
-                <th scope="col" className={thClass}>Sr.No</th>
-                {cfg.listColumns.map((c) => (
-                  <th key={c.key} scope="col" className={thClass}>{c.label}</th>
-                ))}
-                <th scope="col" className={thClass}>Status</th>
-                <th scope="col" className={thClass}>Actions</th>
+                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Sr.No</th>
+                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Request ID</th>
+                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Name</th>
+                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Email</th>
+                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Mobile</th>
+                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Submitted</th>
+                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Status</th>
+                <th scope="col" className={`${thClass} sticky right-0 top-0 z-30`}>Actions</th>
               </tr>
             </thead>
-          </table>
-        </div>
-
-        <div className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto" style={{ scrollbarGutter: "stable" }}>
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
-            <colgroup>
-              <col style={{ width: "60px" }} />
-              {cfg.listColumns.map((c) => (
-                <col key={c.key} style={{ width: c.width || "auto" }} />
-              ))}
-              <col style={{ width: "130px" }} />
-              <col style={{ width: "160px" }} />
-            </colgroup>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={cfg.listColumns.length + 3} className="px-4 py-12 text-center">
+                  <td colSpan={colSpan} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center">
-                      <span aria-hidden="true" className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]" />
-                      <p className="mt-3 text-[15px] text-[#6b7a88]">Loading...</p>
+                      <span
+                        aria-hidden="true"
+                        className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
+                      />
+                      <p className="mt-3 text-[15px] text-[#6b7a88]">
+                        Loading...
+                      </p>
                     </div>
                   </td>
                 </tr>
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={cfg.listColumns.length + 3} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
+                  <td
+                    colSpan={colSpan}
+                    className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+                  >
                     <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                       <Inbox size={22} />
                     </div>
-                    <p className="mt-3 text-[15px] text-[#1e2b36]">No {cfg.entityName || "records"} yet</p>
+                    <p className="mt-3 text-[15px] text-[#1e2b36]">
+                      No {cfg.entityName || "records"} yet
+                    </p>
                   </td>
                 </tr>
               ) : (
                 pageRows.map((row, index) => (
                   <tr
                     key={row.id ?? index}
-                    style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                    style={{
+                      animationDelay: `${Math.min(index, 12) * 35}ms`,
+                    }}
                     className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                   >
-                    <td className={`${td} tabular-nums`}>{start + index + 1}</td>
-
-                    {cfg.listColumns.map((c) => {
-                      const value = c.format ? c.format(row[c.key], row) : row[c.key];
-                      return (
-                        <td key={c.key} className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">{value ?? "-"}</div>
-                        </td>
-                      );
-                    })}
+                    <td className={`${td} tabular-nums`}>
+                      {start + index + 1}
+                    </td>
 
                     <td className={`${td} whitespace-nowrap`}>
-                      <span className={`${BADGE_BASE} ${toneOf(row.status).badge}`}>
+                      <div className="w-full min-w-0 truncate">
+                        {row.reference ?? "-"}
+                      </div>
+                    </td>
+                    <td className={`${td} whitespace-nowrap`}>
+                      <div className="w-full min-w-0 truncate">
+                        {row.name ?? "-"}
+                      </div>
+                    </td>
+                    <td className={`${td} whitespace-nowrap`}>
+                      <div className="w-full min-w-0 truncate">
+                        {row.email ?? "-"}
+                      </div>
+                    </td>
+                    <td className={`${td} whitespace-nowrap`}>
+                      <div className="w-full min-w-0 truncate">
+                        {row.mobile ?? "-"}
+                      </div>
+                    </td>
+                  
+                    <td className={`${td} whitespace-nowrap`}>
+                      <div className="w-full min-w-0 truncate">
+                        {formatDate(row.createdAt)}
+                      </div>
+                    </td>
+
+                    <td className={`${td} whitespace-nowrap text-center`}>
+                      <span
+                        className={`${BADGE_BASE} ${toneOf(row.status).badge}`}
+                      >
                         {row.status || "-"}
                       </span>
                     </td>
 
-                    <td className={`${td} justify-center text-center`}>
+                    <td className={`${td} sticky right-0 z-20 bg-white text-center group-hover:bg-[#e8f1f6]`}>
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
                           title={`View ${row[cfg.titleField] || "Record"}`}
                           aria-label={`View ${row[cfg.titleField] || "Record"}`}
-                          onClick={() => navigate(`${cfg.detailPath}/${row.id}`)}
+                          onClick={() =>
+                            navigate(`${cfg.detailPath}/${row.id}`)
+                          }
                           className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                         >
                           <ChevronsRight size={14} strokeWidth={2.2} />
@@ -442,7 +574,11 @@ const ComplaintList = ({ formType = "complaint" }) => {
                               ? `Deactivate ${row[cfg.titleField] || "Record"}`
                               : `Activate ${row[cfg.titleField] || "Record"}`
                           }
-                          title={row.status === "Active" ? "Active. Click to deactivate" : "Not active. Click to activate"}
+                          title={
+                            row.status === "Active"
+                              ? "Active. Click to deactivate"
+                              : "Not active. Click to activate"
+                          }
                           onClick={() => askToggle(row)}
                           className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
                             row.status === "Active"
@@ -452,13 +588,23 @@ const ComplaintList = ({ formType = "complaint" }) => {
                         >
                           <span
                             className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                              row.status === "Active" ? "translate-x-[18px]" : "translate-x-0"
+                              row.status === "Active"
+                                ? "translate-x-[18px]"
+                                : "translate-x-0"
                             }`}
                           >
                             {row.status === "Active" ? (
-                              <UserRoundCheck size={13} strokeWidth={2.7} className="text-emerald-700" />
+                              <UserRoundCheck
+                                size={13}
+                                strokeWidth={2.7}
+                                className="text-emerald-700"
+                              />
                             ) : (
-                              <UserRoundX size={13} strokeWidth={2.7} className="text-rose-700" />
+                              <UserRoundX
+                                size={13}
+                                strokeWidth={2.7}
+                                className="text-rose-700"
+                              />
                             )}
                           </span>
                         </button>
@@ -477,25 +623,47 @@ const ComplaintList = ({ formType = "complaint" }) => {
         <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
           <span>
             Showing{" "}
-            <strong className="font-semibold text-[#53677f]">{count ? start + 1 : 0}</strong>{" "}
+            <strong className="font-semibold text-[#53677f]">
+              {count ? start + 1 : 0}
+            </strong>{" "}
             to{" "}
-            <strong className="font-semibold text-[#53677f]">{Math.min(start + pageSize, count)}</strong>{" "}
-            of <strong className="font-semibold text-[#53677f]">{count}</strong> entries
+            <strong className="font-semibold text-[#53677f]">
+              {Math.min(start + pageSize, count)}
+            </strong>{" "}
+            of <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
+            entries
           </span>
           <label className="flex items-center gap-1.5">
             <span>Show:</span>
             <select
               value={pageSize}
-              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
               className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[13px] text-[#34445a] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30"
             >
-              {DEFAULT_PAGE_SIZES.map((n) => (<option key={n} value={n}>{n}</option>))}
+              {DEFAULT_PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
             </select>
           </label>
         </div>
 
-        <nav aria-label="Pagination" className="flex flex-wrap items-center gap-1">
-          <button type="button" onClick={() => setPage(currentPage - 1)} disabled={currentPage === 1} className={navBtn}>Previous</button>
+        <nav
+          aria-label="Pagination"
+          className="flex flex-wrap items-center gap-1"
+        >
+          <button
+            type="button"
+            onClick={() => setPage(currentPage - 1)}
+            disabled={currentPage === 1}
+            className={navBtn}
+          >
+            Previous
+          </button>
           {pageNumbers.map((n) => (
             <button
               key={n}
@@ -511,7 +679,14 @@ const ComplaintList = ({ formType = "complaint" }) => {
               {n}
             </button>
           ))}
-          <button type="button" onClick={() => setPage(currentPage + 1)} disabled={currentPage === totalPagesLocal} className={navBtn}>Next</button>
+          <button
+            type="button"
+            onClick={() => setPage(currentPage + 1)}
+            disabled={currentPage === totalPagesLocal}
+            className={navBtn}
+          >
+            Next
+          </button>
         </nav>
       </div>
 
@@ -522,21 +697,42 @@ const ComplaintList = ({ formType = "complaint" }) => {
           const { core, ring, Icon } = tone;
           return (
             <div className="fixed inset-0 z-50 grid place-items-center p-4">
-              <div className="js-fade absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" onClick={() => setConfirm(null)} aria-hidden="true" />
-              <div role="dialog" aria-modal="true" aria-labelledby="list-dialog-title" className="js-pop relative w-full max-w-[400px] overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div
+                className="js-fade absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
+                onClick={() => setConfirm(null)}
+                aria-hidden="true"
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="list-dialog-title"
+                className="js-pop relative w-full max-w-[400px] overflow-hidden rounded-2xl bg-white shadow-2xl"
+              >
                 <div className={`h-1.5 w-full bg-gradient-to-r ${core}`} />
-                <button type="button" onClick={() => setConfirm(null)} aria-label="Close" className="absolute right-3 top-4 grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-[#9aa5b1] hover:bg-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setConfirm(null)}
+                  aria-label="Close"
+                  className="absolute right-3 top-4 grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-[#9aa5b1] hover:bg-slate-100"
+                >
                   <CloseIcon size={16} />
                 </button>
 
                 <div className="px-6 pb-5 pt-6 text-center">
                   <div className="relative mx-auto mb-4 grid h-16 w-16 place-items-center">
-                    <span className={`js-halo absolute inset-0 rounded-full ${ring}`} />
-                    <span className={`relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br ${core} text-white shadow-lg`}>
+                    <span
+                      className={`js-halo absolute inset-0 rounded-full ${ring}`}
+                    />
+                    <span
+                      className={`relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br ${core} text-white shadow-lg`}
+                    >
                       <Icon size={22} />
                     </span>
                   </div>
-                  <h2 id="list-dialog-title" className="text-[18px] font-bold text-[#1e2b36]">
+                  <h2
+                    id="list-dialog-title"
+                    className="text-[18px] font-bold text-[#1e2b36]"
+                  >
                     Set record to {confirm.next}?
                   </h2>
                   <p className="mx-auto mt-1.5 max-w-[320px] text-[13.5px] leading-relaxed text-[#6b7a88]">
@@ -550,11 +746,24 @@ const ComplaintList = ({ formType = "complaint" }) => {
                 </div>
 
                 <div className="flex gap-2.5 border-t border-[#e2e8ee] bg-[#f9fbfc] px-6 py-3.5">
-                  <button type="button" onClick={() => setConfirm(null)} disabled={busy} className="h-10 flex-1 cursor-pointer rounded-[10px] border border-[#dce3eb] bg-white text-[13.5px] font-semibold text-[#34445a] hover:bg-slate-50 disabled:opacity-50">
+                  <button
+                    type="button"
+                    onClick={() => setConfirm(null)}
+                    disabled={busy}
+                    className="h-10 flex-1 cursor-pointer rounded-[10px] border border-[#dce3eb] bg-white text-[13.5px] font-semibold text-[#34445a] hover:bg-slate-50 disabled:opacity-50"
+                  >
                     Cancel
                   </button>
-                  <button type="button" autoFocus onClick={confirmToggle} disabled={busy} className={`h-10 flex-1 cursor-pointer rounded-[10px] bg-gradient-to-r ${core} text-[13.5px] font-semibold text-white shadow-md hover:brightness-105 active:scale-[0.98] disabled:opacity-60`}>
-                    {busy ? "Saving..." : `Yes, set ${confirm.next.toLowerCase()}`}
+                  <button
+                    type="button"
+                    autoFocus
+                    onClick={confirmToggle}
+                    disabled={busy}
+                    className={`h-10 flex-1 cursor-pointer rounded-[10px] bg-gradient-to-r ${core} text-[13.5px] font-semibold text-white shadow-md hover:brightness-105 active:scale-[0.98] disabled:opacity-60`}
+                  >
+                    {busy
+                      ? "Saving..."
+                      : `Yes, set ${confirm.next.toLowerCase()}`}
                   </button>
                 </div>
               </div>
@@ -563,18 +772,27 @@ const ComplaintList = ({ formType = "complaint" }) => {
         })()}
 
       {/* TOAST */}
-      {toast && (
-        <div key={toast.id} role="status" aria-live="polite" className="js-toast fixed bottom-5 right-5 z-[60] flex items-center gap-2.5 rounded-xl border border-white/10 bg-[#1e2b36] px-4 py-3 text-[15px] font-medium text-white shadow-2xl">
-          <span className={`grid h-5 w-5 place-items-center rounded-full ${toast.tone === "ok" ? "bg-emerald-500" : toast.tone === "warn" ? "bg-amber-500" : "bg-rose-500"}`}>
-            âœ“
-          </span>
-          {toast.msg}
-        </div>
-      )}
+      {toast &&
+        (() => {
+          const { bg, Icon } = TOAST_ICON[toast.tone] ?? TOAST_ICON.ok;
+          return (
+            <div
+              key={toast.id}
+              role="status"
+              aria-live="polite"
+              className="js-toast fixed bottom-5 right-5 z-[60] flex items-center gap-2.5 rounded-xl border border-white/10 bg-[#1e2b36] px-4 py-3 text-[15px] font-medium text-white shadow-2xl"
+            >
+              <span
+                className={`grid h-5 w-5 place-items-center rounded-full ${bg}`}
+              >
+                <Icon size={12} strokeWidth={3} />
+              </span>
+              {toast.msg}
+            </div>
+          );
+        })()}
     </div>
   );
 };
 
 export default ComplaintList;
-
-

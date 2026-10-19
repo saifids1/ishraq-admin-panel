@@ -393,6 +393,11 @@ const AddJobSeeker = ({ mode }) => {
     (category) => String(category.id) === String(form.jobCategory),
   );
 
+  const viewValue = (value) =>
+    value === null || value === undefined || String(value).trim() === ""
+      ? "—"
+      : value;
+
   /* ========================================================= */
 
   return (
@@ -431,6 +436,78 @@ const AddJobSeeker = ({ mode }) => {
           {loadingRecord ? (
             <div className="p-8 text-center text-sm text-slate-500">
               Loading jobseeker details...
+            </div>
+          ) : isView ? (
+            <div className="p-4">
+              <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                  {[
+                    ["Full Name", form.fullName],
+                    ["Profession / Job Category", form.jobCategoryName || form.jobCategory],
+                    ["Mobile Number", form.mobile],
+                    ["WhatsApp Number", form.whatsapp],
+                    ["Email Address", form.email],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex flex-col gap-1.5">
+                      <label className="text-[11.5px] font-semibold uppercase tracking-wide text-[#8895a4]">
+                        {label}
+                      </label>
+                      <div className="flex min-h-9 items-center rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 text-[13px] font-medium text-[#1a2b3c]">
+                        {viewValue(value)}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="text-[11.5px] font-semibold uppercase tracking-wide text-[#8895a4]">
+                      Address
+                    </label>
+                    <div className="min-h-20 whitespace-pre-wrap rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 py-2.5 text-[13px] font-medium text-[#1a2b3c]">
+                      {viewValue(form.address)}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="text-[11.5px] font-semibold uppercase tracking-wide text-[#8895a4]">
+                      Document (CV)
+                    </label>
+                    <div className="flex min-h-9 items-center rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 text-[13px] font-medium text-[#1a2b3c]">
+                      {form.document?.url ? (
+                        <a
+                          href={form.document.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#2f6b8a] hover:underline"
+                        >
+                          {form.document.name || "View document"}
+                        </a>
+                      ) : (
+                        viewValue(form.document?.name)
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin/jobseekers")}
+                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsView(false);
+                    setServerError("");
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
+                >
+                  Edit
+                </button>
+              </div>
             </div>
           ) : (
             <form onSubmit={submit} noValidate className="p-4">

@@ -60,7 +60,15 @@ const normalizeKeys = (obj) => {
 // { data: { data: [...] } }
 // { data: { pageNo, pageSize, totalRecords, totalPages, data: [...] } }
 const extractList = (body, fallbackPage = 1, fallbackLimit = 10) => {
-  let payload = body?.data ?? body?.Data ?? body;
+  const rootHasList =
+    Array.isArray(body?.data) ||
+    Array.isArray(body?.Data) ||
+    Array.isArray(body?.items) ||
+    Array.isArray(body?.Items) ||
+    Array.isArray(body?.records) ||
+    Array.isArray(body?.Records);
+
+  let payload = rootHasList ? body : body?.data ?? body?.Data ?? body;
 
   // Unwrap nested response objects without losing pagination metadata.
   while (
@@ -199,6 +207,51 @@ export const adminEnquiryService = {
       { params: { isActive } },
     );
 
+    return res.data;
+  },
+
+  updateCareerStatus: async (enquiryId, payload) => {
+    const res = await axiosInstance.put(
+      `/CareerEnquiry/${enquiryId}/status`,
+      payload,
+    );
+
+    return res.data;
+  },
+
+  updateCareerResponse: async (enquiryId, responseRetun, userId) => {
+    const res = await axiosInstance.patch(
+      `/CareerEnquiry/${enquiryId}/UpdateResponseAsync`,
+      null,
+      {
+        params: {
+          responseRetun,
+          FB_ResponseBy: userId,
+        },
+      },
+    );
+
+    return res.data;
+  },
+
+  updateEnquiryStatus: async (formType, enquiryId, payload) => {
+    const { detail } = getEndpoints(formType);
+    const res = await axiosInstance.put(`${detail}/${enquiryId}/status`, payload);
+    return res.data;
+  },
+
+  updateEnquiryResponse: async (formType, enquiryId, responseRetun, userId) => {
+    const { detail } = getEndpoints(formType);
+    const res = await axiosInstance.patch(
+      `${detail}/${enquiryId}/UpdateResponseAsync`,
+      null,
+      {
+        params: {
+          responseRetun,
+          FB_ResponseBy: userId,
+        },
+      },
+    );
     return res.data;
   },
 

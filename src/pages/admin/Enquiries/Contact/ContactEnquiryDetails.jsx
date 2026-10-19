@@ -1,8 +1,47 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronsLeft, FileText } from "lucide-react";
-import { ENQUIRY_CONFIGS, formatDate } from "../../../../config/enquiryConfig";
+import { ChevronDown, ChevronsLeft, FileText } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
+
+const formatDate = (value) => {
+  if (!value || Number.isNaN(new Date(value).getTime())) return "-";
+  return new Date(value).toLocaleDateString("en-GB");
+};
+
+const cfg = {
+  title: "Contact Enquiries",
+  activeField: "CN_is_active",
+  detailFields: [
+    { key: "CN_request_no", label: "Request ID" },
+    { key: "CN_full_name", label: "Full Name" },
+    { key: "CN_mobile", label: "Mobile" },
+    { key: "CN_email", label: "Email" },
+    { key: "UserTypeName", label: "You are" },
+    { key: "CN_subject", label: "Subject" },
+    { key: "CN_message", label: "Message", type: "multiline" },
+    { key: "CN_created_at", label: "Submitted", type: "date" },
+  ],
+};
+import { getCurrentUserId } from "../../../../utils/authUtils";
+
+const inputClass =
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+
+const selectClass =
+  "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+
+const STATUS_OPTIONS = [
+  { value: 1, label: "In Progress" },
+  { value: 2, label: "On Hold" },
+  { value: 3, label: "Closed" },
+];
+
+const statusIdFromName = (value) => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return STATUS_OPTIONS.find(
+    (option) => option.label.toLowerCase() === normalized,
+  )?.value ?? 1;
+};
 
 const Stars = ({ value }) => (
   <span className="inline-flex items-center gap-2">
@@ -17,11 +56,18 @@ const Stars = ({ value }) => (
 const ContactEnquiryDetails = ({ formType = "contact" }) => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const cfg = ENQUIRY_CONFIGS[formType];
 
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // ---- Response + Status state ----
+  const [responseText, setResponseText] = useState("");
+  const [status, setStatus] = useState("1");
+  const [savingResponse, setSavingResponse] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [responseSaved, setResponseSaved] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -31,13 +77,40 @@ const ContactEnquiryDetails = ({ formType = "contact" }) => {
       setError("");
 
       try {
-        // Pass the form type, not cfg.endpoint.
         const data = await adminEnquiryService.getById(formType, id);
 
         if (!cancelled) {
           setRecord(data);
           if (!data) {
             setError("Record not found.");
+          } else {
+            setResponseText(
+              data?.responseRetun ??
+                data?.responseReturn ??
+                data?.response ??
+                data?.admin_response ??
+                "",
+            );
+            setResponseSaved(
+              Boolean(
+                data?.responseRetun ??
+                  data?.responseReturn ??
+                  data?.response ??
+                  data?.admin_response,
+              ),
+            );
+            const existingStatusId =
+              data?.statusId ??
+              data?.CE_status_id ??
+              data?.cE_status_id ??
+              data?.enquiry_status_id;
+            const existingStatusName =
+              data?.statusName ?? data?.status ?? data?.enquiry_status;
+            setStatus(
+              String(
+                existingStatusId ?? statusIdFromName(existingStatusName),
+              ),
+            );
           }
         }
       } catch (err) {
@@ -98,90 +171,223 @@ const ContactEnquiryDetails = ({ formType = "contact" }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center text-slate-500">
-        Loading details...
-      </div>
-    );
-  }
+  // ---- Submit response ----
+  const handleSubmitResponse = async () => {
+    if (savingResponse) return;
 
-  if (error || !record) {
-    return (
-      <div className="p-6">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">
-          {error || "Record not found."}
-        </div>
-      </div>
-    );
-  }
+    const trimmed = responseText.trim();
+    if (!trimmed) {
+      setError("Response cannot be empty.");
+      return;
+    }
 
-  const active = Boolean(record[cfg.activeField]);
+    setSavingResponse(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const userId = Number(getCurrentUserId()) || 0;
+      await adminEnquiryService.updateEnquiryResponse(formType, id, trimmed, userId);
+      setNotice("Response submitted successfully.");
+      setResponseSaved(true);
+      setRecord((prev) =>
+        prev ? { ...prev, responseRetun: trimmed, response: trimmed } : prev,
+      );
+    } catch (err) {
+      setError(err?.message || "Failed to submit response.");
+    } finally {
+      setSavingResponse(false);
+    }
+  };
+
+  // ---- Update status ----
+  const handleSaveStatus = async () => {
+    if (savingStatus) return;
+
+    setSavingStatus(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const userId = getCurrentUserId();
+      await adminEnquiryService.updateEnquiryStatus(formType, id, {
+        statusId: Number(status),
+        userId: Number(userId) || 0,
+        changedAt: new Date().toISOString(),
+      });
+      setNotice("Status updated successfully.");
+      setRecord((prev) =>
+        prev ? { ...prev, statusId: Number(status) } : prev,
+      );
+    } catch (err) {
+      setError(err?.message || "Failed to update status.");
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
+  const title = cfg?.singular || cfg?.title || "Enquiry";
+  const pageTitle = `View ${title}`;
+  const active = record ? Boolean(record[cfg.activeField]) : false;
 
   return (
-    <div className="bg-[#f4f7f9]">
-      <header
-        className="rounded-2xl p-4 text-white shadow-sm sm:px-4 sm:py-3"
-        style={{
-          backgroundImage:
-            "linear-gradient(110deg,#17405a 0%,#2f6b8a 40%,#4a9bb3 70%,#2f6b8a 100%)",
-        }}
-      >
-        <div className="flex items-center gap-3.5">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            title="Back"
-            aria-label="Back"
-            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-white/15 text-white transition hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-          >
-            <ChevronsLeft size={18} />
-          </button>
+    <div className="min-h-full bg-[#f4f8fb]">
+      <div className="mx-auto">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* Header bar â€” matches CreateJobCategory */}
+          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                title="Back"
+                aria-label="Back"
+                className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
+              >
+                <ChevronsLeft size={18} strokeWidth={2} />
+              </button>
 
-          <h1 className="m-0 truncate text-[22px] font-extrabold tracking-tight sm:text-[26px]">
-            {cfg.title}
-          </h1>
-        </div>
-      </header>
-
-      <main className="mx-auto py-4">
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <div className="rounded-lg bg-[#e9f4f7] p-2 text-[#2f6b8a]">
-                <FileText size={18} />
-              </div>
-              <h2 className="font-semibold text-slate-800">Details</h2>
+              <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
-            <span
-              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                active
-                  ? "border-emerald-200 bg-emerald-100 text-emerald-700"
-                  : "border-slate-200 bg-slate-100 text-slate-700"
-              }`}
-            >
-              {active ? "Active" : "Inactive"}
-            </span>
+            {record && (
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                  active
+                    ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                    : "border-slate-200 bg-slate-100 text-slate-700"
+                }`}
+              >
+                {active ? "Active" : "Inactive"}
+              </span>
+            )}
           </div>
 
-          <div className="divide-y divide-slate-100">
-            {cfg.detailFields.map((field) => (
-              <div
-                key={field.key}
-                className="grid grid-cols-1 gap-1 px-5 py-4 sm:grid-cols-[220px_1fr] sm:gap-5"
-              >
-                <div className="text-sm font-medium text-slate-500">
-                  {field.label}
-                </div>
-                <div className="text-sm text-slate-800">
-                  {renderValue(field, record[field.key])}
+          {/* Error banner */}
+          {error && (
+            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+              {error}
+            </div>
+          )}
+
+          {/* Success notice */}
+          {notice && (
+            <div className="mx-4 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
+              {notice}
+            </div>
+          )}
+
+          {/* Loading state */}
+          {loading ? (
+            <div className="flex min-h-[300px] items-center justify-center p-6 text-slate-500">
+              Loading details...
+            </div>
+          ) : record ? (
+            <div className="p-4">
+              {/* Details list â€” label/value rows */}
+              <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
+                  {cfg.detailFields.map((field) => (
+                    <div key={field.key} className="flex gap-10">
+                      <div className="text-[14px] uppercase tracking-wide mt-1">
+                        {field.label} : -
+                      </div>
+                      <div className="text-[15px] font-medium mt-0">
+                        {renderValue(field, record[field.key])}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
-      </main>
+
+              {/* ---- Merged Response + Status section ---- */}
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                  {/* Response */}
+                  <div className="md:col-span-2">
+                    <label
+                      htmlFor="admin-response"
+                      className="mb-1.5 block text-sm font-medium text-slate-700"
+                    >
+                      Response
+                    </label>
+                    <textarea
+                      id="admin-response"
+                      value={responseText}
+                      onChange={(event) => setResponseText(event.target.value)}
+                      rows={4}
+                      placeholder="Type your response to this enquiry..."
+                      className={inputClass}
+                      disabled={savingResponse || savingStatus || responseSaved}
+                    />
+                  </div>
+
+                  {/* Status */}
+                  <div>
+                    <label
+                      htmlFor="status-select"
+                      className="mb-1.5 block text-sm font-medium text-slate-700"
+                    >
+                      Status
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="status-select"
+                        value={status}
+                        onChange={(event) => setStatus(event.target.value)}
+                        className={selectClass}
+                        disabled={savingResponse || savingStatus}
+                      >
+                        {STATUS_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        size={17}
+                        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Buttons aligned to the right of the status row */}
+                  <div className="flex items-end justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSaveStatus}
+                      disabled={savingStatus || savingResponse}
+                      className="inline-flex items-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-5 py-2.5 text-sm font-semibold text-[#2f6b8a] transition hover:bg-[#e9f4f7] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingStatus ? "Saving..." : "Save Status"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSubmitResponse}
+                      disabled={savingResponse || savingStatus}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingResponse ? "Submitting..." : "Submit Response"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer actions â€” matches CreateJobCategory */}
+              <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 };

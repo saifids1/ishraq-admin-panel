@@ -8,6 +8,7 @@ import AdminUsers from "../pages/admin/Users/Users";
 
 import JobSeekers from "../pages/admin/JobSeekers/JobSeekers";
 import AddJobSeeker from "../pages/admin/JobSeekers/AddJobSeeker";
+import JobSeekerDetails from "../pages/admin/JobSeekers/JobSeekerDetails";
 
 import EmployerList from "../pages/admin/Employer/EmployerList";
 import EmployerProfile from "../pages/admin/Employer/EmployerDetails";
@@ -68,7 +69,7 @@ const AdminRoutes = (
       {/* Job Seeker Management */}
       <Route path="jobseekers" element={<JobSeekers />} />
       <Route path="jobseekers/add" element={<AddJobSeeker mode="create" />} />
-      <Route path="jobseekers/:id" element={<AddJobSeeker mode="view" />} />
+      <Route path="jobseekers/:id" element={<JobSeekerDetails />} />
       <Route
         path="jobseekers/:id/edit"
         element={<AddJobSeeker mode="edit" />}

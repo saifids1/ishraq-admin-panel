@@ -4,21 +4,52 @@ import {
   FileText as FileIcon,
   ChevronsLeft,
   Mail,
-  Phone,
-  MessageCircle,
   MapPin,
   Download,
   Eye,
   GraduationCap,
   Briefcase,
   Wallet,
-  Clock3,
-  Plane,
+  Inbox,
   UserRound,
   Navigation,
+  ExternalLink,
 } from "lucide-react";
+import jobseekerApi from "../../../api/Services/adjobseekerApi";
 
-/* Must match the key used in the Jobseeker list page */
+/* ---------------- Design tokens (match EmployerProfile) ---------------- */
+const T = {
+  radius: "rounded-lg",
+  border: "border-[#e3e8ee]",
+  borderSoft: "border-[#eef1f5]",
+  bg: "bg-[#f4f8fb]",
+  surface: "bg-white",
+  text: "text-[#1a2b3c]",
+  textMuted: "text-[#5b6b7c]",
+  textFaint: "text-[#8895a4]",
+  accent: "text-[#1e5a7a]",
+  hover: "hover:bg-[#f3f6f9]",
+};
+
+const val = (v) => (v && String(v).trim() ? v : "—");
+
+const FIELD_LABEL = `text-[11.5px] font-semibold uppercase tracking-wide ${T.textFaint}`;
+const FIELD_BOX = (mono) =>
+  `flex h-9 items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
+    mono ? "font-mono text-[12.5px]" : ""
+  }`;
+
+const BTN_PRIMARY =
+  "inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
+
+const NAV = [
+  { id: "overview", label: "Overview", icon: UserRound },
+  { id: "preferences", label: "Location & Preferences", icon: MapPin },
+  { id: "resume", label: "Documents", icon: FileIcon },
+  { id: "jobs", label: "Applied Jobs", icon: Briefcase },
+];
+
+/* ---------------- Data helpers (unchanged logic) ---------------- */
 const STORAGE_KEY = "ishraq_jobseekers";
 
 const EMPTY_FORM = {
@@ -48,207 +79,188 @@ const EMPTY_FORM = {
   experienceCertificate: null,
 };
 
-const getUsers = () => {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return Array.isArray(saved) ? saved : [];
-  } catch {
-    return [];
-  }
+const firstValue = (item, ...keys) =>
+  keys
+    .map((key) => item?.[key])
+    .find((value) => value !== undefined && value !== null) ?? "";
+
+const extractRecord = (response) => {
+  const root = response?.data ?? response;
+  const record = root?.data ?? root?.Data ?? root;
+  return record && typeof record === "object" && !Array.isArray(record)
+    ? record
+    : null;
 };
 
-const AVATAR_GRADIENTS = [
-  "from-[#2c6b8a] to-[#5ba6bd]",
-  "from-violet-500 to-indigo-400",
-  "from-emerald-500 to-teal-400",
-  "from-amber-500 to-orange-400",
-  "from-rose-500 to-pink-400",
-  "from-sky-500 to-cyan-400",
-];
-
-const initials = (name = "") =>
-  name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-
-const val = (v) => (v && String(v).trim() ? v : "-");
-
-const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "preferences", label: "Location & Preferences" },
-  { id: "resume", label: "Documents" },
-  { id: "jobs", label: "Applied Jobs" },
-];
-
-/* ------------------------------------------------------------------ */
-/* Small building blocks                                               */
-/* ------------------------------------------------------------------ */
-
-const Card = ({ title, icon: Icon, children, delay = 0, className = "" }) => (
-  <section
-    style={{ animationDelay: `${delay}ms` }}
-    className={`jp-up min-w-0 h-[63vh]  rounded-2xl border border-[#e2e8ee] bg-white p-4 shadow-sm transition duration-300 hover:shadow-md ${className}`}
-  >
-    <h2 className="mb-2 flex items-center gap-2.5 text-[15px] font-bold text-[#1e2b36]">
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[#2c6b8a] to-[#5ba6bd] text-white shadow-sm">
-        <Icon size={15} />
-      </span>
-      {title}
-    </h2>
-    <div className="divide-y divide-[#eef2f6] h-[50vh] overflow-x-auto common-scrollbar">{children}</div>
-  </section>
-);
-
-const Row = ({ label, value }) => (
-  <div className="grid grid-cols-1 gap-0.5 py-2.5 text-[13.5px] transition-colors hover:bg-[#f7fafc] sm:grid-cols-[190px_1fr] sm:gap-3 sm:px-1.5">
-    <span className="font-medium text-[#6b7a88]">{label}</span>
-    <span className="min-w-0 whitespace-pre-wrap break-words font-semibold text-[#1e2b36]">
-      {val(value)}
-    </span>
-  </div>
-);
-
-const ContactLine = ({ icon: Icon, children, href }) => {
-  const inner = (
-    <>
-      <Icon size={14} className="mt-0.5 shrink-0 text-[#2c6b8a]" />
-      <span className="min-w-0 break-words">{children}</span>
-    </>
+const toJobseekerView = (item, id) => {
+  const activeValue = firstValue(
+    item,
+    "jS_is_active",
+    "JS_is_active",
+    "isActive",
+    "active",
   );
-  const cls = "flex items-start gap-2.5 text-[13px] font-medium text-[#34445a]";
-  return href ? (
-    <a
-      href={href}
-      className={`${cls} transition hover:text-[#2c6b8a] hover:underline`}
-    >
-      {inner}
-    </a>
-  ) : (
-    <div className={cls}>{inner}</div>
+  const documentPath = firstValue(
+    item,
+    "jB_cv_file_path",
+    "CVFilePath",
+    "cvFilePath",
+    "resumeUrl",
   );
+  const documentUrl =
+    firstValue(item, "CVFileUrl", "cvFileUrl", "resumeUrl") || documentPath;
+
+  return {
+    id: firstValue(item, "jS_jobseeker_id", "JS_jobseeker_id", "id") || id,
+    status: [true, 1, "1", "true", "True"].includes(activeValue)
+      ? "Active"
+      : "Inactive",
+    ...EMPTY_FORM,
+    fullName: firstValue(
+      item,
+      "fullName",
+      "JB_full_name",
+      "jS_full_name",
+      "name",
+    ),
+    mobile: firstValue(item, "mobile", "JB_mobile", "jS_mobile"),
+    whatsapp: firstValue(
+      item,
+      "jB_whatsapp",
+      "JB_whatsapp",
+      "jS_whatsapp",
+      "whatsapp",
+    ),
+    email: firstValue(item, "email", "Email", "jS_email"),
+    jobCategory: firstValue(
+      item,
+      "jobCategoryName",
+      "jC_name",
+      "jobCategory",
+      "jS_job_category_id",
+    ),
+    highestQualification: firstValue(
+      item,
+      "highestQualification",
+      "qualification",
+      "jS_qualification",
+    ),
+    speciality: firstValue(
+      item,
+      "speciality",
+      "specialization",
+      "jS_speciality",
+    ),
+    professionalRegistrationNumber: firstValue(
+      item,
+      "professionalRegistrationNumber",
+      "registrationNumber",
+    ),
+    totalExperience: firstValue(
+      item,
+      "totalExperience",
+      "experience",
+      "jS_total_experience",
+    ),
+    currentDesignation: firstValue(
+      item,
+      "currentDesignation",
+      "designation",
+      "jS_current_designation",
+    ),
+    address: firstValue(item, "address", "Address", "JB_address", "jB_address"),
+    currentCity: firstValue(item, "currentCity", "cityName", "jS_city_name"),
+    state: firstValue(item, "state", "stateName", "jS_state_name"),
+    expectedSalary: firstValue(item, "expectedSalary", "jS_expected_salary"),
+    currentEmployer: firstValue(item, "currentEmployer", "jS_current_employer"),
+    currentSalary: firstValue(item, "currentSalary", "jS_current_salary"),
+    preferredJobLocation: firstValue(
+      item,
+      "preferredJobLocation",
+      "preferredLocationName",
+      "jB_preferredLocationName",
+    ),
+    willingToRelocate: firstValue(
+      item,
+      "willingToRelocate",
+      "jS_willing_to_relocate",
+    ),
+    employmentPreference: firstValue(
+      item,
+      "employmentPreference",
+      "jS_employment_preference",
+    ),
+    availabilityToJoin: firstValue(
+      item,
+      "availabilityToJoin",
+      "jS_availability_to_join",
+    ),
+    resume:
+      documentPath || documentUrl
+        ? {
+            name:
+              firstValue(item, "CVFileName", "cvFileName", "resumeName") ||
+              String(documentPath || "Resume / CV")
+                .split(/[\\/]/)
+                .pop(),
+            url: documentUrl,
+          }
+        : null,
+  };
 };
 
-const Tag = ({ children, i }) => (
-  <span
-    style={{ animationDelay: `${300 + i * 70}ms` }}
-    className="jp-pop rounded-full bg-gradient-to-r from-[#e8f1f6] to-[#e3f5ec] px-3 py-1 text-[12px] font-semibold text-[#2c6b8a] ring-1 ring-[#cbe1f4]"
-  >
-    {children}
-  </span>
-);
-
-const ResumeBox = ({ doc, big = false }) => {
+/* ---------------- Documents tab helper ---------------- */
+const DocumentBox = ({ doc }) => {
   if (!doc) {
     return (
-      <div className="rounded-xl border border-dashed border-[#cfd9e2] bg-[#f7f9fb] px-4 py-5 text-center text-[13px] font-medium text-[#6b7a88]">
+      <div className="rounded-md border border-dashed border-[#cfd9e2] bg-[#fbfcfd] px-3 py-3 text-[12.5px] font-medium text-[#8895a4]">
         Not uploaded
       </div>
     );
   }
 
   return (
-    <div
-      className={`rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] ${big ? "p-5" : "p-3"}`}
-    >
-      <div className="flex items-center gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#2c6b8a] to-[#35b8c4] text-white shadow-md">
-          <FileIcon size={20} />
+    <div className="rounded-md border border-[#e3e8ee] bg-[#fbfcfd] p-3">
+      <div className="flex items-center gap-2.5">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm">
+          <FileIcon size={16} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-semibold text-[#1e2b36]">
-            jaeheoiauwv hr8otuhqnqewrioutbv eg
+          <p className="truncate text-[13px] font-semibold text-[#1a2b3c]">
+            {doc.name || "Resume / CV"}
           </p>
-          <p className="text-[12px] text-[#6b7a88]">Resume / CV</p>
+          <p className="text-[11.5px] text-[#8895a4]">Resume / CV</p>
         </div>
       </div>
+
       {doc.url ? (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-2.5 flex gap-2">
           <a
             href={doc.url}
             download={doc.name}
-            className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#2f6b8a] text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
           >
-            <Download size={14} /> Download
+            <Download size={13} /> Download
           </a>
           <a
             href={doc.url}
             target="_blank"
             rel="noreferrer"
-            className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#dce3eb] bg-white px-3 text-[13px] font-semibold text-[#34445a] transition hover:bg-[#f7f9fb]"
+            className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50"
           >
-            <Eye size={14} /> View
+            <Eye size={13} /> View
           </a>
         </div>
       ) : (
-        <p className="mt-3 rounded-lg bg-white px-3 py-2 text-[12px] text-[#6b7a88] ring-1 ring-[#e2e8ee]">
-          File name saved. No download link is available yet.
+        <p className="mt-2 rounded-md bg-white px-2.5 py-1.5 text-[11.5px] text-[#8895a4] ring-1 ring-[#e3e8ee]">
+          File name saved. No download link available yet.
         </p>
       )}
     </div>
   );
 };
 
-const DUMMY_JOBS = [
-  {
-    id: 1,
-    title: "Senior React Developer",
-    company: "Tech Solutions Pvt. Ltd.",
-    location: "Pune, Maharashtra",
-    jobType: "Full Time",
-    salary: "₹8 - 12 LPA",
-    status: "Interested",
-    postedAt: "02 Oct 2026",
-  },
-  {
-    id: 2,
-    title: "Frontend Developer",
-    company: "Innovate Technologies",
-    location: "Mumbai, Maharashtra",
-    jobType: "Full Time",
-    salary: "₹6 - 9 LPA",
-    status: "Applied",
-    appliedAt: "01 Oct 2026",
-  },
-  {
-    id: 3,
-    title: "UI/UX Designer",
-    company: "Creative Minds",
-    location: "Remote",
-    jobType: "Remote",
-    salary: "₹5 - 8 LPA",
-    status: "Interested",
-    postedAt: "28 Sep 2026",
-  },
-  {
-    id: 4,
-    title: "Full Stack Developer",
-    company: "Digital Works",
-    location: "Hyderabad, Telangana",
-    jobType: "Full Time",
-    salary: "₹7 - 10 LPA",
-    status: "Applied",
-    appliedAt: "25 Sep 2026",
-  },
-  {
-    id: 5,
-    title: "Software Engineer",
-    company: "Global Systems",
-    location: "Bengaluru, Karnataka",
-    jobType: "Hybrid",
-    salary: "₹9 - 14 LPA",
-    status: "Interested",
-    postedAt: "20 Sep 2026",
-  },
-];
-
-/* ------------------------------------------------------------------ */
-/* Page                                                                */
-/* ------------------------------------------------------------------ */
-
+/* ---------------- Page ---------------- */
 const JobSeekerDetails = () => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -256,380 +268,439 @@ const JobSeekerDetails = () => {
   const [user, setUser] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [tab, setTab] = useState("overview");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const found = getUsers().find((item) => String(item.id) === String(id));
-    if (found) {
-      setUser(found);
-      setForm({ ...EMPTY_FORM, ...found });
-    }
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await jobseekerApi.getById(id);
+        const item = extractRecord(response);
+        if (!cancelled) {
+          if (item) {
+            const view = toJobseekerView(item, id);
+            setUser(view);
+            setForm({ ...EMPTY_FORM, ...view });
+          } else {
+            setUser(null);
+            setError("Jobseeker not found");
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setUser(null);
+          setError(err?.message || "Failed to load jobseeker");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    if (id) load();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
-  const Styles = (
-    <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-      .jp-page { font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif; }
-      @keyframes jp-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-      @keyframes jp-pop { from { opacity: 0; transform: scale(.8); } to { opacity: 1; transform: none; } }
-      @keyframes jp-fade { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
-      @keyframes jp-halo { 0%,100% { transform: scale(1); opacity: .55; } 50% { transform: scale(1.15); opacity: .15; } }
-      @keyframes jp-ping { 75%,100% { transform: scale(2.4); opacity: 0; } }
-      @keyframes jp-float { 50% { transform: translateY(10px) scale(1.1); } }
-      @keyframes jp-bob { 50% { transform: translateY(-3px) rotate(-8deg); } }
-      @keyframes jp-shift { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
-      .jp-up { animation: jp-up .55s cubic-bezier(.2,.8,.2,1) both; }
-      .jp-pop { animation: jp-pop .35s cubic-bezier(.3,1.4,.5,1) both; }
-      .jp-tab { animation: jp-fade .35s ease both; }
-      .jp-halo { animation: jp-halo 2.4s ease-in-out infinite; }
-      .jp-ping { animation: jp-ping 1.6s cubic-bezier(0,0,.2,1) infinite; }
-      .jp-bob { animation: jp-bob 2.6s ease-in-out infinite; }
-      .jp-orb { position: absolute; border-radius: 9999px; pointer-events: none; background: rgba(255,255,255,.16); }
-      .jp-orb-a { width: 86px; height: 86px; right: -24px; top: -28px; animation: jp-float 4s ease-in-out infinite; }
-      .jp-orb-b { width: 56px; height: 56px; right: 34px; bottom: -32px; background: rgba(255,255,255,.10); animation: jp-float 5s ease-in-out infinite reverse; }
-      .jp-hero { background-size: 200% 200%; animation: jp-shift 10s linear infinite alternate; }
-      @media (prefers-reduced-motion: reduce) {
-        .jp-up,.jp-pop,.jp-tab,.jp-halo,.jp-ping,.jp-bob,.jp-orb,.jp-hero { animation: none !important; }
-      }
-    `}</style>
-  );
+  /* Navigation helpers */
+  const goToEditProfile = () => navigate(`/admin/jobseekers/${id}/edit`);
 
-  const BackBtn = (
-    <button
-      type="button"
-      onClick={() => navigate(-1)}
-      title="Back"
-      aria-label="Back"
-      className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-white/15 text-white backdrop-blur-sm transition hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-    >
-      <ChevronsLeft size={18} strokeWidth={2} />
-    </button>
-  );
+  const pageTitle = form.fullName || "Jobseeker";
 
-  if (!user) {
+  /* Loading */
+  if (loading) {
     return (
-      <div className="jp-page min-h-full bg-[#f7f9fb]">
-        {Styles}
-        <div className="rounded-2xl bg-gradient-to-r from-[#17405a] to-[#4a9bb3] p-4">
-          {BackBtn}
+      <div className={`min-h-full ${T.bg} p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+          <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#2f6b8a] border-t-transparent" />
+          <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
+            Loading jobseeker…
+          </p>
         </div>
-        <p className="px-4 py-12 text-center text-[#6b7a88]">
-          This jobseeker was not found.
-        </p>
+      </div>
+    );
+  }
+
+  /* Error / Not found */
+  if (error || !user) {
+    return (
+      <div className={`min-h-full ${T.bg} p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+          <UserRound size={28} className="mx-auto text-[#8895a4]" />
+          <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
+            {error || "Jobseeker not found"}
+          </p>
+          <p className={`mt-1 text-[13px] ${T.textMuted}`}>
+            The record you're looking for doesn't exist or was removed.
+          </p>
+          <button
+            onClick={() => navigate(-1)}
+            className={`mt-4 ${BTN_PRIMARY}`}
+          >
+            Go back
+          </button>
+        </div>
       </div>
     );
   }
 
   const active = user.status === "Active";
-  const exp = /^\d+(\.\d+)?$/.test(String(form.totalExperience).trim())
-    ? `${form.totalExperience} yrs`
-    : val(form.totalExperience);
-  const location = [form.currentCity, form.state].filter(Boolean).join(", ");
-  const tags = [
-    form.jobCategory,
-    form.speciality,
-    form.employmentPreference,
-    form.availabilityToJoin,
-  ].filter(Boolean);
-  const wa = (form.whatsapp || "").replace(/\D/g, "");
-
-  const documents = [
-    { label: "Resume", doc: form.resume },
-    { label: "Qualification Certificate", doc: form.qualificationCertificate },
-    { label: "Professional Certificate", doc: form.professionalCertificate },
-    { label: "Experience Certificate", doc: form.experienceCertificate },
-  ];
 
   return (
-    <div className="jp-page min-h-full bg-[#f7f9fb] text-[#1e2b36]">
-      {Styles}
+    <div className={`min-h-full ${T.bg}`}>
+      <div className="mx-auto">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* MAIN HEADER */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                title="Back"
+                aria-label="Back"
+                className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
+              >
+                <ChevronsLeft size={18} strokeWidth={2} />
+              </button>
 
-      {/* HERO HEADER */}
-      <header
-        className="jp-hero relative mb-4 overflow-hidden rounded-2xl p-4 text-white shadow-sm sm:px-4 sm:py-2"
-        style={{
-          backgroundImage:
-            "linear-gradient(110deg,#17405a 0%,#2f6b8a 40%,#4a9bb3 70%,#2f6b8a 100%)",
-        }}
-      >
-        <span className="jp-orb jp-orb-a !h-40 !w-40" />
-        <span className="jp-orb jp-orb-b !h-24 !w-24" />
-        <div className="relative flex flex-wrap items-center gap-3.5">
-          {BackBtn}
-          <div className="min-w-0 flex-1">
-            <h1 className="m-0 text-[22px] font-extrabold tracking-tight sm:text-[26px]">
-              Jobseeker Details
-            </h1>
-          </div>
-          <span
-            className={`inline-flex h-8 items-center gap-2 rounded-lg px-3 text-[12.5px] font-bold text-white shadow-md ring-1 ring-inset ${
-              active
-                ? "bg-emerald-600 ring-emerald-700"
-                : "bg-rose-600 ring-rose-700"
-            }`}
-          >
-            <span className="relative flex h-2 w-2">
-              {active && (
-                <span className="jp-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-70" />
-              )}
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
-            </span>
-            {user.status}
-          </span>
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px_1fr]">
-        {/* SIDEBAR */}
-        <aside className="jp-up h-[73vh] overflow-hidden rounded-2xl border border-[#e2e8ee] bg-white shadow-sm lg:sticky lg:top-3">
-          <div className="h-20 bg-gradient-to-r from-[#2c6b8a] via-[#4a9bb3] to-[#73c8a4]" />
-          <div className="px-4 pb-4">
-            <div className="relative -mt-11 flex flex-col items-center text-center">
-              <div className="relative grid h-[150px] w-[150px] place-items-center">
-                <span
-                  className={`jp-halo absolute inset-0 rounded-full bg-gradient-to-br ${AVATAR_GRADIENTS[user.id % AVATAR_GRADIENTS.length]}`}
-                />
-                <span
-                  className={`relative grid h-[140px] w-[140px] place-items-center rounded-full bg-gradient-to-br ${
-                    AVATAR_GRADIENTS[user.id % AVATAR_GRADIENTS.length]
-                  } text-[26px] font-extrabold text-white shadow-lg ring-4 ring-white`}
-                >
-                  {initials(form.fullName) || <UserRound size={30} />}
-                </span>
-              </div>
-              <h2 className="mt-2.5 text-[17px] font-extrabold text-[#1e2b36]">
-                {val(form.fullName)}
-              </h2>
-              <p className="text-[13px] font-medium text-[#6b7a88]">
-                {val(form.currentDesignation)}
-              </p>
+              <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
-            <div className="mt-4 space-y-2.5 border-t border-[#eef2f6] pt-4">
-              <ContactLine
-                icon={Mail}
-                href={form.email ? `mailto:${form.email}` : undefined}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={goToEditProfile}
+                className={BTN_PRIMARY}
               >
-                {val(form.email)}
-              </ContactLine>
-              <ContactLine
-                icon={Phone}
-                href={
-                  form.mobile
-                    ? `tel:${form.mobile.replace(/\s/g, "")}`
-                    : undefined
-                }
-              >
-                {val(form.mobile)}
-              </ContactLine>
-              <ContactLine icon={MapPin}>{val(location)}</ContactLine>
+                Edit
+              </button>
             </div>
           </div>
-        </aside>
 
-        {/* MAIN */}
-        <main className="min-w-0">
-          {/* TABS */}
-          <div
-            role="tablist"
-            aria-label="Profile sections"
-            className="mb-4  flex gap-1 overflow-x-auto rounded-xl border border-[#e2e8ee] bg-white p-1 shadow-sm"
-          >
-            {TABS.map((t) => {
-              const on = tab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={on}
-                  onClick={() => setTab(t.id)}
-                  className={`relative shrink-0 cursor-pointer rounded-lg px-4 py-2 text-[13px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] ${
-                    on
-                      ? "bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] text-white shadow-sm"
-                      : "text-[#53677f] hover:bg-[#f2f6f9]"
-                  }`}
+          {/* BODY */}
+          <div className="p-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[170px_1fr]">
+              {/* LEFT: vertical nav */}
+              <aside className="md:sticky md:top-4 md:h-fit w-[11rem]">
+                <nav
+                  aria-label="Jobseeker sections"
+                  className={`${T.surface} ${T.radius} border ${T.border} overflow-hidden p-1.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
                 >
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* PANELS (key re-triggers the animation on every tab change) */}
-          <div key={tab} className="jp-tab ">
-            {tab === "overview" && (
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                <Card title="Personal Details" icon={UserRound} delay={0}>
-                  <Row label="Full Name" value={form.fullName} />
-                  <Row label="Mobile Number" value={form.mobile} />
-                  <Row label="WhatsApp Number" value={form.whatsapp} />
-                  <Row label="Email Address" value={form.email} />
-                </Card>
-
-                <Card
-                  title="Professional Details"
-                  icon={GraduationCap}
-                  delay={90}
-                >
-                  <Row
-                    label="Profession / Job Category"
-                    value={form.jobCategory}
-                  />
-                  <Row
-                    label="Highest Qualification"
-                    value={form.highestQualification}
-                  />
-                  <Row
-                    label="Speciality / Department"
-                    value={form.speciality}
-                  />
-                  <Row
-                    label="Professional Registration Number"
-                    value={form.professionalRegistrationNumber}
-                  />
-                  <Row
-                    label="Total Experience (Years)"
-                    value={form.totalExperience}
-                  />
-                  <Row
-                    label="Current Designation"
-                    value={form.currentDesignation}
-                  />
-                  <Row label="Current Employer" value={form.currentEmployer} />
-                  <Row label="Current Salary" value={form.currentSalary} />
-                </Card>
-              </div>
-            )}
-
-            {tab === "preferences" && (
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                <Card title="Location" icon={MapPin} delay={0}>
-                  <Row label="Address" value={form.address} />
-                  <Row label="Current City" value={form.currentCity} />
-                  <Row label="State" value={form.state} />
-                  <Row
-                    label="Preferred Job Location"
-                    value={form.preferredJobLocation}
-                  />
-                </Card>
-
-                <Card title="Preferences" icon={Navigation} delay={90}>
-                  <Row label="Expected Salary" value={form.expectedSalary} />
-                  <Row
-                    label="Willing to Relocate?"
-                    value={form.willingToRelocate}
-                  />
-                  <Row
-                    label="Employment Preference"
-                    value={form.employmentPreference}
-                  />
-                  <Row
-                    label="Availability to Join"
-                    value={form.availabilityToJoin}
-                  />
-                </Card>
-              </div>
-            )}
-
-            {tab === "resume" && (
-              <Card title="Uploaded Documents" icon={FileIcon}>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {documents.map(({ label, doc }) => (
-                    <div key={label} className="space-y-2">
-                      <h3 className="text-sm font-semibold text-[#17405a]">
-                        {label}
-                      </h3>
-                      <ResumeBox doc={doc} big />
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {tab === "jobs" && (
-              <div className="space-y-4">
-                {/* Job list */}
-                <section className="rounded-2xl border border-[#e2e8ee] bg-white p-4 shadow-sm">
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-[16px] font-bold text-[#1e2b36]">
-                      Applied Jobs
-                    </h2>
-                    <span className="rounded-full bg-[#e8f1f6] px-3 py-1 text-xs font-semibold text-[#2c6b8a]">
-                      {DUMMY_JOBS.length} Jobs
-                    </span>
-                  </div>
-
-                  <div className="space-y-3 h-[51vh] overflow-y-auto common-scrollbar">
-                    {DUMMY_JOBS.map((job) => (
-                      <div
-                        key={job.id}
-                        className="rounded-xl border border-[#e2e8ee] p-4 transition hover:border-[#9fc5d8] hover:shadow-sm"
+                  {NAV.map((n) => {
+                    const on = tab === n.id;
+                    const Icon = n.icon;
+                    return (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => setTab(n.id)}
+                        aria-current={on ? "page" : undefined}
+                        className={`group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition ${
+                          on
+                            ? "bg-[#eaf2f7] text-[#1e5a7a]"
+                            : "text-[#5b6b7c] hover:bg-[#f3f6f9] hover:text-[#1a2b3c]"
+                        }`}
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
-                            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#2c6b8a] to-[#5ba6bd] text-white">
-                              <Briefcase size={19} />
-                            </div>
+                        <span className="flex items-center gap-2.5">
+                          <Icon
+                            size={15}
+                            className={
+                              on
+                                ? "text-[#1e5a7a]"
+                                : "text-[#8895a4] group-hover:text-[#5b6b7c]"
+                            }
+                          />
+                          {n.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </nav>
+              </aside>
 
-                            <div className="min-w-0">
-                              <h3 className="break-words text-[14px] font-bold text-[#1e2b36]">
-                                {job.title}
-                              </h3>
-                              <p className="mt-1 text-[13px] font-medium text-[#53677f]">
-                                {job.company}
-                              </p>
-                            </div>
+              {/* RIGHT: detail panel */}
+              <main className="min-w-0">
+                {/* -------- Overview -------- */}
+                {tab === "overview" && (
+                  <section
+                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                  >
+                    <div className="p-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>Full Name</label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.fullName)}
+                            </span>
                           </div>
-
-                          <span
-                            className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold text-white ${
-                              job.status === "Applied"
-                                ? "bg-emerald-600"
-                                : "bg-amber-500"
-                            }`}
-                          >
-                            {job.status}
-                          </span>
                         </div>
 
-                        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[12px] font-medium text-[#6b7a88]">
-                          <span className="flex items-center gap-1.5">
-                            <MapPin size={14} />
-                            {job.location}
-                          </span>
-
-                          <span className="flex items-center gap-1.5">
-                            <Briefcase size={14} />
-                            {job.jobType}
-                          </span>
-
-                          <span className="flex items-center gap-1.5">
-                            <Wallet size={14} />
-                            {job.salary}
-                          </span>
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>Mobile Number</label>
+                          <div className={FIELD_BOX(true)}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.mobile)}
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#eef2f6] pt-3">
-                          <p className="text-[12px] text-[#6b7a88]">
-                            {job.status === "Applied"
-                              ? `Applied on: ${job.appliedAt}`
-                              : `Posted on: ${job.postedAt}`}
-                          </p>
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>WhatsApp Number</label>
+                          <div className={FIELD_BOX(true)}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.whatsapp)}
+                            </span>
+                          </div>
+                        </div>
 
-                          <span className="text-[12px] font-semibold text-[#2c6b8a]">
-                            {job.status === "Applied"
-                              ? "Application submitted"
-                              : "Job saved as interested"}
-                          </span>
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>Email Address</label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {form.email ? (
+                                <a
+                                  href={`mailto:${form.email}`}
+                                  className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
+                                >
+                                  {form.email} <ExternalLink size={11} />
+                                </a>
+                              ) : (
+                                "—"
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Profession / Job Category
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.jobCategory)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Highest Qualification
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.highestQualification)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Speciality / Department
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.speciality)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Professional Registration Number
+                          </label>
+                          <div className={FIELD_BOX(true)}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.professionalRegistrationNumber)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Total Experience (Years)
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.totalExperience)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Current Designation
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.currentDesignation)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Current Employer
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.currentEmployer)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>Current Salary</label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.currentSalary)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>Status</label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {active ? "Active" : "Inactive"}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            )}
+                    </div>
+                  </section>
+                )}
+
+                {/* -------- Location & Preferences -------- */}
+                {tab === "preferences" && (
+                  <section
+                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                  >
+                    <div className="p-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        <div className="flex flex-col gap-1.5 sm:col-span-2 xl:col-span-3">
+                          <label className={FIELD_LABEL}>Address</label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.address)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>Current City</label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.currentCity)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>State</label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.state)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Preferred Job Location
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.preferredJobLocation)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>Expected Salary</label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.expectedSalary)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Willing to Relocate?
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.willingToRelocate)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Employment Preference
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.employmentPreference)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>
+                            Availability to Join
+                          </label>
+                          <div className={FIELD_BOX()}>
+                            <span className="min-w-0 flex-1 truncate">
+                              {val(form.availabilityToJoin)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* -------- Documents (Resume/CV only) -------- */}
+                {tab === "resume" && (
+                  <section
+                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                  >
+                    <div className="p-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        <div className="flex flex-col gap-1.5">
+                          <label className={FIELD_LABEL}>Resume / CV</label>
+                          <DocumentBox doc={form.resume} />
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* -------- Applied Jobs -------- */}
+                {tab === "jobs" && (
+                  <section
+                    className={`${T.surface} ${T.radius} border ${T.border}`}
+                  >
+                    <div className="px-4 py-12 text-center">
+                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                        <Inbox size={22} />
+                      </div>
+                      <p className="mt-3 text-[15px] text-[#1e2b36]">
+                        No applied jobs yet
+                      </p>
+                    </div>
+                  </section>
+                )}
+              </main>
+            </div>
           </div>
-        </main>
+        </div>
       </div>
     </div>
   );
