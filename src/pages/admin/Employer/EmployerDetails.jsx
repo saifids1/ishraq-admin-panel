@@ -114,7 +114,7 @@ const EmployerProfile = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`https://localhost:44367/api/Employer/${id}`, {
+        const res = await fetch(`https://localhost:7023/api/Employer/${id}`, {
           method: "GET",
           headers: { accept: "*/*" },
         });

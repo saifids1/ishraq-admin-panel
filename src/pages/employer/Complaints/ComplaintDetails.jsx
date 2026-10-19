@@ -1,21 +1,27 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft,
-  LoaderCircle,
-  UserRound,
-  Mail,
-  Phone,
-  FileText,
-  CalendarDays,
-  Tag,
   Building2,
+  CalendarDays,
+  FileText,
+  LoaderCircle,
+  Mail,
+  Paperclip,
+  Phone,
+  Tag,
+  UserRound,
   Download,
-  MessageSquareText,
-  ChevronsLeft,
 } from "lucide-react";
 
 import { getComplaintById } from "../../../api/complaintApi";
+import {
+  ACCENT,
+  Card,
+  Field,
+  IconField,
+  PageHeader,
+  ReadOnlyValue,
+} from "../../../components/common/FormUi";
 
 // Prominent status colors. Keys are normalized (uppercase, hyphenated).
 const STATUS_STYLES = {
@@ -34,7 +40,6 @@ const formatDate = (value) => {
   if (!value) return "-";
 
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) return "-";
 
   return date.toLocaleString("en-GB", {
@@ -54,103 +59,9 @@ const getFileUrl = (path) => {
   return `${baseUrl}/${path.replace(/^\/+/, "")}`;
 };
 
-const DetailItem = ({ label, value, icon: Icon }) => (
-  <div className="min-w-0">
-    <p className="mb-1.5 flex items-center gap-2 text-sm text-[#60738a]">
-      {Icon && <Icon size={15} className="text-[#2c6b8a]" />}
-      {label}
-    </p>
-    <p className="break-words text-sm font-medium text-[#1e2b36]">{value || "-"}</p>
-  </div>
-);
+const or = (value) => (value ? value : "-");
 
-const Section = ({ icon: Icon, title, children }) => (
-  <section className="overflow-hidden rounded-lg border border-[#cbe1f4] bg-white">
-    <div className="flex items-center gap-2 bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-3 text-white">
-      <Icon size={17} />
-      <h2 className="text-sm font-bold">{title}</h2>
-    </div>
-    <div className="p-4 sm:p-5">{children}</div>
-  </section>
-);
-
-const ResponseSection = ({ existingResponse, respondedAt, disabled, onSubmit }) => {
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState("");
-
-  const handleSend = async () => {
-    const message = text.trim();
-    if (!message) return;
-
-    try {
-      setSending(true);
-      setSendError("");
-      await onSubmit(message);
-      setText("");
-    } catch (err) {
-      setSendError(
-        err?.response?.data?.message || err?.message || "Failed to send response.",
-      );
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <Section icon={MessageSquareText} title="Response">
-      {existingResponse ? (
-        <div className="mb-5 rounded-lg border border-[#e2e8ee] bg-[#f9fbfc] p-4">
-          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[#1e2b36]">
-            {existingResponse}
-          </p>
-          <p className="mt-3 text-xs text-[#60738a]">
-            Responded on {formatDate(respondedAt)}
-          </p>
-        </div>
-      ) : (
-        <p className="mb-5 text-sm text-[#60738a]">No response yet.</p>
-      )}
-
-      {disabled ? (
-        <p className="text-sm text-[#60738a]">
-          Responses are closed for this complaint.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          <textarea
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            rows={4}
-            placeholder="Write a response to the complainant..."
-            disabled={sending}
-            className="w-full rounded-lg border border-[#c9d5dd] p-3 text-sm outline-none focus:border-[#2c6b8a] focus:ring-2 focus:ring-[#2c6b8a]/20 disabled:opacity-60"
-          />
-
-          {sendError && (
-            <p role="alert" className="text-sm text-rose-600">
-              {sendError}
-            </p>
-          )}
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={sending || !text.trim()}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#2c6b8a] px-4 text-sm font-semibold text-white hover:bg-[#245a75] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {sending && <LoaderCircle size={15} className="animate-spin" />}
-              Send Response
-            </button>
-          </div>
-        </div>
-      )}
-    </Section>
-  );
-};
-
-const ComplaintDetails = () => {
+export default function ComplaintDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -190,45 +101,31 @@ const ComplaintDetails = () => {
     }
   }, [id]);
 
-
-
-  const pageShell = "min-h-full bg-[#f7f9fb] text-[#1e2b36]";
-  const card = "mx-auto max-w-[1500px] rounded-xl border border-[#e2e8ee] bg-white p-4 shadow-sm sm:p-5";
-  const backButton =
-    "grid h-10 w-10 place-items-center rounded-lg border border-[#c9d5dd] bg-white text-[#2c6b8a] hover:bg-slate-50";
-
   if (loading) {
     return (
-      <div className={pageShell}>
-        <div className={`${card} flex min-h-64 items-center justify-center gap-3 text-[#60738a]`}>
-          <LoaderCircle size={22} className="animate-spin text-[#2c6b8a]" />
+      <div className="flex min-h-[50vh] items-center justify-center bg-white p-6">
+        <div className="flex items-center gap-3 text-sm text-slate-600">
+          <LoaderCircle className="animate-spin" style={{ color: ACCENT }} size={20} />
           Loading complaint details...
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error || !complaint) {
     return (
-      <div className={pageShell}>
-        <div className={`${card} flex flex-col gap-3 border-rose-200 bg-rose-50 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between`}>
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="rounded-lg border border-rose-200 bg-white px-4 py-2 font-semibold hover:bg-rose-100"
-          >
-            Go Back
-          </button>
+      <div className="min-h-full bg-white p-4">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Go Back
+        </button>
+        <div className="mx-auto max-w-xl rounded-2xl border border-red-200 bg-white p-5 text-red-700 shadow-sm">
+          <h1 className="font-semibold">Could not load complaint</h1>
+          <p className="mt-1 text-sm">{error || "Complaint not found."}</p>
         </div>
-      </div>
-    );
-  }
-
-  if (!complaint) {
-    return (
-      <div className={pageShell}>
-        <div className={`${card} text-[#60738a]`}>Complaint not found.</div>
       </div>
     );
   }
@@ -236,101 +133,112 @@ const ComplaintDetails = () => {
   const statusKey = normalizeStatus(complaint.statusName);
   const statusLabel = statusKey || "UNKNOWN";
   const statusStyle = STATUS_STYLES[statusKey] ?? DEFAULT_STATUS_STYLE;
-  const isClosed = statusKey === "CLOSED";
   const fileUrl = getFileUrl(complaint.cP_file_path);
+  const fileName = complaint.cP_file_path ? complaint.cP_file_path.split("/").pop() : "";
 
   return (
-    <div className={pageShell}>
-      <div className={`${card} space-y-5`}>
-        {/* Header */}
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              aria-label="Go back"
-              className={backButton}
-            >
-              <ChevronsLeft size={18} />
-            </button>
-
-            <div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-[#2c6b8a]">
-                Complaint Details
-              </h1>
-              
-            </div>
-          </div>
-
+    <div className="min-h-full bg-white text-slate-800">
+      <PageHeader
+        title="Complaint Details"
+        onBack={() => navigate(-1)}
+        right={
           <span
             className={`inline-flex w-fit items-center rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider shadow-sm ${statusStyle}`}
           >
             {statusLabel}
           </span>
-        </div>
+        }
+      />
 
-        {/* Summary */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {[
-            ["Complaint ID", `# ${complaint.cP_reference_no || "-"}`],
-            ["Category", complaint.complaintCategoryName || "-"],
-            ["Submitted On", formatDate(complaint.cP_created_at)],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-[#cbe1f4] bg-white p-4">
-              <p className="text-sm text-[#60738a]">{label}</p>
-              <p className="mt-1.5 font-semibold text-[#1e2b36]">{value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Complainant */}
-        <Section icon={UserRound} title="Complainant Information">
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <DetailItem label="Full Name / Organization" value={complaint.cP_full_name} icon={Building2} />
-            <DetailItem label="User Type" value={complaint.userTypeName} />
-            <DetailItem label="Mobile Number" value={complaint.cP_mobile} icon={Phone} />
-            <DetailItem label="Email Address" value={complaint.cP_email} icon={Mail} />
-            <DetailItem label="Complaint Category" value={complaint.complaintCategoryName} icon={Tag} />
-            <DetailItem label="Reference Number" value={complaint.cP_reference_no} icon={FileText} />
+      <div className="grid grid-cols-1 gap-4">
+        <Card title="Summary" icon={FileText}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="Complaint ID">
+              <ReadOnlyValue icon={FileText}>
+                {`# ${complaint.cP_reference_no || "-"}`}
+              </ReadOnlyValue>
+            </Field>
+            <Field label="Category">
+              <ReadOnlyValue icon={Tag}>{or(complaint.complaintCategoryName)}</ReadOnlyValue>
+            </Field>
+            <Field label="Submitted On">
+              <ReadOnlyValue icon={CalendarDays}>
+                {formatDate(complaint.cP_created_at)}
+              </ReadOnlyValue>
+            </Field>
           </div>
-        </Section>
+        </Card>
 
-        {/* Description */}
-        <Section icon={FileText} title="Complaint Description">
-          <p className="whitespace-pre-wrap break-words text-sm leading-7 text-[#1e2b36]">
-            {complaint.cP_details || "No description provided."}
-          </p>
-        </Section>
-
-        {/* Attachment */}
-        <Section icon={Download} title="Supporting Document">
-          {complaint.cP_file_path ? (
-            <a
-              href={fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex max-w-full items-center gap-3 rounded-lg border border-[#cbe1f4] bg-white px-4 py-3 text-sm font-medium text-[#2c6b8a] transition hover:bg-[#e8f1f6]"
-            >
-              <FileText size={20} />
-              <span className="break-all">{complaint.cP_file_path.split("/").pop()}</span>
-              <Download size={17} />
-            </a>
-          ) : (
-            <p className="text-sm text-[#60738a]">No supporting document attached.</p>
-          )}
-        </Section>
-
-
-        {/* Record info */}
-        <Section icon={CalendarDays} title="Record Information">
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <DetailItem label="Created At" value={formatDate(complaint.cP_created_at)} />
-            <DetailItem label="Last Updated" value={formatDate(complaint.cP_updated_at)} />
+        <Card title="Complainant Information" icon={UserRound}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <Field label="Full Name / Organization">
+              <ReadOnlyValue icon={Building2}>{or(complaint.cP_full_name)}</ReadOnlyValue>
+            </Field>
+            <Field label="User Type">
+              <ReadOnlyValue icon={UserRound}>{or(complaint.userTypeName)}</ReadOnlyValue>
+            </Field>
+            <Field label="Mobile Number">
+              <ReadOnlyValue icon={Phone}>{or(complaint.cP_mobile)}</ReadOnlyValue>
+            </Field>
+            <Field label="Email Address">
+              <ReadOnlyValue icon={Mail}>{or(complaint.cP_email)}</ReadOnlyValue>
+            </Field>
+            <Field label="Complaint Category">
+              <ReadOnlyValue icon={Tag}>{or(complaint.complaintCategoryName)}</ReadOnlyValue>
+            </Field>
+            <Field label="Reference Number">
+              <ReadOnlyValue icon={FileText}>{or(complaint.cP_reference_no)}</ReadOnlyValue>
+            </Field>
           </div>
-        </Section>
+        </Card>
+
+        <Card title="Complaint Description" icon={FileText}>
+          <Field label="Details">
+            <ReadOnlyValue multiline>
+              {complaint.cP_details || "No description provided."}
+            </ReadOnlyValue>
+          </Field>
+        </Card>
+
+        <Card title="Supporting Document" icon={Paperclip}>
+          <Field label="Attachment">
+            <IconField icon={Paperclip}>
+              {complaint.cP_file_path ? (
+                <a
+                  href={fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open document in a new tab"
+                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm font-medium transition hover:bg-[#eaf3f7]"
+                  style={{ color: ACCENT }}
+                >
+                  <span className="min-w-0 break-all">{fileName}</span>
+                  <Download size={14} className="shrink-0" />
+                </a>
+              ) : (
+                <div className="min-h-[42px] w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-500">
+                  No supporting document attached.
+                </div>
+              )}
+            </IconField>
+          </Field>
+        </Card>
+
+        <Card title="Record Information" icon={CalendarDays}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Created At">
+              <ReadOnlyValue icon={CalendarDays}>
+                {formatDate(complaint.cP_created_at)}
+              </ReadOnlyValue>
+            </Field>
+            <Field label="Last Updated">
+              <ReadOnlyValue icon={CalendarDays}>
+                {formatDate(complaint.cP_updated_at)}
+              </ReadOnlyValue>
+            </Field>
+          </div>
+        </Card>
       </div>
     </div>
   );
-};
-
-export default ComplaintDetails;
+}

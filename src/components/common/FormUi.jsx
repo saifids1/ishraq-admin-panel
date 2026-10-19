@@ -116,3 +116,22 @@ export const Toast = ({ toast }) => {
     </div>
   );
 };
+
+// Add to components/common/FormUi.jsx (after IconField)
+export const ReadOnlyValue = ({ icon, children, multiline = false }) => {
+  const box = (
+    <div
+      className={`w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 ${
+        icon ? "pl-10" : ""
+      } ${
+        multiline
+          ? "min-h-[120px] whitespace-pre-line leading-relaxed"
+          : "min-h-[42px] break-words"
+      }`}
+    >
+      {children}
+    </div>
+  );
+
+  return icon ? <IconField icon={icon}>{box}</IconField> : box;
+};

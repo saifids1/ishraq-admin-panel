@@ -181,7 +181,7 @@ const Badge = ({ value, tone }) => (
   </span>
 );
 // Shared text style for every table body cell.
-const CELL_TEXT = "text-sm font-semibold text-[#34445a]";
+const CELL_TEXT = "text-sm font-semibold text-black";
 const JobRequirementList = () => {
   const navigate = useNavigate();
 

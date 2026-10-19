@@ -245,7 +245,7 @@ const FeedbackList = () => {
                 {[
                   "Sr.No",
                   "Request No.",
-                  "Name",
+                  "Organization Name",
                   // "Contact",
                   // "You Are",
                   "Rating",
@@ -299,15 +299,15 @@ const FeedbackList = () => {
                     key={item.id}
                     className="border-t border-[#e2e8ee] even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                   >
-                    <td className="whitespace-nowrap px-3 py-3 tabular-nums">
+                    <td className="whitespace-nowrap px-3 py-3 tabular-nums text-sm font-semibold text-black">
                       {start + index}
                     </td>
 
-                    <td className="whitespace-nowrap px-3 py-3 font-medium text-[#2c6b8a]">
+                    <td className="whitespace-nowrap px-3 py-3 text-sm font-semibold text-black">
                       {item.requestNo}
                     </td>
 
-                    <td className="px-3 py-3 font-medium">{item.name}</td>
+                    <td className="px-3 py-3 text-sm font-semibold text-black">{item.name}</td>
 
                     {/* <td className="px-3 py-3">{item.contact}</td> */}
 
@@ -336,7 +336,7 @@ const FeedbackList = () => {
                       </div>
                     </td>
 
-                    <td className="max-w-[220px] px-3 py-3">
+                    <td className="max-w-[220px] px-3 py-3 text-sm font-semibold text-black">
                       <span className="line-clamp-2" title={item.experience}>
                         {item.experience}
                       </span>
@@ -348,7 +348,7 @@ const FeedbackList = () => {
                       </span>
                     </td> */}
 
-                    <td className="whitespace-nowrap px-3 py-3">
+                    <td className="whitespace-nowrap px-3 py-3 text-sm font-semibold text-black">
                       {item.createdAt}
                     </td>
 
