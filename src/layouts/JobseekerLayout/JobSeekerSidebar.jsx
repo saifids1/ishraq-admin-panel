@@ -17,7 +17,7 @@ import {
   Activity,
   ChevronsRight,
   ChevronsLeft,
-  MessagesSquare
+  MessagesSquare,
 } from "lucide-react";
 
 // Keyframes live here so no tailwind.config changes are needed
@@ -94,11 +94,18 @@ export const JobSeekerSidebar = () => {
       // alert: true,
     },
     {
+      text: "Jobs For You",
+      icon: Building2,
+      link: "/jobseeker/job-list",
+      tile: "from-violet-400 to-indigo-500",
+    },
+    {
       text: "Applied Jobs",
       icon: Building2,
       link: "/jobseeker/applied-jobs",
       tile: "from-violet-400 to-indigo-500",
     },
+
     // {
     //   text: "Reset Password",
     //   icon: KeyRound,
@@ -126,7 +133,7 @@ export const JobSeekerSidebar = () => {
     // },
   ];
 
-   const bottomItems = [
+  const bottomItems = [
     {
       text: "Complaints",
       icon: ShieldAlert,
@@ -205,7 +212,9 @@ export const JobSeekerSidebar = () => {
               {item.alert && (
                 <span
                   className={`absolute z-10 ${
-                    expanded ? "right-3 top-1/2 -translate-y-1/2" : "right-1.5 top-1.5"
+                    expanded
+                      ? "right-3 top-1/2 -translate-y-1/2"
+                      : "right-1.5 top-1.5"
                   }`}
                 >
                   <span className="sb-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-red-400" />
@@ -237,7 +246,7 @@ export const JobSeekerSidebar = () => {
           {expanded && (
             <div className="flex items-center gap-2 min-w-0">
               <span className="sb-logo-badge grid place-items-center w-9 h-9 rounded-xl bg-gradient-to-br from-[#2f6b8a] to-[#38b2ac] shadow-md shadow-[#2f6b8a]/30">
-                 <Activity  size={18} className="text-white" />
+                <Activity size={18} className="text-white" />
               </span>
               <h2 className="sb-brand font-bold text-xl tracking-wide whitespace-nowrap">
                 Ishraq HR
@@ -245,18 +254,20 @@ export const JobSeekerSidebar = () => {
             </div>
           )}
 
-            <button
+          <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
             title={expanded ? "Collapse sidebar" : "Expand sidebar"}
             className="p-2 rounded-full text-white bg-gradient-to-br from-[#2f6b8a] to-[#4aa3c0]
               shadow-md hover:shadow-lg hover:scale-110 active:scale-95 transition-all duration-200"
           >
-            {expanded ? <ChevronsLeft size={14} /> : <ChevronsRight size={14} />}
+            {expanded ? (
+              <ChevronsLeft size={14} />
+            ) : (
+              <ChevronsRight size={14} />
+            )}
           </button>
         </div>
-
-       
 
         {/* Main Menu */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pt-2">
@@ -268,7 +279,7 @@ export const JobSeekerSidebar = () => {
             </p>
           )}
         </div>
-               {/* Bottom Menu */}
+        {/* Bottom Menu */}
         <div className="px-2 py-3 border-t border-gray-100">
           <ul className="space-y-1">
             {bottomItems.map((item, i) =>
