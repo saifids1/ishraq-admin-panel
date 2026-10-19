@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  BriefcaseBusiness,
-  Users,
-  UserPlus,
   BadgeCheck,
+  BriefcaseBusiness,
   ChevronsRight,
+  MapPin,
   Pencil,
   Plus,
   RefreshCw,
-  MapPin
+  UserPlus,
+  Users,
 } from "lucide-react";
 
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
@@ -23,18 +23,6 @@ import {
 import { getEmployerJobRequirementsPaginated } from "../../../api/jobRequirementApi";
 
 const PAGE_SIZES = [10, 25, 50, 100];
-
-const APPLICANT_KEYS = [
-  "applicants",
-  "applicantCount",
-  "applicantsCount",
-  "totalApplicants",
-  "applicationCount",
-  "totalApplications",
-  "JQ_applicant_count",
-  "JQ_applicants_count",
-  "JQ_application_count",
-];
 
 const STATIC_STATS = [
   {
@@ -79,11 +67,18 @@ const STATIC_STATS = [
   },
 ];
 
+// Every badge shares this size so they line up with the h-8 action buttons.
+const BADGE_BASE =
+  "inline-flex h-8 w-35 items-center justify-center rounded-lg px-3 text-sm font-semibold text-white shadow-sm";
+
 // Lower-cases keys so "JQ_position_title" and "jQ_position_title" resolve the same way.
 const toLowerKeys = (obj) =>
   Object.fromEntries(
     Object.entries(obj ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
   );
+
+const hasValue = (value) =>
+  value !== undefined && value !== null && String(value).trim() !== "";
 
 const normalizeJob = (item) => {
   const row = toLowerKeys(item);
@@ -91,28 +86,22 @@ const normalizeJob = (item) => {
   const get = (...keys) => {
     for (const key of keys) {
       const value = row[key.toLowerCase()];
-      if (value !== undefined && value !== null && value !== "") return value;
+      if (hasValue(value)) return value;
     }
     return undefined;
   };
-
-  const hasApplicantCount = APPLICANT_KEYS.some((key) =>
-    Object.prototype.hasOwnProperty.call(row, key.toLowerCase()),
-  );
 
   return {
     id: get("jQ_job_requirement_id", "id"),
     position: get("jQ_position_title", "positionTitle") ?? "Untitled position",
     department: get("jQ_department_speciality") ?? "",
-    vacancies: get("jQ_vacancies", "vacancies") ?? 0,
     location: get("jobLocationName", "cityName") ?? "-",
     instituteType: get("instituteTypeName") ?? "-",
     jobRole: get("jobRoleName") ?? "-",
     jobCategory: get("jobCategoryName") ?? "-",
-    employmentType: get("employmentTypeName", "eT_name") ?? "-",
-    status: get("jobStatusName") ?? "-",
-    applicants: hasApplicantCount ? Number(get(...APPLICANT_KEYS)) || 0 : null,
-    hasApplicantCount,
+    vacancies: get("jQ_vacancies", "vacancies") ?? 0,
+    applied: Number(get("appliedCount") ?? 0) || 0,
+    isActive: row["jq_is_active"] === true,
   };
 };
 
@@ -179,6 +168,20 @@ const extractPage = (response) => {
   };
 };
 
+// Solid, high-contrast colors so each badge type is easy to tell apart.
+const TONE = {
+  jobCategory: "bg-orange-600 cursor-pointer",
+  active: "bg-green-600",
+  inactive: "bg-red-600",
+};
+
+const Badge = ({ value, tone }) => (
+  <span className={`${BADGE_BASE} ${tone}`} title={value}>
+    <span className="truncate">{value}</span>
+  </span>
+);
+// Shared text style for every table body cell.
+const CELL_TEXT = "text-sm font-semibold text-[#34445a]";
 const JobRequirementList = () => {
   const navigate = useNavigate();
 
@@ -269,7 +272,9 @@ const JobRequirementList = () => {
             : result.rows.length,
         );
         setApiTotalPages(
-          result.totalPages !== undefined ? Math.max(1, result.totalPages) : null,
+          result.totalPages !== undefined
+            ? Math.max(1, result.totalPages)
+            : null,
         );
       } catch (err) {
         if (cancelled) return;
@@ -306,22 +311,15 @@ const JobRequirementList = () => {
     if (page !== currentPage) setPage(currentPage);
   }, [page, currentPage]);
 
-  const showApplicants = useMemo(
-    () => jobs.some((job) => job.hasApplicantCount),
-    [jobs],
-  );
-
   const headings = [
     "Sr.No",
-    "Position",
-    "Vacancies",
-    "Location",
-    "Institute Type",
+    "Position & Location",
+    "Job Type",
     "Job Role",
-    "Category",
-    "Employment Type",
+    "Job Category",
+    "Vacancies",
+    "Applied",
     "Status",
-    ...(showApplicants ? ["Applicants"] : []),
     "Action",
   ];
 
@@ -349,11 +347,9 @@ const JobRequirementList = () => {
         <div className="mx-auto max-w-[1500px] rounded-xl border border-[#e2e8ee] bg-white p-4 shadow-sm sm:p-5">
           {/* Header */}
           <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-[#2c6b8a]">
-                Job Requirement List
-              </h1>
-            </div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-[#2c6b8a]">
+              Job Requirement List
+            </h1>
 
             <div className="flex flex-wrap gap-2">
               <button
@@ -362,7 +358,10 @@ const JobRequirementList = () => {
                 disabled={loading}
                 className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#c9d5dd] px-3 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
               >
-                <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+                <RefreshCw
+                  size={15}
+                  className={loading ? "animate-spin" : ""}
+                />
                 Refresh
               </button>
 
@@ -446,47 +445,61 @@ const JobRequirementList = () => {
                       key={job.id ?? `${job.position}-${index}`}
                       className="border-t border-[#e2e8ee] even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
-                      <td className="whitespace-nowrap px-3 py-3 tabular-nums">
+                      <td
+                        className={`whitespace-nowrap px-3 py-3 text-center tabular-nums ${CELL_TEXT}`}
+                      >
                         {start + index}
                       </td>
 
-                      <td className="px-3 py-3">
-                        <span className="font-medium text-[#2c6b8a]">
+                      <td className={`min-w-[14rem] px-3 py-3 ${CELL_TEXT}`}>
+                        <div className="">
                           {job.position}
-                        </span>
-                        {job.department && (
-                          <span className="block text-xs text-[#60738a]">
-                            {job.department}
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="px-3 py-3 tabular-nums">{job.vacancies}</td>
-
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin size={13} className="shrink-0 text-[#9aa5b1]" />
+                        </div>
+                        
+                        <div className="mt-1 inline-flex items-center gap-1">
+                          <MapPin
+                            size={12}
+                            className="shrink-0 text-[#9aa5b1]"
+                          />
                           {job.location}
+                        </div>
+                      </td>
+
+                      <td className={`px-3 py-3 ${CELL_TEXT}`}>
+                        <span className="">
+                          {job.instituteType}
                         </span>
                       </td>
 
-                      <td className="whitespace-nowrap px-3 py-3">
-                        {job.instituteType}
+                      <td className={`px-3 py-3 ${CELL_TEXT}`}>
+                        <span className="">{job.jobRole}</span>
                       </td>
 
-                      <td className="px-3 py-3">{job.jobRole}</td>
+                      <td className={`px-3 py-3 ${CELL_TEXT}`}>
+                        <Badge
+                          value={job.jobCategory}
+                          tone={TONE.jobCategory}
+                        />
+                      </td>
 
-                      <td className="px-3 py-3">{job.jobCategory}</td>
+                      <td
+                        className={`px-3 py-3 text-center tabular-nums ${CELL_TEXT}`}
+                      >
+                        {job.vacancies}
+                      </td>
 
-                      <td className="px-3 py-3">{job.employmentType}</td>
+                      <td
+                        className={`px-3 py-3 text-center tabular-nums ${CELL_TEXT}`}
+                      >
+                        {job.applied}
+                      </td>
 
-                      <td className="px-3 py-3">{job.status}</td>
-
-                      {showApplicants && (
-                        <td className="px-3 py-3 tabular-nums">
-                          {job.hasApplicantCount ? job.applicants : "-"}
-                        </td>
-                      )}
+                      <td className={`px-3 py-3 ${CELL_TEXT}`}>
+                        <Badge
+                          value={job.isActive ? "Active" : "Inactive"}
+                          tone={job.isActive ? TONE.active : TONE.inactive}
+                        />
+                      </td>
 
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-center gap-2">
@@ -505,7 +518,9 @@ const JobRequirementList = () => {
                           <button
                             type="button"
                             onClick={() =>
-                              navigate(`/employer/job-requirements/${job.id}/edit`)
+                              navigate(
+                                `/employer/job-requirements/${job.id}/edit`,
+                              )
                             }
                             title="Edit job requirement"
                             aria-label={`Edit ${job.position}`}
@@ -581,7 +596,9 @@ const JobRequirementList = () => {
 
               <button
                 type="button"
-                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                onClick={() =>
+                  setPage((value) => Math.min(totalPages, value + 1))
+                }
                 disabled={currentPage >= totalPages || loading}
                 className={`${paginationButton} border-[#dce3eb] bg-white hover:bg-[#e8f1f6]`}
               >
