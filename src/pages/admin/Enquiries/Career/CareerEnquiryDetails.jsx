@@ -31,17 +31,11 @@ const inputClass =
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
-const STATUS_OPTIONS = [
-  { value: 1, label: "In Progress" },
-  { value: 2, label: "On Hold" },
-  { value: 3, label: "Closed" },
-];
-
-const statusIdFromName = (value) => {
+const statusIdFromName = (value, options) => {
   const normalized = String(value ?? "").trim().toLowerCase();
-  return STATUS_OPTIONS.find(
+  return options.find(
     (option) => option.label.toLowerCase() === normalized,
-  )?.value ?? 1;
+  )?.value;
 };
 
 const Stars = ({ value }) => (
@@ -68,6 +62,8 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
   const [savingResponse, setSavingResponse] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
   const [responseSaved, setResponseSaved] = useState(false);
+  const [statusOptions, setStatusOptions] = useState([]);
+  const [statusLoading, setStatusLoading] = useState(true);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -78,9 +74,16 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
       setError("");
 
       try {
-        const data = await adminEnquiryService.getById(formType, id);
+        const [data, loadedStatuses] = await Promise.all([
+          adminEnquiryService.getById(formType, id),
+          adminEnquiryService.getRequestStatuses().catch((err) => {
+            if (!cancelled) setError(err?.message || "Unable to load request statuses.");
+            return [];
+          }),
+        ]);
 
         if (!cancelled) {
+          setStatusOptions(loadedStatuses);
           setRecord(data);
           if (!data) {
             setError("Record not found.");
@@ -94,15 +97,21 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
             setResponseText(savedResponse);
             setResponseSaved(Boolean(savedResponse && savedResponse.trim()));
             const existingStatusId =
+              data?.requestStatusId ??
+              data?.RequestStatusId ??
               data?.statusId ??
               data?.CE_status_id ??
               data?.cE_status_id ??
               data?.enquiry_status_id;
             const existingStatusName =
-              data?.statusName ?? data?.status ?? data?.enquiry_status;
+              data?.requestStatusName ??
+              data?.RequestStatusName ??
+              data?.statusName ??
+              data?.status ??
+              data?.enquiry_status;
             setStatus(
               String(
-                existingStatusId ?? statusIdFromName(existingStatusName),
+                existingStatusId ?? statusIdFromName(existingStatusName, loadedStatuses) ?? loadedStatuses[0]?.value ?? "",
               ),
             );
           }
@@ -114,6 +123,7 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
       } finally {
         if (!cancelled) {
           setLoading(false);
+          setStatusLoading(false);
         }
       }
     }
@@ -330,9 +340,13 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
                         value={status}
                         onChange={(event) => setStatus(event.target.value)}
                         className={selectClass}
-                        disabled={savingResponse || savingStatus}
+                        disabled={statusLoading || savingResponse || savingStatus}
                       >
-                        {STATUS_OPTIONS.map((option) => (
+                        {statusLoading ? (
+                          <option value="">Loading statuses...</option>
+                        ) : statusOptions.length === 0 ? (
+                          <option value="">No statuses available</option>
+                        ) : statusOptions.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>

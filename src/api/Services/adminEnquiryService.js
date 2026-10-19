@@ -22,7 +22,7 @@ export const ENDPOINTS = {
   },
   feedback: {
     list: "/Feedback/GetAllFeedbackPagination",
-    detail: null,
+    detail: "/Feedback",
     activeStatus: null,
     idField: "fB_feedback_id",
   },
@@ -253,6 +253,19 @@ export const adminEnquiryService = {
       },
     );
     return res.data;
+  },
+
+  getRequestStatuses: async () => {
+    const res = await axiosInstance.get("/RequestStatus");
+    const payload = res.data?.data ?? res.data?.Data ?? res.data;
+    if (!Array.isArray(payload)) return [];
+
+    return payload
+      .map((item) => ({
+        value: item.requestStatusId ?? item.RequestStatusId,
+        label: item.name ?? item.Name,
+      }))
+      .filter((item) => item.value !== undefined && item.label);
   },
 
   openFile: async (formType, id) => {
