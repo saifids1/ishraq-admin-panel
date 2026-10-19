@@ -675,7 +675,8 @@ export default function EmployerEdit() {
             type="button"
             onClick={() => navigate(-1)}
             aria-label="Go back"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-white transition hover:bg-slate-50"
+            style={{ backgroundColor: ACCENT }}
           >
             <ChevronsLeft size={18} />
           </button>

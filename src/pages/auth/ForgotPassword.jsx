@@ -194,10 +194,10 @@ const ForgotPassword = () => {
     "w-full rounded-xl bg-gradient-to-r from-[#4a86a4] to-[#2f6b8a] py-3.5 font-semibold text-white shadow-md hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#eef3f5] p-4 sm:p-8">
-      <div className="grid w-full max-w-4xl overflow-hidden rounded-[28px] bg-white shadow-[0_20px_60px_rgba(47,107,138,0.18)] md:grid-cols-2">
+    <div className="flex min-h-screen items-center justify-center bg-[#eef3f5] p-4 ">
+      <div className="grid h-[90vh] w-full max-w-4xl overflow-hidden rounded-[28px] bg-white shadow-[0_20px_60px_rgba(47,107,138,0.18)] md:grid-cols-2">
         {/* Left brand panel */}
-        <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-[#4a86a4] via-[#2f6b8a] to-[#25586f] p-10 text-white md:flex">
+        <div className="relative hidden flex-col  overflow-hidden bg-gradient-to-br from-[#4a86a4] via-[#2f6b8a] to-[#25586f] p-10 text-white md:flex">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/30 bg-white/15">
               <PulseIcon />
@@ -206,7 +206,7 @@ const ForgotPassword = () => {
           </div>
 
           <div>
-            <h2 className="text-4xl font-bold leading-tight">
+            <h2 className="text-4xl mt-14 font-bold leading-tight">
               Where hiring
               <br />
               finds its
@@ -218,21 +218,6 @@ const ForgotPassword = () => {
             </p>
           </div>
 
-          <svg
-            className="mt-10 w-full"
-            viewBox="0 0 400 60"
-            preserveAspectRatio="none"
-            fill="none"
-            aria-hidden="true"
-          >
-            <polyline
-              points="0,32 90,32 105,12 120,50 135,30 155,30 170,24 185,32 400,32"
-              stroke="white"
-              strokeOpacity="0.9"
-              strokeWidth="2"
-              strokeLinejoin="round"
-            />
-          </svg>
         </div>
 
         {/* Right form panel */}

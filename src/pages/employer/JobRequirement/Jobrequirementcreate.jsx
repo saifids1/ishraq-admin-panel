@@ -1,12 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ChevronsLeft,
-  Plus,
+  Activity,
+  Briefcase,
+  Building2,
+  CalendarDays,
+  ClipboardList,
+  Clock,
+  FileText,
+  Globe,
+  GraduationCap,
+  Hotel,
+  Layers,
+  LoaderCircle,
+  MapPin,
   Paperclip,
+  Plus,
+  Tag,
+  Timer,
+  Users,
+  Utensils,
+  Wallet,
   X as CloseIcon,
-  Check as CheckIcon,
-  ChevronDown,
 } from "lucide-react";
 
 import { validate } from "./Jobrequirementdata";
@@ -27,8 +42,17 @@ import {
   getEmployerRequest,
 } from "../../../utils/employerProfile";
 
-const inputCls =
-  "mt-1 w-full rounded-lg border bg-white px-3 text-[15px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:ring-2 focus:ring-[#2c6b8a]/30 disabled:bg-slate-50 disabled:text-slate-500";
+import SelectField from "../../../components/common/SelectField";
+import {
+  ACCENT,
+  Card,
+  Field,
+  IconField,
+  PageHeader,
+  Pill,
+  Toast,
+  inputClass,
+} from "../../../components/common/FormUi";
 
 const EMPTY = {
   instituteTypeId: "",
@@ -61,10 +85,14 @@ const CASCADE_RESETS = {
   stateId: ["cityId"],
 };
 
+const YES_NO = [
+  { value: "No", label: "No" },
+  { value: "Yes", label: "Yes" },
+];
+
 const extractList = (response) => {
   let result = response?.data ?? response;
 
-  // Unwrap standard API response: { success, message, data }
   if (result && !Array.isArray(result) && result.data !== undefined) {
     result = result.data;
   }
@@ -73,7 +101,6 @@ const extractList = (response) => {
     result = result.Data;
   }
 
-  // API may return a single category object instead of an array.
   if (result && !Array.isArray(result) && typeof result === "object") {
     if (result.jC_job_category_id !== undefined) {
       return [result];
@@ -87,6 +114,15 @@ const extractList = (response) => {
 
   return [];
 };
+
+// Converts raw master rows into { value, label } options for SelectField.
+const toOptions = (list, idKey, labelKey) =>
+  list
+    .map((item) => ({
+      value: String(item[idKey] ?? item[idKey.toUpperCase()] ?? ""),
+      label: String(item[labelKey] ?? item[labelKey.toUpperCase()] ?? ""),
+    }))
+    .filter((option) => option.value);
 
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message ||
@@ -135,6 +171,7 @@ const validateCreateForm = (clean) => {
 };
 
 const JobRequirementCreate = () => {
+  const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
   const [employer, setEmployer] = useState(null);
@@ -436,6 +473,13 @@ const JobRequirementCreate = () => {
     };
   }, [form.stateId]);
 
+  useEffect(() => {
+    if (!toast) return undefined;
+
+    const timer = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const onFile = (event) => {
     const selectedFile = event.target.files?.[0];
 
@@ -484,29 +528,14 @@ const JobRequirementCreate = () => {
 
     const validationErrors = validateCreateForm(clean);
 
-    if (!clean.jobRoleId) {
-      validationErrors.jobRoleId = "Select a job role.";
-    }
-
-    if (!clean.jobCategoryId) {
+    if (!clean.jobRoleId) validationErrors.jobRoleId = "Select a job role.";
+    if (!clean.jobCategoryId)
       validationErrors.jobCategoryId = "Select a job category.";
-    }
-
-    if (!clean.countryId) {
-      validationErrors.countryId = "Select a country.";
-    }
-
-    if (!clean.stateId) {
-      validationErrors.stateId = "Select a state.";
-    }
-
-    if (!clean.cityId) {
-      validationErrors.cityId = "Select a city.";
-    }
-
-    if (!clean.employmentTypeId) {
+    if (!clean.countryId) validationErrors.countryId = "Select a country.";
+    if (!clean.stateId) validationErrors.stateId = "Select a state.";
+    if (!clean.cityId) validationErrors.cityId = "Select a city.";
+    if (!clean.employmentTypeId)
       validationErrors.employmentTypeId = "Select an employment type.";
-    }
 
     setErrors(validationErrors);
 
@@ -630,374 +659,355 @@ const JobRequirementCreate = () => {
     }
   };
 
-  useEffect(() => {
-    if (!toast) return undefined;
+  /* ------------------------ FIELD RENDERING --------------------- */
 
-    const timer = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
-  const renderSelect = (
+  const renderSelect = ({
     name,
     label,
-    value,
+    icon,
+    required = false,
     options,
-    idKey,
-    labelKey,
-    placeholder,
+    loading = false,
     disabled = false,
-  ) => (
-    <div>
-      <label
-        htmlFor={name}
-        className="block text-[13px] font-semibold text-[#34445a]"
-      >
-        {label} <span className="text-rose-600">*</span>
-      </label>
-
-      <div className="relative">
-        <select
-          id={name}
-          value={value}
-          disabled={disabled}
-          onChange={(event) => change(name, event.target.value)}
-          className={`${inputCls} h-10 appearance-none border ${
-            errors[name] ? "border-rose-500" : "border-[#c9d5dd]"
-          }`}
-        >
-          <option value="">{placeholder}</option>
-          {options.map((item) => {
-            const id = readField(item, idKey);
-            const labelValue = readField(item, labelKey);
-
-            return (
-              <option key={id} value={String(id)}>
-                {labelValue}
-              </option>
-            );
-          })}
-        </select>
-
-        <ChevronDown
-          size={16}
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+    placeholder,
+  }) => (
+    <Field
+      label={label}
+      htmlFor={name}
+      required={required}
+      error={errors[name]}
+    >
+      <IconField icon={icon}>
+        <SelectField
+          value={form[name] ?? ""}
+          onChange={(next) => change(name, next)}
+          options={options}
+          placeholder={loading ? "Loading..." : placeholder}
+          disabled={disabled || loading || saving}
+          hasError={Boolean(errors[name])}
         />
-      </div>
-
-      {errors[name] && (
-        <p className="mt-1 text-[12px] text-rose-600">{errors[name]}</p>
-      )}
-    </div>
+      </IconField>
+    </Field>
   );
 
-  const renderInput = (
+  const renderInput = ({
     name,
     label,
+    icon,
     type = "text",
     required = false,
+    min,
     full = false,
-  ) => (
-    <div className={full ? "md:col-span-2" : ""}>
-      <label
-        htmlFor={name}
-        className="block text-[13px] font-semibold text-[#34445a]"
-      >
-        {label}
-        {required && <span className="text-rose-600"> *</span>}
-      </label>
-
-      <input
-        id={name}
-        type={type}
-        min={type === "number" ? 1 : undefined}
-        value={form[name] ?? ""}
-        onChange={(event) => change(name, event.target.value)}
-        className={`${inputCls} h-10 border ${
-          errors[name] ? "border-rose-500" : "border-[#c9d5dd]"
-        }`}
-      />
-
-      {errors[name] && (
-        <p className="mt-1 text-[12px] text-rose-600">{errors[name]}</p>
-      )}
-    </div>
+  }) => (
+    <Field
+      label={label}
+      htmlFor={name}
+      required={required}
+      error={errors[name]}
+      className={full ? "sm:col-span-2" : ""}
+    >
+      <IconField icon={icon}>
+        <input
+          id={name}
+          type={type}
+          min={min}
+          value={form[name] ?? ""}
+          disabled={saving}
+          onChange={(event) => change(name, event.target.value)}
+          className={inputClass(Boolean(errors[name]))}
+        />
+      </IconField>
+    </Field>
   );
 
   return (
-    <div className="text-[#1e2b36]">
-      <header
-        className="ep-hero relative mb-4 overflow-hidden rounded-2xl p-4 text-white shadow-sm sm:px-4 sm:py-2"
-        style={{
-          backgroundImage:
-            "linear-gradient(110deg,#17405a 0%,#2f6b8a 40%,#4a9bb3 70%,#2f6b8a 100%)",
-        }}
-      >
-        <div className="relative flex flex-wrap items-center gap-3.5">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white/15 text-white hover:bg-white/25"
-          >
-            <ChevronsLeft size={18} />
-          </button>
-          <h1 className="m-0 text-[22px] font-extrabold sm:text-[26px]">
-            Add Job Requirement
-          </h1>
-        </div>
-      </header>
+    <div className="w-full bg-white text-slate-800">
+      <PageHeader
+        title="Add Job Requirement"
+        onBack={() => navigate(-1)}
+        right={<Pill icon={Plus}>New requirement</Pill>}
+      />
 
-      <main className="mx-auto max-w-[1100px]">
-        <form
-          onSubmit={submit}
-          noValidate
-          autoComplete="off"
-          className="rounded-xl border border-[#e2e8ee] bg-white p-5 shadow-sm"
-        >
+      <form onSubmit={submit} noValidate autoComplete="off">
+        <div className="grid grid-cols-1 gap-4">
           {(loadingMasters || loadingEmployer) && (
-            <p className="mb-4 text-sm text-slate-500">
+            <p className="text-sm text-slate-500">
               {loadingEmployer
                 ? "Loading organization details..."
                 : "Loading master data..."}
             </p>
           )}
 
-          <h2 className="mb-4 border-b pb-2 text-sm font-bold text-[#2f6b8a]">
-            Job Information
-          </h2>
-
-          <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
-            <div>
-              <label className="block text-[13px] font-semibold text-[#34445a]">
-                Job Type <span className="text-rose-600">*</span>
-              </label>
-              <input
-                type="text"
-                readOnly
-                disabled
-                value={
-                  employer?.InstituteTypeName ||
-                  (loadingEmployer ? "Loading..." : "-")
-                }
-                className={`${inputCls} h-10 border border-[#c9d5dd] bg-slate-50`}
-              />
-            </div>
-
-            {renderSelect(
-              "jobRoleId",
-              "Job Role",
-              form.jobRoleId,
-              jobRoles,
-              "jR_job_role_id",
-              "jR_name",
-              loadingRoles ? "Loading job roles..." : "Select Job Role",
-              !form.instituteTypeId || loadingRoles,
-            )}
-
-            {renderSelect(
-              "jobCategoryId",
-              "Job Category",
-              form.jobCategoryId,
-              jobCategories,
-              "jC_job_category_id",
-              "jC_name",
-              loadingCategories
-                ? "Loading job categories..."
-                : "Select Job Category",
-              !form.jobRoleId || loadingCategories,
-            )}
-
-            {renderInput("position", "Position Title", "text", true)}
-            {renderInput("department", "Department / Speciality")}
-            {renderInput("vacancies", "Number of Vacancies", "number", true)}
-            {renderInput("qualification", "Qualification Required")}
-            {renderInput("experience", "Experience Required")}
-            {renderInput("salary", "Salary Range")}
-
-            {renderSelect(
-              "employmentTypeId",
-              "Employment Type",
-              form.employmentTypeId,
-              employmentTypes,
-              "eT_employment_type_id",
-              "eT_name",
-              "Select Employment Type",
-              loadingMasters,
-            )}
-
-            {renderInput("dutyHours", "Duty Hours")}
-
-            <div>
-              <label className="block text-[13px] font-semibold text-[#34445a]">
-                Accommodation
-              </label>
-              <select
-                value={form.accommodation}
-                onChange={(event) =>
-                  change("accommodation", event.target.value)
-                }
-                className={`${inputCls} h-10 border border-[#c9d5dd]`}
-              >
-                <option value="No">No</option>
-                <option value="Yes">Yes</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[13px] font-semibold text-[#34445a]">
-                Food Facility
-              </label>
-              <select
-                value={form.food}
-                onChange={(event) => change("food", event.target.value)}
-                className={`${inputCls} h-10 border border-[#c9d5dd]`}
-              >
-                <option value="No">No</option>
-                <option value="Yes">Yes</option>
-              </select>
-            </div>
-
-            {renderInput("deadline", "Application Deadline", "date")}
-            {renderInput("joiningDate", "Expected Joining Date", "date")}
-
-            <h2 className="mt-3 border-b pb-2 text-sm font-bold text-[#2f6b8a] md:col-span-2">
-              Job Location
-            </h2>
-
-            {renderSelect(
-              "countryId",
-              "Country",
-              form.countryId,
-              countries,
-              "cM_Id",
-              "cM_CountryName",
-              "Select Country",
-              loadingMasters,
-            )}
-
-            {renderSelect(
-              "stateId",
-              "State",
-              form.stateId,
-              states,
-              "sM_Id",
-              "sM_StateName",
-              loadingStates ? "Loading states..." : "Select State",
-              !form.countryId || loadingStates,
-            )}
-
-            {renderSelect(
-              "cityId",
-              "City",
-              form.cityId,
-              cities,
-              "ctM_Id",
-              "ctM_CityName",
-              loadingCities ? "Loading cities..." : "Select City",
-              !form.stateId || loadingCities,
-            )}
-
-            <div className="md:col-span-2">
-              <label
-                htmlFor="description"
-                className="block text-[13px] font-semibold text-[#34445a]"
-              >
-                Job Description
-              </label>
-              <textarea
-                id="description"
-                rows={5}
-                value={form.description}
-                onChange={(event) => change("description", event.target.value)}
-                className={`${inputCls} border border-[#c9d5dd] py-2`}
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <span className="block text-[13px] font-semibold text-[#34445a]">
-                Upload Job Description (optional)
-              </span>
-
-              <div className="mt-1 flex flex-wrap items-center gap-3">
-                <label className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-[#2c6b8a] bg-[#f4f9fb] px-4 text-[14px] font-medium text-[#2c6b8a] hover:bg-[#e8f1f6]">
-                  <Paperclip size={15} />
-                  Choose file
+          <Card title="Job Information" icon={Briefcase}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <Field label="Job Type" htmlFor="jobType">
+                <IconField icon={Building2}>
                   <input
+                    id="jobType"
+                    type="text"
+                    readOnly
+                    disabled
+                    value={
+                      employer?.InstituteTypeName ||
+                      (loadingEmployer ? "Loading..." : "-")
+                    }
+                    className={inputClass(false)}
+                  />
+                </IconField>
+              </Field>
+
+              {renderSelect({
+                name: "jobRoleId",
+                label: "Job Role",
+                icon: Briefcase,
+                required: true,
+                options: toOptions(jobRoles, "jR_job_role_id", "jR_name"),
+                loading: loadingRoles,
+                disabled: !form.instituteTypeId,
+                placeholder: "Select Job Role",
+              })}
+
+              {renderSelect({
+                name: "jobCategoryId",
+                label: "Job Category",
+                icon: Tag,
+                required: true,
+                options: toOptions(
+                  jobCategories,
+                  "jC_job_category_id",
+                  "jC_name",
+                ),
+                loading: loadingCategories,
+                disabled: !form.jobRoleId,
+                placeholder: "Select Job Category",
+              })}
+
+              {renderInput({
+                name: "position",
+                label: "Position Title",
+                icon: ClipboardList,
+                required: true,
+              })}
+              {renderInput({
+                name: "department",
+                label: "Department / Speciality",
+                icon: Layers,
+              })}
+              {renderInput({
+                name: "vacancies",
+                label: "Number of Vacancies",
+                icon: Users,
+                type: "number",
+                required: true,
+                min: 1,
+              })}
+              {renderSelect({
+                name: "employmentTypeId",
+                label: "Employment Type",
+                icon: Activity,
+                required: true,
+                options: toOptions(
+                  employmentTypes,
+                  "eT_employment_type_id",
+                  "eT_name",
+                ),
+                loading: loadingMasters,
+                placeholder: "Select Employment Type",
+              })}
+              {renderInput({
+                name: "qualification",
+                label: "Qualification Required",
+                icon: GraduationCap,
+              })}
+              {renderInput({
+                name: "experience",
+                label: "Experience Required",
+                icon: Clock,
+              })}
+              {renderInput({
+                name: "salary",
+                label: "Salary Range",
+                icon: Wallet,
+              })}
+              {renderInput({
+                name: "dutyHours",
+                label: "Duty Hours",
+                icon: Timer,
+              })}
+            </div>
+          </Card>
+
+          <Card title="Facilities & Dates" icon={CalendarDays}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {renderSelect({
+                name: "accommodation",
+                label: "Accommodation",
+                icon: Hotel,
+                options: YES_NO,
+                placeholder: "Select",
+              })}
+              {renderSelect({
+                name: "food",
+                label: "Food Facility",
+                icon: Utensils,
+                options: YES_NO,
+                placeholder: "Select",
+              })}
+              {renderInput({
+                name: "deadline",
+                label: "Application Deadline",
+                icon: CalendarDays,
+                type: "date",
+              })}
+              {renderInput({
+                name: "joiningDate",
+                label: "Expected Joining Date",
+                icon: CalendarDays,
+                type: "date",
+              })}
+            </div>
+          </Card>
+
+          <Card title="Job Location" icon={MapPin}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {renderSelect({
+                name: "countryId",
+                label: "Country",
+                icon: Globe,
+                required: true,
+                options: toOptions(countries, "cM_Id", "cM_CountryName"),
+                loading: loadingMasters,
+                placeholder: "Select Country",
+              })}
+              {renderSelect({
+                name: "stateId",
+                label: "State",
+                icon: MapPin,
+                required: true,
+                options: toOptions(states, "sM_Id", "sM_StateName"),
+                loading: loadingStates,
+                disabled: !form.countryId,
+                placeholder: form.countryId
+                  ? "Select State"
+                  : "Select Country First",
+              })}
+              {renderSelect({
+                name: "cityId",
+                label: "City",
+                icon: MapPin,
+                required: true,
+                options: toOptions(cities, "ctM_Id", "ctM_CityName"),
+                loading: loadingCities,
+                disabled: !form.stateId,
+                placeholder: form.stateId
+                  ? "Select City"
+                  : "Select State First",
+              })}
+            </div>
+          </Card>
+
+          <Card title="Description & Attachment" icon={FileText}>
+            <div className="grid grid-cols-1 gap-4">
+              <Field label="Job Description" htmlFor="description">
+                <textarea
+                  id="description"
+                  rows={5}
+                  value={form.description}
+                  disabled={saving}
+                  onChange={(event) =>
+                    change("description", event.target.value)
+                  }
+                  className={`${inputClass(false, false)} resize-y`}
+                />
+              </Field>
+
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-slate-500">
+                  Upload Job Description (optional)
+                </span>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed bg-[#f4f9fb] px-4 text-sm font-medium transition hover:bg-[#eaf3f7]"
+                    style={{ color: ACCENT, borderColor: ACCENT }}
+                  >
+                    <Paperclip size={15} />
+                    Choose file
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
                     type="file"
                     accept=".pdf,.doc,.docx"
                     onChange={onFile}
-                    className="sr-only"
+                    className="hidden"
                   />
-                </label>
 
-                {file ? (
-                  <span className="inline-flex items-center gap-2 rounded-full bg-[#e8f1f6] px-3 py-1 text-[13px]">
-                    {file.name}
-                    <button
-                      type="button"
-                      onClick={() => setFile(null)}
-                      aria-label="Remove file"
-                      className="text-[#6b7a88] hover:text-rose-600"
-                    >
-                      <CloseIcon size={14} />
-                    </button>
-                  </span>
-                ) : (
-                  <span className="text-[13px] text-[#6b7a88]">
-                    PDF or Word, up to 5 MB
-                  </span>
-                )}
+                  {file ? (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-[#eaf3f7] px-3 py-1 text-xs text-slate-700">
+                      {file.name}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFile(null);
+                          if (fileInputRef.current)
+                            fileInputRef.current.value = "";
+                        }}
+                        aria-label="Remove file"
+                        className="text-slate-500 hover:text-red-600"
+                      >
+                        <CloseIcon size={14} />
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-500">
+                      PDF or Word, up to 5 MB
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap justify-end gap-2.5 border-t border-[#e2e8ee] pt-4">
-            <button
-              type="button"
-              onClick={resetForm}
-              disabled={saving}
-              className="h-10 rounded-[10px] border border-[#dce3eb] bg-white px-5 text-[14px] font-semibold hover:bg-slate-50"
-            >
-              Clear
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate("/employer/job-requirement-list")}
-              disabled={saving}
-              className="h-10 rounded-[10px] border border-[#dce3eb] bg-white px-5 text-[14px] font-semibold hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="submit"
-              disabled={saving || loadingEmployer}
-              className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#16834f] to-[#2fb877] px-5 text-[14px] font-semibold text-white shadow-md hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus size={16} />
-              {saving ? "Creating..." : "Create Job Requirement"}
-            </button>
-          </div>
-        </form>
-      </main>
-
-      {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="js-toast fixed bottom-5 right-5 z-[60] flex max-w-[calc(100%-2rem)] items-center gap-2.5 rounded-xl bg-[#1e2b36] px-4 py-3 text-sm font-medium text-white shadow-xl"
-        >
-          <span
-            className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${
-              toast.tone === "ok" ? "bg-emerald-500" : "bg-rose-500"
-            }`}
-          >
-            <CheckIcon size={12} strokeWidth={3.4} />
-          </span>
-          {toast.msg}
+          </Card>
         </div>
-      )}
+
+        <div className="mt-4 flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-end">
+          <button
+            type="button"
+            onClick={resetForm}
+            disabled={saving}
+            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          >
+            Clear
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/employer/job-requirement-list")}
+            disabled={saving}
+            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            disabled={saving || loadingEmployer}
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ backgroundColor: ACCENT }}
+          >
+            {saving ? (
+              <LoaderCircle size={15} className="animate-spin" />
+            ) : (
+              <Plus size={15} />
+            )}
+            {saving ? "Creating..." : "Create Job Requirement"}
+          </button>
+        </div>
+      </form>
+
+      <Toast toast={toast} />
     </div>
   );
 };
