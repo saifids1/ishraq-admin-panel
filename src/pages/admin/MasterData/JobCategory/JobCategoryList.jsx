@@ -480,7 +480,7 @@ const JobCategoryList = () => {
                           type="button"
                           title={`View ${row["jC_name"] || "Job Category"}`}
                           aria-label={`View ${row["jC_name"] || "Job Category"}`}
-                          onClick={() => navigate(`/admin/settings/master/job-category/${row.id}/view`)}
+                          onClick={() => navigate(`/admin/settings/master/jobCategory/${row.id}/view`)}
                           className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                         >
                           <ChevronsRight size={14} strokeWidth={2.2} />

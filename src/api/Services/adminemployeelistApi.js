@@ -20,6 +20,9 @@ const baseApi = createMasterApi("Employer");
 const employerApi = {
   ...baseApi,
 
+  // PUT /api/Employer/{id}
+  update: (id, payload) => axiosInstance.put(`/Employer/${id}`, payload),
+
   toggleActive: (id, isActive) =>
     axiosInstance.patch(
       `/Employer/${id}/active-status`,

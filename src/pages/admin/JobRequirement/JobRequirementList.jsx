@@ -10,6 +10,7 @@ import {
   UserRoundCheck,
   UserRoundX,
   ChevronsRight,
+  Pencil,
   Plus,
   BriefcaseBusiness,
   BadgeCheck,
@@ -18,13 +19,13 @@ import {
   Building2,
 } from "lucide-react";
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
-import { EMPLOYMENT_TYPES } from "./Jobrequirementdata";
 import jobRequirementApi from "../../../api/Services/jobRequirementApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
+const EMPLOYMENT_TYPES = ["Full Time", "Part Time", "Contract", "Temporary", "Internship"];
 
 /* ------------------------------ TONES ----------------------------- */
 
@@ -86,74 +87,95 @@ const parseListResponse = (response) => {
   };
 };
 
-const toListRow = (item, srNo) => ({
-  ...item,
-  id: firstValue(
+const toListRow = (item, srNo) => {
+  const status = firstValue(
     item,
-    "JQ_job_requirement_id",
-    "JQ_id",
-    "jobRequirementId",
-    "id",
-  ),
-  organizationName: firstValue(
-    item,
-    "organizationName",
-    "EM_organization_name",
-    "EM_name",
-    "JQ_organization_name",
-    "JQ_organizationName",
-    "organization_name",
-  ),
-  position: firstValue(
-    item,
-    "position",
-    "JQ_position_title",
-    "JQ_position",
-    "JQ_position_required",
-    "positionRequired",
-  ),
-  department: firstValue(
-    item,
-    "department",
-    "JQ_department",
-    "JQ_department_speciality",
-    "departmentSpeciality",
-  ),
-  mobile: firstValue(
-    item,
-    "mobile",
-    "JQ_mobile",
-    "JQ_registered_mobile_number",
-    "registeredMobileNumber",
-  ),
-  employmentType: firstValue(
-    item,
-    "employmentType",
-    "ET_name",
-    "ET_employment_type_name",
-    "JQ_employment_type",
-    "employment_type",
-  ),
-  vacancies: firstValue(
-    item,
-    "vacancies",
-    "JQ_number_of_vacancies",
-    "JQ_vacancies",
-    "numberOfVacancies",
-  ),
-  applicants: firstValue(item, "applicants", "applicantCount", "JQ_applicants") || 0,
-  location: firstValue(
-    item,
-    "location",
-    "JQ_job_location",
-    "jobLocation",
-  ),
-  isActive: [true, 1, "1", "true", "True"].includes(
-    firstValue(item, "JQ_is_active", "isActive"),
-  ),
-  status: firstValue(item, "status", "JQ_status", "jobStatusName", "JS_name") || "-",
-  srNo,
-});
+    "jobStatusName",
+    "status",
+    "JQ_status",
+    "JS_name",
+  );
+  const activeValue = firstValue(item, "jQ_is_active", "JQ_is_active", "isActive");
+  const hasActiveValue = activeValue !== "";
+  const isActive = hasActiveValue
+    ? [true, 1, "1", "true", "True"].includes(activeValue)
+    : status === "Open" || status === "Active";
+
+  return {
+    ...item,
+    id: firstValue(
+      item,
+      "jQ_job_requirement_id",
+      "JQ_job_requirement_id",
+      "JQ_id",
+      "jobRequirementId",
+      "id",
+    ),
+    organizationName: firstValue(
+      item,
+      "employerName",
+      "organizationName",
+      "EM_organization_name",
+      "EM_name",
+      "JQ_organization_name",
+      "JQ_organizationName",
+      "organization_name",
+    ),
+    position: firstValue(
+      item,
+      "jQ_position_title",
+      "JQ_position_title",
+      "position",
+      "JQ_position",
+      "JQ_position_required",
+      "positionRequired",
+    ),
+    department: firstValue(
+      item,
+      "jQ_department_speciality",
+      "JQ_department_speciality",
+      "department",
+      "JQ_department",
+      "departmentSpeciality",
+    ),
+    employmentType: firstValue(
+      item,
+      "employmentTypeName",
+      "employmentType",
+      "ET_name",
+      "ET_employment_type_name",
+      "JQ_employment_type",
+      "employment_type",
+    ),
+    jobCategory: firstValue(
+      item,
+      "jobCategoryName",
+      "jobCategory",
+      "JC_name",
+      "JQ_job_category",
+    ),
+    vacancies: firstValue(
+      item,
+      "jQ_vacancies",
+      "JQ_vacancies",
+      "vacancies",
+      "JQ_number_of_vacancies",
+      "numberOfVacancies",
+    ),
+    applicants:
+      firstValue(item, "appliedCount", "applicants", "applicantCount", "JQ_applicants") || 0,
+    location: firstValue(
+      item,
+      "jobLocationName",
+      "location",
+      "JQ_job_location",
+      "jobLocation",
+    ),
+    isActive,
+    status: hasActiveValue ? (isActive ? status || "Open" : "Closed") : status || "-",
+    srNo,
+  };
+};
 
 /* ------------------------------ COMPONENT ------------------------------ */
 
@@ -189,8 +211,6 @@ const JobRequirementList = () => {
         pageNo: page,
         pageSize,
       };
-      if (query.category !== "All") params.JQ_job_category_id = query.category;
-
       const response = await jobRequirementApi.getAll(params);
       const result = parseListResponse(response);
 
@@ -411,12 +431,12 @@ const JobRequirementList = () => {
             {EMPLOYMENT_TYPES.length > 0 && (
               <div className="relative min-w-[200px] flex-1 xl:flex-none">
                 <select
-                  aria-label="Job Category"
+                  aria-label="Employment Type"
                   value={query.category}
                   onChange={(e) => patchFilter({ category: e.target.value })}
                   className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[15px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
                 >
-                  <option value="All">Job Category: All</option>
+                  <option value="All">Employment Type: All</option>
                   {EMPLOYMENT_TYPES.map((o) => (
                     <option key={o} value={o}>
                       {o}
@@ -601,7 +621,7 @@ const JobRequirementList = () => {
                       <td className={`${td} whitespace-nowrap`}>
                         {row.employmentType ? (
                           <span className="text-[15px] truncate block">
-                            {row.employmentType}
+                            {row.jobCategory}
                           </span>
                         ) : (
                           <span className="text-[#9aa5b1]">-</span>
@@ -620,6 +640,8 @@ const JobRequirementList = () => {
                           >
                             <ChevronsRight size={14} strokeWidth={2.2} />
                           </button>
+
+                         
 
                           <button
                             type="button"
