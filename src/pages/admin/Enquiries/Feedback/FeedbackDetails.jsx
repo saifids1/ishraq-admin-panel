@@ -1,12 +1,86 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronsLeft, FileText } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
 import { getCurrentUserId } from "../../../../utils/authUtils";
 
+/* ------------------------------ HELPERS ------------------------------ */
+
 const formatDate = (value) => {
-  if (!value || Number.isNaN(new Date(value).getTime())) return "-";
-  return new Date(value).toLocaleDateString("en-GB");
+  if (value === null || value === undefined || value === "") return "-";
+  const s = String(value).trim();
+  if (s.startsWith("0001-01-01")) return "-";
+
+  let d;
+  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (plain) {
+    d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
+  } else {
+    d = value instanceof Date ? value : new Date(s);
+  }
+  if (Number.isNaN(d.getTime())) return "-";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
+};
+
+/* ---------- REQUEST STATUS (same palette as Contact/Career list) ---------- */
+
+const REQUEST_STATUS_LABELS = {
+  1: "In Progress",
+  2: "On Hold",
+  3: "Closed",
+};
+
+const REQUEST_STATUS_TONES = {
+  new: { badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20" },
+  inprogress: { badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20" },
+  hold: { badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20" },
+  closed: { badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20" },
+};
+
+const NEUTRAL_BADGE = "bg-slate-500 ring-slate-600 shadow-slate-500/20";
+
+const normalizeRequestStatus = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (raw === "new") return "new";
+  if (["inprogress", "inprocess", "processing", "ongoing"].includes(raw))
+    return "inprogress";
+  if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
+  if (["closed", "close", "completed", "done", "resolved"].includes(raw))
+    return "closed";
+  return null;
+};
+
+const requestToneOf = (value) => {
+  const key = normalizeRequestStatus(value);
+  if (!key) return { badge: NEUTRAL_BADGE, key: null };
+  return { ...REQUEST_STATUS_TONES[key], key };
+};
+
+const requestStatusLabel = (record) => {
+  if (!record) return "";
+  const statusName =
+    record?.requestStatusName ??
+    record?.RequestStatusName ??
+    record?.statusName ??
+    record?.status ??
+    record?.enquiry_status;
+  if (statusName) return String(statusName);
+
+  const statusId =
+    record?.requestStatusId ??
+    record?.RequestStatusId ??
+    record?.statusId ??
+    record?.FB_status_id ??
+    record?.fb_status_id ??
+    record?.enquiry_status_id;
+  if (statusId != null && REQUEST_STATUS_LABELS[Number(statusId)])
+    return REQUEST_STATUS_LABELS[Number(statusId)];
+  return "";
 };
 
 const cfg = {
@@ -18,13 +92,31 @@ const cfg = {
     { key: "FB_contact", label: "Contact" },
     { key: "UserTypeName", label: "You are" },
     { key: "FB_rating", label: "Overall Experience", type: "rating" },
-    { key: "FB_overall_experience", label: "Overall Experience (text)", type: "multiline" },
-    { key: "FB_useful_text", label: "What did you find useful?", type: "multiline" },
-    { key: "FB_improve_text", label: "What can we improve?", type: "multiline" },
-    { key: "FB_suggestions", label: "Additional Suggestions", type: "multiline" },
+    {
+      key: "FB_overall_experience",
+      label: "Overall Experience (text)",
+      type: "multiline",
+    },
+    {
+      key: "FB_useful_text",
+      label: "What did you find useful?",
+      type: "multiline",
+    },
+    {
+      key: "FB_improve_text",
+      label: "What can we improve?",
+      type: "multiline",
+    },
+    {
+      key: "FB_suggestions",
+      label: "Additional Suggestions",
+      type: "multiline",
+    },
     { key: "FB_created_at", label: "Submitted", type: "date" },
   ],
 };
+
+/* ------------------------------ STYLES ------------------------------ */
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
@@ -42,12 +134,14 @@ const statusIdFromName = (value, options) => {
 const Stars = ({ value }) => (
   <span className="inline-flex items-center gap-2">
     <span className="text-lg leading-none">
-      <span className="text-yellow-400">{"â˜…".repeat(Number(value))}</span>
-      <span className="text-slate-300">{"â˜…".repeat(5 - Number(value))}</span>
+      <span className="text-yellow-400">{"★".repeat(Number(value))}</span>
+      <span className="text-slate-300">{"★".repeat(5 - Number(value))}</span>
     </span>
     <span className="text-sm text-slate-500">({value}/5)</span>
   </span>
 );
+
+/* ------------------------------ COMPONENT ------------------------------ */
 
 const FeedbackDetails = ({ formType = "feedback" }) => {
   const { id } = useParams();
@@ -56,13 +150,15 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // ---- Response + Status state ----
   const [responseText, setResponseText] = useState("");
-  const [responseSaved, setResponseSaved] = useState(false);
   const [status, setStatus] = useState("1");
-  const [statusOptions, setStatusOptions] = useState([]);
-  const [statusLoading, setStatusLoading] = useState(true);
   const [savingResponse, setSavingResponse] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [responseSaved, setResponseSaved] = useState(false);
+  const [statusOptions, setStatusOptions] = useState([]);
+  const [statusLoading, setStatusLoading] = useState(true);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -73,11 +169,11 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
       setError("");
 
       try {
-        // Pass the form type, not cfg.endpoint.
         const [data, loadedStatuses] = await Promise.all([
           adminEnquiryService.getById(formType, id),
           adminEnquiryService.getRequestStatuses().catch((err) => {
-            if (!cancelled) setError(err?.message || "Unable to load request statuses.");
+            if (!cancelled)
+              setError(err?.message || "Unable to load request statuses.");
             return [];
           }),
         ]);
@@ -88,28 +184,36 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
           if (!data) {
             setError("Record not found.");
           } else {
+            /* ---- Response: include the API's actual key `fb_responseRetun` ---- */
             const savedResponse =
+              data?.fb_responseRetun ??   // API key (note spelling)
               data?.responseRetun ??
-                data?.responseReturn ??
-                data?.response ??
-                data?.admin_response ??
-                "";
+              data?.responseReturn ??
+              data?.response ??
+              data?.admin_response ??
+              "";
             setResponseText(savedResponse);
             setResponseSaved(Boolean(String(savedResponse).trim()));
+
+            const existingStatusId =
+              data?.requestStatusId ??
+              data?.RequestStatusId ??
+              data?.statusId ??
+              data?.FB_status_id ??
+              data?.fb_status_id ??
+              data?.enquiry_status_id;
+            const existingStatusName =
+              data?.requestStatusName ??
+              data?.RequestStatusName ??
+              data?.statusName ??
+              data?.status ??
+              data?.enquiry_status;
             setStatus(
               String(
-                data?.statusId ??
-                  data?.requestStatusId ??
-                  data?.RequestStatusId ??
-                  data?.FB_status_id ??
-                  data?.fb_status_id ??
-                  statusIdFromName(
-                    data?.requestStatusName ??
-                      data?.RequestStatusName ??
-                      data?.statusName ??
-                      data?.status,
-                    loadedStatuses,
-                  ) ?? loadedStatuses[0]?.value ?? "",
+                existingStatusId ??
+                  statusIdFromName(existingStatusName, loadedStatuses) ??
+                  loadedStatuses[0]?.value ??
+                  "",
               ),
             );
           }
@@ -141,56 +245,9 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
     }
   };
 
-  const handleSubmitResponse = async () => {
-    if (savingResponse) return;
-    const trimmed = responseText.trim();
-    if (!trimmed) {
-      setError("Response cannot be empty.");
-      return;
-    }
-
-    setSavingResponse(true);
-    setError("");
-    setNotice("");
-    try {
-      await adminEnquiryService.updateEnquiryResponse(
-        formType,
-        id,
-        trimmed,
-        Number(getCurrentUserId()) || 0,
-      );
-      setResponseText(trimmed);
-      setNotice("Response submitted successfully.");
-      setResponseSaved(true);
-    } catch (err) {
-      setError(err?.message || "Failed to submit response.");
-    } finally {
-      setSavingResponse(false);
-    }
-  };
-
-  const handleSaveStatus = async () => {
-    if (savingStatus) return;
-    setSavingStatus(true);
-    setError("");
-    setNotice("");
-    try {
-      await adminEnquiryService.updateEnquiryStatus(formType, id, {
-        statusId: Number(status),
-        userId: Number(getCurrentUserId()) || 0,
-        changedAt: new Date().toISOString(),
-      });
-      setNotice("Status updated successfully.");
-    } catch (err) {
-      setError(err?.message || "Failed to update status.");
-    } finally {
-      setSavingStatus(false);
-    }
-  };
-
   const renderValue = (field, value) => {
     if (value === null || value === undefined || value === "") {
-      return <span className="text-slate-400">â€”</span>;
+      return <span className="text-slate-400">—</span>;
     }
 
     switch (field.type) {
@@ -220,154 +277,292 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center text-slate-500">
-        Loading details...
-      </div>
-    );
-  }
+  // ---- Submit response ----
+  const handleSubmitResponse = async () => {
+    if (savingResponse || responseSaved) return;
 
-  if (error || !record) {
-    return (
-      <div className="p-6">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">
-          {error || "Record not found."}
-        </div>
-      </div>
-    );
-  }
+    const trimmed = responseText.trim();
+    if (!trimmed) {
+      setError("Response cannot be empty.");
+      return;
+    }
 
-  const active = Boolean(record[cfg.activeField]);
+    setSavingResponse(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const userId = Number(getCurrentUserId()) || 0;
+      await adminEnquiryService.updateEnquiryResponse(
+        formType,
+        id,
+        trimmed,
+        userId,
+      );
+      setNotice("Response submitted successfully.");
+      setResponseSaved(true);
+      setRecord((prev) =>
+        prev
+          ? { ...prev, fb_responseRetun: trimmed, response: trimmed }
+          : prev,
+      );
+    } catch (err) {
+      setError(err?.message || "Failed to submit response.");
+    } finally {
+      setSavingResponse(false);
+    }
+  };
+
+  // ---- Update status ----
+  const handleSaveStatus = async () => {
+    // Locked once the request is Closed.
+    if (savingStatus || isClosed) return;
+
+    setSavingStatus(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const userId = getCurrentUserId();
+      await adminEnquiryService.updateEnquiryStatus(formType, id, {
+        statusId: Number(status),
+        userId: Number(userId) || 0,
+        changedAt: new Date().toISOString(),
+      });
+      setNotice("Status updated successfully.");
+      const newLabel =
+        statusOptions.find((o) => String(o.value) === String(status))?.label ??
+        null;
+      setRecord((prev) =>
+        prev
+          ? {
+              ...prev,
+              statusId: Number(status),
+              // keep header badge / isClosed in sync immediately
+              statusName: newLabel ?? prev.statusName,
+              requestStatusName: newLabel ?? prev.requestStatusName,
+            }
+          : prev,
+      );
+    } catch (err) {
+      setError(err?.message || "Failed to update status.");
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
+  const title = cfg?.singular || cfg?.title || "Feedback";
+  const pageTitle = `View ${title}`;
+
+  /* ---- Header request-status badge (same colors as list) ---- */
+  const headerStatusLabel = useMemo(() => requestStatusLabel(record), [record]);
+  const headerStatusTone = useMemo(
+    () => requestToneOf(headerStatusLabel),
+    [headerStatusLabel],
+  );
+
+  /* ---- Lock status editing once the request is Closed. ---- */
+  const isClosed = useMemo(
+    () => normalizeRequestStatus(headerStatusLabel) === "closed",
+    [headerStatusLabel],
+  );
 
   return (
-    <div className="bg-[#f4f7f9]">
-      <header
-        className="rounded-2xl p-4 text-white shadow-sm sm:px-4 sm:py-3"
-        style={{
-          backgroundImage:
-            "linear-gradient(110deg,#17405a 0%,#2f6b8a 40%,#4a9bb3 70%,#2f6b8a 100%)",
-        }}
-      >
-        <div className="flex items-center gap-3.5">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            title="Back"
-            aria-label="Back"
-            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-white/15 text-white transition hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-          >
-            <ChevronsLeft size={18} />
-          </button>
+    <div className="min-h-full bg-[#f4f8fb]">
+      <div className="mx-auto">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* Header bar */}
+          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                title="Back"
+                aria-label="Back"
+                className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
+              >
+                <ChevronsLeft size={18} strokeWidth={2} />
+              </button>
 
-          <h1 className="m-0 truncate text-[22px] font-extrabold tracking-tight sm:text-[26px]">
-            {cfg.title}
-          </h1>
-        </div>
-      </header>
-
-      <main className="mx-auto py-4">
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <div className="rounded-lg bg-[#e9f4f7] p-2 text-[#2f6b8a]">
-                <FileText size={18} />
-              </div>
-              <h2 className="font-semibold text-slate-800">Details</h2>
+              <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
-            <span
-              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                active
-                  ? "border-emerald-200 bg-emerald-100 text-emerald-700"
-                  : "border-slate-200 bg-slate-100 text-slate-700"
-              }`}
-            >
-              {active ? "Active" : "Inactive"}
-            </span>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {cfg.detailFields.map((field) => (
-              <div
-                key={field.key}
-                className="grid grid-cols-1 gap-1 px-5 py-4 sm:grid-cols-[220px_1fr] sm:gap-5"
+            {/* Request Status badge — same colors as the list, no icon */}
+            {record && headerStatusLabel && (
+              <span
+                className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${headerStatusTone.badge}`}
               >
-                <div className="text-sm font-medium text-slate-500">
-                  {field.label}
-                </div>
-                <div className="text-sm text-slate-800">
-                  {renderValue(field, record[field.key])}
-                </div>
-              </div>
-            ))}
+                {headerStatusLabel}
+              </span>
+            )}
           </div>
-        </section>
 
-        <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          {/* Error banner */}
           {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
               {error}
             </div>
           )}
+
+          {/* Success notice */}
           {notice && (
-            <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
+            <div className="mx-4 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
               {notice}
             </div>
           )}
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <label htmlFor="feedback-response" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Response
-              </label>
-              <textarea
-                id="feedback-response"
-                value={responseText}
-                onChange={(event) => setResponseText(event.target.value)}
-                rows={4}
-                placeholder="Type your response to this feedback..."
-                className={inputClass}
-                disabled={responseSaved || savingResponse || savingStatus}
-              />
+
+          {/* Loading state */}
+          {loading ? (
+            <div className="flex min-h-[300px] items-center justify-center p-6 text-slate-500">
+              Loading details...
             </div>
-            <div>
-              <label htmlFor="feedback-status" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Request Status
-              </label>
-              <div className="relative">
-                <select
-                  id="feedback-status"
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value)}
-                  className={selectClass}
-                  disabled={statusLoading || savingResponse || savingStatus}
-                >
-                  {statusLoading ? (
-                    <option value="">Loading statuses...</option>
-                  ) : statusOptions.length === 0 ? (
-                    <option value="">No statuses available</option>
-                  ) : statusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
+          ) : record ? (
+            <div className="p-4">
+              {/* Details list */}
+              <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
+                  {cfg.detailFields.map((field) => (
+                    <div key={field.key} className="flex gap-10">
+                      <div className="text-[14px] uppercase tracking-wide mt-1 w-[13rem]">
+                        {field.label} :
+                      </div>
+                      <div className="text-[15px] font-medium mt-0">
+                        {renderValue(field, record[field.key])}
+                      </div>
+                    </div>
                   ))}
-                </select>
-                <ChevronDown size={17} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                </div>
+              </div>
+
+              {/* ---- Merged Response + Status section ---- */}
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                  {/* Response — read-only if already saved */}
+                  <div className="md:col-span-2">
+                    <label
+                      htmlFor="admin-response"
+                      className="mb-1.5 block text-sm font-medium text-slate-700"
+                    >
+                      Response
+                    </label>
+
+                    {responseSaved ? (
+                      <div
+                        id="admin-response"
+                        className="w-full whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700"
+                      >
+                        {responseText || (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </div>
+                    ) : (
+                      <textarea
+                        id="admin-response"
+                        value={responseText}
+                        onChange={(event) =>
+                          setResponseText(event.target.value)
+                        }
+                        rows={4}
+                        placeholder="Type your response to this feedback..."
+                        className={inputClass}
+                        disabled={savingResponse || savingStatus}
+                      />
+                    )}
+                  </div>
+
+                  {/* Status — disabled when request is Closed */}
+                  <div>
+                    <label
+                      htmlFor="status-select"
+                      className="mb-1.5 block text-sm font-medium text-slate-700"
+                    >
+                      Status
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="status-select"
+                        value={status}
+                        onChange={(event) => setStatus(event.target.value)}
+                        className={selectClass}
+                        disabled={
+                          statusLoading ||
+                          savingResponse ||
+                          savingStatus ||
+                          isClosed
+                        }
+                      >
+                        {statusLoading ? (
+                          <option value="">Loading statuses...</option>
+                        ) : statusOptions.length === 0 ? (
+                          <option value="">No statuses available</option>
+                        ) : (
+                          statusOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <ChevronDown
+                        size={17}
+                        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                      />
+                    </div>
+                    {isClosed && (
+                      <p className="mt-1.5 text-xs text-slate-500">
+                        This feedback is closed — status can no longer be
+                        changed.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="flex items-end justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSaveStatus}
+                      disabled={savingStatus || savingResponse || isClosed}
+                      className="inline-flex items-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-5 py-2.5 text-sm font-semibold text-[#2f6b8a] transition hover:bg-[#e9f4f7] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingStatus
+                        ? "Saving..."
+                        : isClosed
+                          ? "Status Locked"
+                          : "Save Status"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSubmitResponse}
+                      disabled={savingResponse || savingStatus || responseSaved}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingResponse
+                        ? "Submitting..."
+                        : responseSaved
+                          ? "Response Saved"
+                          : "Submit Response"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer actions */}
+              <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Back
+                </button>
               </div>
             </div>
-            <div className="flex items-end justify-end gap-3">
-              <button type="button" onClick={handleSaveStatus} disabled={savingStatus || savingResponse} className="rounded-lg border border-[#2f6b8a] bg-white px-5 py-2.5 text-sm font-semibold text-[#2f6b8a] transition hover:bg-[#e9f4f7] disabled:cursor-not-allowed disabled:opacity-60">
-                {savingStatus ? "Saving..." : "Save Status"}
-              </button>
-              <button type="button" onClick={handleSubmitResponse} disabled={savingResponse || savingStatus} className="rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60">
-                {savingResponse ? "Submitting..." : "Submit Response"}
-              </button>
-            </div>
-          </div>
-        </section>
-      </main>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 };
 
 export default FeedbackDetails;
-
-

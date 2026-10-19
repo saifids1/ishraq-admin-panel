@@ -1,11 +1,87 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronsLeft, FileText } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
+import { getCurrentUserId } from "../../../../utils/authUtils";
+
+/* ------------------------------ HELPERS ------------------------------ */
 
 const formatDate = (value) => {
-  if (!value || Number.isNaN(new Date(value).getTime())) return "-";
-  return new Date(value).toLocaleDateString("en-GB");
+  if (value === null || value === undefined || value === "") return "-";
+  const s = String(value).trim();
+  if (s.startsWith("0001-01-01")) return "-";
+
+  let d;
+  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (plain) {
+    d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
+  } else {
+    d = value instanceof Date ? value : new Date(s);
+  }
+  if (Number.isNaN(d.getTime())) return "-";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
+};
+
+/* ---------- REQUEST STATUS (same palette as CareerEnquiryList) ---------- */
+
+const REQUEST_STATUS_LABELS = {
+  1: "In Progress",
+  2: "On Hold",
+  3: "Closed",
+};
+
+const REQUEST_STATUS_TONES = {
+  new: { badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20" },
+  inprogress: { badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20" },
+  hold: { badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20" },
+  closed: { badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20" },
+};
+
+const NEUTRAL_BADGE = "bg-slate-500 ring-slate-600 shadow-slate-500/20";
+
+const normalizeRequestStatus = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (raw === "new") return "new";
+  if (["inprogress", "inprocess", "processing", "ongoing"].includes(raw))
+    return "inprogress";
+  if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
+  if (["closed", "close", "completed", "done", "resolved"].includes(raw))
+    return "closed";
+  return null;
+};
+
+const requestToneOf = (value) => {
+  const key = normalizeRequestStatus(value);
+  if (!key) return { badge: NEUTRAL_BADGE, key: null };
+  return { ...REQUEST_STATUS_TONES[key], key };
+};
+
+/* Resolve the human-readable request-status label from a record. */
+const requestStatusLabel = (record) => {
+  if (!record) return "";
+  const statusName =
+    record?.requestStatusName ??
+    record?.RequestStatusName ??
+    record?.statusName ??
+    record?.status ??
+    record?.enquiry_status;
+  if (statusName) return String(statusName);
+
+  const statusId =
+    record?.requestStatusId ??
+    record?.RequestStatusId ??
+    record?.statusId ??
+    record?.CE_status_id ??
+    record?.cE_status_id ??
+    record?.enquiry_status_id;
+  if (statusId != null && REQUEST_STATUS_LABELS[Number(statusId)])
+    return REQUEST_STATUS_LABELS[Number(statusId)];
+  return "";
 };
 
 const cfg = {
@@ -23,7 +99,8 @@ const cfg = {
     { key: "CE_created_at", label: "Submitted", type: "date" },
   ],
 };
-import { getCurrentUserId } from "../../../../utils/authUtils";
+
+/* ------------------------------ STYLES ------------------------------ */
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
@@ -47,6 +124,8 @@ const Stars = ({ value }) => (
     <span className="text-sm text-slate-500">({value}/5)</span>
   </span>
 );
+
+/* ------------------------------ COMPONENT ------------------------------ */
 
 const CareerEnquiryDetails = ({ formType = "career" }) => {
   const { id } = useParams();
@@ -77,7 +156,8 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
         const [data, loadedStatuses] = await Promise.all([
           adminEnquiryService.getById(formType, id),
           adminEnquiryService.getRequestStatuses().catch((err) => {
-            if (!cancelled) setError(err?.message || "Unable to load request statuses.");
+            if (!cancelled)
+              setError(err?.message || "Unable to load request statuses.");
             return [];
           }),
         ]);
@@ -88,14 +168,17 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
           if (!data) {
             setError("Record not found.");
           } else {
+            /* ---- Response: include the API's actual key `cE_Respose` ---- */
             const savedResponse =
+              data?.cE_Respose ??
               data?.responseRetun ??
               data?.responseReturn ??
               data?.response ??
               data?.admin_response ??
               "";
             setResponseText(savedResponse);
-            setResponseSaved(Boolean(savedResponse && savedResponse.trim()));
+            setResponseSaved(Boolean(String(savedResponse).trim()));
+
             const existingStatusId =
               data?.requestStatusId ??
               data?.RequestStatusId ??
@@ -111,7 +194,10 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
               data?.enquiry_status;
             setStatus(
               String(
-                existingStatusId ?? statusIdFromName(existingStatusName, loadedStatuses) ?? loadedStatuses[0]?.value ?? "",
+                existingStatusId ??
+                  statusIdFromName(existingStatusName, loadedStatuses) ??
+                  loadedStatuses[0]?.value ??
+                  "",
               ),
             );
           }
@@ -177,7 +263,7 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
 
   // ---- Submit response ----
   const handleSubmitResponse = async () => {
-    if (savingResponse) return;
+    if (savingResponse || responseSaved) return;
 
     const trimmed = responseText.trim();
     if (!trimmed) {
@@ -195,7 +281,7 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
       setNotice("Response submitted successfully.");
       setResponseSaved(true);
       setRecord((prev) =>
-        prev ? { ...prev, responseRetun: trimmed, response: trimmed } : prev,
+        prev ? { ...prev, cE_Respose: trimmed, response: trimmed } : prev,
       );
     } catch (err) {
       setError(err?.message || "Failed to submit response.");
@@ -206,7 +292,8 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
 
   // ---- Update status ----
   const handleSaveStatus = async () => {
-    if (savingStatus) return;
+    // Locked once the request is Closed.
+    if (savingStatus || isClosed) return;
 
     setSavingStatus(true);
     setError("");
@@ -232,13 +319,25 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
 
   const title = cfg?.singular || cfg?.title || "Enquiry";
   const pageTitle = `View ${title}`;
-  const active = record ? Boolean(record[cfg.activeField]) : false;
+
+  /* ---- Header request-status badge (same colors as CareerEnquiryList) ---- */
+  const headerStatusLabel = useMemo(() => requestStatusLabel(record), [record]);
+  const headerStatusTone = useMemo(
+    () => requestToneOf(headerStatusLabel),
+    [headerStatusLabel],
+  );
+
+  /* ---- Lock status editing once the request is Closed. ---- */
+  const isClosed = useMemo(
+    () => normalizeRequestStatus(headerStatusLabel) === "closed",
+    [headerStatusLabel],
+  );
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          {/* Header bar — matches CreateJobCategory */}
+          {/* Header bar */}
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
             <div className="flex items-center gap-3">
               <button
@@ -254,15 +353,12 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
-            {record && (
+            {/* Request Status badge — same colors as the list, no icon */}
+            {record && headerStatusLabel && (
               <span
-                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                  active
-                    ? "border-emerald-200 bg-emerald-100 text-emerald-700"
-                    : "border-slate-200 bg-slate-100 text-slate-700"
-                }`}
+                className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${headerStatusTone.badge}`}
               >
-                {active ? "Active" : "Inactive"}
+                {headerStatusLabel}
               </span>
             )}
           </div>
@@ -288,13 +384,13 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
             </div>
           ) : record ? (
             <div className="p-4">
-              {/* Details list — label/value rows */}
+              {/* Details list */}
               <div className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
                   {cfg.detailFields.map((field) => (
                     <div key={field.key} className="flex gap-10">
-                      <div className="text-[14px] uppercase tracking-wide mt-1">
-                        {field.label} : -
+                      <div className="text-[14px] uppercase tracking-wide mt-1 w-[8rem]">
+                        {field.label} :
                       </div>
                       <div className="text-[15px] font-medium mt-0">
                         {renderValue(field, record[field.key])}
@@ -307,7 +403,7 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
               {/* ---- Merged Response + Status section ---- */}
               <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                  {/* Response */}
+                  {/* Response — read-only if already saved */}
                   <div className="md:col-span-2">
                     <label
                       htmlFor="admin-response"
@@ -315,18 +411,32 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
                     >
                       Response
                     </label>
-                    <textarea
-                      id="admin-response"
-                      value={responseText}
-                      onChange={(event) => setResponseText(event.target.value)}
-                      rows={4}
-                      placeholder="Type your response to this enquiry..."
-                      className={inputClass}
-                      disabled={savingResponse || savingStatus || responseSaved}
-                    />
+
+                    {responseSaved ? (
+                      <div
+                        id="admin-response"
+                        className="w-full whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700"
+                      >
+                        {responseText || (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </div>
+                    ) : (
+                      <textarea
+                        id="admin-response"
+                        value={responseText}
+                        onChange={(event) =>
+                          setResponseText(event.target.value)
+                        }
+                        rows={4}
+                        placeholder="Type your response to this enquiry..."
+                        className={inputClass}
+                        disabled={savingResponse || savingStatus}
+                      />
+                    )}
                   </div>
 
-                  {/* Status */}
+                  {/* Status — disabled when request is Closed */}
                   <div>
                     <label
                       htmlFor="status-select"
@@ -340,49 +450,70 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
                         value={status}
                         onChange={(event) => setStatus(event.target.value)}
                         className={selectClass}
-                        disabled={statusLoading || savingResponse || savingStatus}
+                        disabled={
+                          statusLoading ||
+                          savingResponse ||
+                          savingStatus ||
+                          isClosed
+                        }
                       >
                         {statusLoading ? (
                           <option value="">Loading statuses...</option>
                         ) : statusOptions.length === 0 ? (
                           <option value="">No statuses available</option>
-                        ) : statusOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
+                        ) : (
+                          statusOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))
+                        )}
                       </select>
                       <ChevronDown
                         size={17}
                         className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                       />
                     </div>
+                    {isClosed && (
+                      <p className="mt-1.5 text-xs text-slate-500">
+                        This request is closed — status can no longer be
+                        changed.
+                      </p>
+                    )}
                   </div>
 
-                  {/* Buttons aligned to the right of the status row */}
+                  {/* Buttons */}
                   <div className="flex items-end justify-end gap-3">
                     <button
                       type="button"
                       onClick={handleSaveStatus}
-                      disabled={savingStatus || savingResponse}
+                      disabled={savingStatus || savingResponse || isClosed}
                       className="inline-flex items-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-5 py-2.5 text-sm font-semibold text-[#2f6b8a] transition hover:bg-[#e9f4f7] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {savingStatus ? "Saving..." : "Save Status"}
+                      {savingStatus
+                        ? "Saving..."
+                        : isClosed
+                          ? "Status Locked"
+                          : "Save Status"}
                     </button>
 
                     <button
                       type="button"
                       onClick={handleSubmitResponse}
-                      disabled={savingResponse || savingStatus}
+                      disabled={savingResponse || savingStatus || responseSaved}
                       className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {savingResponse ? "Submitting..." : "Submit Response"}
+                      {savingResponse
+                        ? "Submitting..."
+                        : responseSaved
+                          ? "Response Saved"
+                          : "Submit Response"}
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* Footer actions — matches CreateJobCategory */}
+              {/* Footer actions */}
               <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
                 <button
                   type="button"

@@ -111,6 +111,22 @@ export const updateJobRequirementStatusAndDeadline = async (id, payload) => {
 };
 
 
+/* ======================== GET APPLICANTS BY JOB REQUIREMENT ======================== */
+
+export const getApplications = async (
+  jobdescId,
+  { pageNo = 1, pageSize = 10 } = {},
+) => {
+  const response = await axiosInstance.get("/Application", {
+    params: {
+      jobdesc_Id: jobdescId,
+      pageNo,
+      pageSize,
+    },
+  });
+  return response.data;
+};
+
 export const getJobsForJobseeker = async ({
   instituteTypeId,
   jobRoleId,

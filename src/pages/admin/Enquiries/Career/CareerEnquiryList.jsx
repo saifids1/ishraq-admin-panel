@@ -615,7 +615,7 @@ const CareerEnquiryList = ({ formType = "career" }) => {
                           <span
                             className={`${BADGE_BASE} ${reqTone.badge} gap-1`}
                           >
-                            <ReqIcon size={13} strokeWidth={2.5} />
+                            {/* <ReqIcon size={13} strokeWidth={2.5} /> */}
                             {row.statusName || "-"}
                           </span>
                         </div>

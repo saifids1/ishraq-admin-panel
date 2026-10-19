@@ -10,6 +10,10 @@ import {
   UserRoundCheck,
   UserRoundX,
   ChevronsRight,
+  Clock3,
+  Loader2,
+  PauseCircle,
+  CheckCircle2,
   Download,
   Check as CheckIcon,
   AlertTriangle as AlertIcon,
@@ -35,6 +39,15 @@ const formatDate = (value) => {
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   return `${dd}-${mm}-${d.getFullYear()}`;
+};
+
+const readField = (item, key) => {
+  if (!key) return undefined;
+  return (
+    item?.[key] ??
+    item?.[key.charAt(0).toLowerCase() + key.slice(1)] ??
+    item?.[key.charAt(0).toUpperCase() + key.slice(1)]
+  );
 };
 
 /* ------------------------------ CONSTANTS ------------------------------ */
@@ -69,10 +82,89 @@ const TONES = {
 };
 
 const BADGE_BASE =
-  "inline-flex h-7 min-w-[96px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
+  "inline-flex h-7 w-[110px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
 const STATUS_TONES = { Active: "success", Inactive: "danger" };
 const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
+
+/* ---------- REQUEST STATUS (same palette as CareerEnquiryList) ---------- */
+
+const REQUEST_STATUS_LABELS = {
+  1: "In Progress",
+  2: "On Hold",
+  3: "Closed",
+};
+
+const REQUEST_STATUS_TONES = {
+  new: { badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20", icon: Clock3 },
+  inprogress: {
+    badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20",
+    icon: Loader2,
+  },
+  hold: {
+    badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+    icon: PauseCircle,
+  },
+  closed: {
+    badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20",
+    icon: CheckCircle2,
+  },
+};
+
+const normalizeRequestStatus = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (raw === "new") return "new";
+  if (["inprogress", "inprocess", "processing", "ongoing"].includes(raw))
+    return "inprogress";
+  if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
+  if (["closed", "close", "completed", "done", "resolved"].includes(raw))
+    return "closed";
+  return null;
+};
+
+const requestToneOf = (value) => {
+  const key = normalizeRequestStatus(value);
+  if (!key) return { badge: TONES.neutral.badge, icon: ShieldAlert, key: null };
+  return { ...REQUEST_STATUS_TONES[key], key };
+};
+
+const requestStatusOf = (item) => {
+  const statusId =
+    readField(item, "statusId") ??
+    readField(item, "CP_status_id") ??
+    readField(item, "CE_status_id") ??
+    readField(item, "enquiry_status_id");
+  const statusName =
+    readField(item, "statusName") ??
+    readField(item, "CP_status_name") ??
+    readField(item, "status") ??
+    readField(item, "enquiry_status");
+  if (statusName) return String(statusName);
+  if (statusId != null && REQUEST_STATUS_LABELS[Number(statusId)])
+    return REQUEST_STATUS_LABELS[Number(statusId)];
+  return "-";
+};
+
+/* --------------------------- COLUMN DEFINITION --------------------------- */
+
+const TABLE_COLUMNS = [
+  { key: "srNo",        label: "Sr.No",          width: "60px"  },
+  { key: "requestId",   label: "Request ID",     width: "170px" },
+  { key: "name",        label: "Name",           width: "200px" },
+  { key: "email",       label: "Email",          width: "220px" },
+  { key: "mobile",      label: "Mobile",         width: "130px" },
+  { key: "statusName",  label: "Request Status", width: "150px" }, // after Mobile
+  { key: "status",      label: "Status",         width: "140px" }, // after Request Status
+  { key: "category",    label: "Category",       width: "150px" },
+  { key: "userType",    label: "You are",        width: "130px" },
+  { key: "submittedAt", label: "Submitted",      width: "130px" },
+  { key: "actions",     label: "Actions",        width: "130px" },
+];
+
+const TABLE_COL_COUNT = TABLE_COLUMNS.length;
 
 const cfg = {
   title: "Complaints",
@@ -84,17 +176,7 @@ const cfg = {
   categoryLabel: "Category",
   categoryField: "ComplaintCategoryName",
   detailPath: "/admin/complaints",
-  exportFileName: "ishraq-complaints.xlsx",
-  listColumns: [
-    { key: "requestId", label: "Request ID" },
-    { key: "CP_reference_no", label: "Reference" },
-    { key: "CP_full_name", label: "Name" },
-    { key: "CP_email", label: "Email" },
-    { key: "CP_mobile", label: "Mobile" },
-    { key: "ComplaintCategoryName", label: "Category" },
-    { key: "UserTypeName", label: "You are" },
-    { key: "CP_created_at", label: "Submitted", format: formatDate },
-  ],
+  exportFileName: "ishraq-complaints",
 };
 
 const TOAST_ICON = {
@@ -105,20 +187,30 @@ const TOAST_ICON = {
 
 /* ------------------------------ NORMALIZE ------------------------------ */
 
-const toListRow = (item, cfg, srNo) => ({
-  ...item,
-  requestId: item.CP_reference_no,
-  id: item.CP_complaint_id ?? item[cfg.idField],
-  name: item.CP_full_name,
-  email: item.CP_email,
-  mobile: item.CP_mobile,
-  reference: item.CP_reference_no,
-  category: item.ComplaintCategoryName,
-  details: item.CP_details,
-  createdAt: item.CP_created_at,
-  status: item.CP_is_active ? "Active" : "Inactive",
-  srNo,
-});
+const toListRow = (item, cfg, srNo) => {
+  const activeValue = readField(item, cfg.activeField);
+  const isActive = [true, 1, "1", "true", "True"].includes(activeValue);
+
+  return {
+    ...item,
+    id: readField(item, cfg.idField),
+    requestId:
+      readField(item, "CP_reference_no") ??
+      readField(item, "CP_request_no") ??
+      readField(item, "CP_reference"),
+    name: readField(item, "CP_full_name"),
+    email: readField(item, "CP_email"),
+    mobile: readField(item, "CP_mobile"),
+    category:
+      readField(item, "ComplaintCategoryName") ??
+      readField(item, "complaint_category_name"),
+    userType: readField(item, "UserTypeName") ?? readField(item, "user_type_name"),
+    submittedAt: readField(item, "CP_created_at"),
+    status: isActive ? "Active" : "Inactive",
+    statusName: requestStatusOf(item),
+    srNo,
+  };
+};
 
 /* ------------------------------ COMPONENT ------------------------------ */
 
@@ -131,8 +223,6 @@ const ComplaintList = ({ formType = "complaint" }) => {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
 
   const [query, setQuery] = useState({
     search: "",
@@ -158,15 +248,8 @@ const ComplaintList = ({ formType = "complaint" }) => {
           toListRow(item, cfg, (page - 1) * pageSize + i + 1),
         ),
       );
-      setTotalRecords(result.totalRecords ?? list.length);
-      setTotalPages(
-        result.totalPages ??
-          Math.max(1, Math.ceil((result.totalRecords ?? list.length) / pageSize)),
-      );
     } catch (err) {
       setRows([]);
-      setTotalRecords(0);
-      setTotalPages(0);
       setError(err?.message || "Unable to load records.");
     } finally {
       setLoading(false);
@@ -181,27 +264,25 @@ const ComplaintList = ({ formType = "complaint" }) => {
 
   const categories = useMemo(() => {
     if (!cfg.categoryField) return [];
-    return [
-      ...new Set(rows.map((r) => r[cfg.categoryField]).filter(Boolean)),
-    ].sort();
+    return [...new Set(rows.map((r) => r.category).filter(Boolean))].sort();
   }, [rows, cfg]);
 
   /* --------------------------- FILTERED ROWS --------------------------- */
 
-  // Hardcoded searchable keys — no COLUMNS array anymore.
   const filteredRows = useMemo(() => {
     const q = query.search.trim().toLowerCase();
     return rows.filter((r) => {
       if (
         q &&
         ![
+          r.requestId,
           r.name,
           r.email,
           r.mobile,
-          r.reference,
           r.category,
-          r.UserTypeName,
-          formatDate(r.createdAt),
+          r.userType,
+          r.statusName,
+          formatDate(r.submittedAt),
         ].some((v) => String(v ?? "").toLowerCase().includes(q))
       )
         return false;
@@ -209,7 +290,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
       if (
         query.category !== "All" &&
         cfg.categoryField &&
-        r[cfg.categoryField] !== query.category
+        r.category !== query.category
       )
         return false;
       return true;
@@ -217,10 +298,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
   }, [rows, query, cfg]);
 
   const count = filteredRows.length;
-  const totalPagesLocal = Math.max(
-    1,
-    totalPages || Math.ceil(count / pageSize),
-  );
+  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
   const pageRows = filteredRows.slice(start, start + pageSize);
@@ -291,21 +369,21 @@ const ComplaintList = ({ formType = "complaint" }) => {
 
   /* --------------------------- EXPORT --------------------------- */
 
-  // Hardcoded export — no COLUMNS.map.
   const handleExport = async () => {
     if (!cfg.exportFileName) return;
     setExporting(true);
     try {
       const toExportRow = (row, index) => ({
         "Sr.No": (currentPage - 1) * pageSize + index + 1,
-        "Request ID": row.requestId ?? row.reference ?? "",
+        "Request ID": row.requestId ?? "",
         Name: row.name ?? "",
         Email: row.email ?? "",
         Mobile: row.mobile ?? "",
-        Category: row.category ?? "",
-        "User Type": row.UserTypeName ?? "",
-        Submitted: formatDate(row.createdAt),
+        "Request Status": row.statusName ?? "",
         Status: row.status,
+        Category: row.category ?? "",
+        "User Type": row.userType ?? "",
+        Submitted: formatDate(row.submittedAt),
       });
 
       const XLSX = await import("xlsx");
@@ -335,9 +413,6 @@ const ComplaintList = ({ formType = "complaint" }) => {
     "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
-
-  // 1 Sr.No + 6 data columns + Status + Actions = 9
-  const colSpan = 10;
 
   /* --------------------------- RENDER --------------------------- */
 
@@ -435,49 +510,45 @@ const ComplaintList = ({ formType = "complaint" }) => {
       {error && (
         <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <span>{error}</span>
-          <button
-            type="button"
-            onClick={load}
-            className="font-semibold underline"
-          >
+          <button type="button" onClick={load} className="font-semibold underline">
             Retry
           </button>
         </div>
       )}
 
-      {/* TABLE — hardcoded colgroup widths, no .map */}
+      {/* TABLE */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div
           className="common-scrollbar max-h-[55vh] overflow-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[1280px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
             <colgroup>
-              <col style={{ width: "60px" }} />
-              <col style={{ width: "140px" }} />
-              <col style={{ width: "200px" }} />
-              <col style={{ width: "200px" }} />
-              <col style={{ width: "100px" }} />
-              <col style={{ width: "100px" }} />
-              <col style={{ width: "110px" }} />
-              <col style={{ width: "110px" }} />
+              {TABLE_COLUMNS.map((c) => (
+                <col key={c.key} style={{ width: c.width }} />
+              ))}
             </colgroup>
+
             <thead className="sticky top-0 z-10">
               <tr>
-                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Sr.No</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Request ID</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Name</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Email</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Mobile</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Submitted</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-20`}>Status</th>
-                <th scope="col" className={`${thClass} sticky right-0 top-0 z-30`}>Actions</th>
+                {TABLE_COLUMNS.map((c) => (
+                  <th
+                    key={c.key}
+                    scope="col"
+                    className={`${thClass} ${
+                      c.key === "actions" ? "sticky right-0 top-0 z-30" : ""
+                    }`}
+                  >
+                    {c.label}
+                  </th>
+                ))}
               </tr>
             </thead>
+
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={colSpan} className="px-4 py-12 text-center">
+                  <td colSpan={TABLE_COL_COUNT} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center">
                       <span
                         aria-hidden="true"
@@ -492,7 +563,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={colSpan}
+                    colSpan={TABLE_COL_COUNT}
                     className="border-t border-[#e2e8ee] px-4 py-12 text-center"
                   >
                     <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
@@ -504,114 +575,149 @@ const ComplaintList = ({ formType = "complaint" }) => {
                   </td>
                 </tr>
               ) : (
-                pageRows.map((row, index) => (
-                  <tr
-                    key={row.id ?? index}
-                    style={{
-                      animationDelay: `${Math.min(index, 12) * 35}ms`,
-                    }}
-                    className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
-                  >
-                    <td className={`${td} tabular-nums`}>
-                      {start + index + 1}
-                    </td>
+                pageRows.map((row, index) => {
+                  const reqTone = requestToneOf(row.statusName);
+                  const ReqIcon = reqTone.icon;
+                  return (
+                    <tr
+                      key={row.id ?? index}
+                      style={{
+                        animationDelay: `${Math.min(index, 12) * 35}ms`,
+                      }}
+                      className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                    >
+                      <td className={`${td} tabular-nums`}>
+                        {start + index + 1}
+                      </td>
 
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row.reference ?? "-"}
-                      </div>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row.name ?? "-"}
-                      </div>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row.email ?? "-"}
-                      </div>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row.mobile ?? "-"}
-                      </div>
-                    </td>
-                  
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row.createdAt)}
-                      </div>
-                    </td>
+                      {/* Request ID */}
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.requestId ?? "-"}
+                        </div>
+                      </td>
+                      {/* Name */}
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.name ?? "-"}
+                        </div>
+                      </td>
+                      {/* Email */}
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.email ?? "-"}
+                        </div>
+                      </td>
+                      {/* Mobile */}
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.mobile ?? "-"}
+                        </div>
+                      </td>
 
-                    <td className={`${td} whitespace-nowrap text-center`}>
-                      <span
-                        className={`${BADGE_BASE} ${toneOf(row.status).badge}`}
-                      >
-                        {row.status || "-"}
-                      </span>
-                    </td>
+                      {/* Request Status — right after Mobile */}
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <div className="w-full min-w-0 truncate">
+                          <span className={`${BADGE_BASE} ${reqTone.badge} gap-1`}>
+                            {/* <ReqIcon size={13} strokeWidth={2.5} /> */}
+                            {row.statusName || "-"}
+                          </span>
+                        </div>
+                      </td>
 
-                    <td className={`${td} sticky right-0 z-20 bg-white text-center group-hover:bg-[#e8f1f6]`}>
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          title={`View ${row[cfg.titleField] || "Record"}`}
-                          aria-label={`View ${row[cfg.titleField] || "Record"}`}
-                          onClick={() =>
-                            navigate(`${cfg.detailPath}/${row.id}`)
-                          }
-                          className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                        >
-                          <ChevronsRight size={14} strokeWidth={2.2} />
-                        </button>
-
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={row.status === "Active"}
-                          aria-label={
-                            row.status === "Active"
-                              ? `Deactivate ${row[cfg.titleField] || "Record"}`
-                              : `Activate ${row[cfg.titleField] || "Record"}`
-                          }
-                          title={
-                            row.status === "Active"
-                              ? "Active. Click to deactivate"
-                              : "Not active. Click to activate"
-                          }
-                          onClick={() => askToggle(row)}
-                          className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
-                            row.status === "Active"
-                              ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                              : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                          }`}
-                        >
+                      {/* Status — right after Request Status */}
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <div className="w-full min-w-0 truncate">
                           <span
-                            className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                            className={`${BADGE_BASE} ${toneOf(row.status).badge}`}
+                          >
+                            {row.status || "-"}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Category */}
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.category ?? "-"}
+                        </div>
+                      </td>
+                      {/* You are */}
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.userType ?? "-"}
+                        </div>
+                      </td>
+                      {/* Submitted */}
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <div className="w-full min-w-0 truncate">
+                          {formatDate(row.submittedAt)}
+                        </div>
+                      </td>
+
+                      {/* Actions — sticky right */}
+                      <td
+                        className={`${td} sticky right-0 z-20 justify-center bg-white text-center group-hover:bg-[#e8f1f6]`}
+                      >
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            title={`View ${row[cfg.titleField] || "Record"}`}
+                            aria-label={`View ${row[cfg.titleField] || "Record"}`}
+                            onClick={() => navigate(`${cfg.detailPath}/${row.id}`)}
+                            className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                          >
+                            <ChevronsRight size={14} strokeWidth={2.2} />
+                          </button>
+
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={row.status === "Active"}
+                            aria-label={
                               row.status === "Active"
-                                ? "translate-x-[18px]"
-                                : "translate-x-0"
+                                ? `Deactivate ${row[cfg.titleField] || "Record"}`
+                                : `Activate ${row[cfg.titleField] || "Record"}`
+                            }
+                            title={
+                              row.status === "Active"
+                                ? "Active. Click to deactivate"
+                                : "Not active. Click to activate"
+                            }
+                            onClick={() => askToggle(row)}
+                            className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
+                              row.status === "Active"
+                                ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                                : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
                             }`}
                           >
-                            {row.status === "Active" ? (
-                              <UserRoundCheck
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-emerald-700"
-                              />
-                            ) : (
-                              <UserRoundX
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-rose-700"
-                              />
-                            )}
-                          </span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                            <span
+                              className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                                row.status === "Active"
+                                  ? "translate-x-[18px]"
+                                  : "translate-x-0"
+                              }`}
+                            >
+                              {row.status === "Active" ? (
+                                <UserRoundCheck
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-emerald-700"
+                                />
+                              ) : (
+                                <UserRoundX
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-rose-700"
+                                />
+                              )}
+                            </span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -652,10 +758,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
           </label>
         </div>
 
-        <nav
-          aria-label="Pagination"
-          className="flex flex-wrap items-center gap-1"
-        >
+        <nav aria-label="Pagination" className="flex flex-wrap items-center gap-1">
           <button
             type="button"
             onClick={() => setPage(currentPage - 1)}
@@ -761,9 +864,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
                     disabled={busy}
                     className={`h-10 flex-1 cursor-pointer rounded-[10px] bg-gradient-to-r ${core} text-[13.5px] font-semibold text-white shadow-md hover:brightness-105 active:scale-[0.98] disabled:opacity-60`}
                   >
-                    {busy
-                      ? "Saving..."
-                      : `Yes, set ${confirm.next.toLowerCase()}`}
+                    {busy ? "Saving..." : `Yes, set ${confirm.next.toLowerCase()}`}
                   </button>
                 </div>
               </div>
@@ -782,9 +883,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
               aria-live="polite"
               className="js-toast fixed bottom-5 right-5 z-[60] flex items-center gap-2.5 rounded-xl border border-white/10 bg-[#1e2b36] px-4 py-3 text-[15px] font-medium text-white shadow-2xl"
             >
-              <span
-                className={`grid h-5 w-5 place-items-center rounded-full ${bg}`}
-              >
+              <span className={`grid h-5 w-5 place-items-center rounded-full ${bg}`}>
                 <Icon size={12} strokeWidth={3} />
               </span>
               {toast.msg}

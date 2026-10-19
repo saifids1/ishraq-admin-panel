@@ -10,10 +10,10 @@ import {
   UserRoundCheck,
   UserRoundX,
   ChevronsRight,
-  Download,
-  Check as CheckIcon,
-  AlertTriangle as AlertIcon,
-  X as XIcon,
+  Clock3,
+  Loader2,
+  PauseCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
 
@@ -69,15 +69,44 @@ const TONES = {
 };
 
 const BADGE_BASE =
-  "inline-flex h-7 min-w-[96px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
+  "inline-flex h-7 w-[110px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
 const STATUS_TONES = { Active: "success", Inactive: "danger" };
 const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
+
+/* ---------- REQUEST STATUS (same palette as CareerEnquiryList) ---------- */
 
 const REQUEST_STATUS_LABELS = {
   1: "In Progress",
   2: "On Hold",
   3: "Closed",
+};
+
+const REQUEST_STATUS_TONES = {
+  new: { badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20" },
+  inprogress: { badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20" },
+  hold: { badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20" },
+  closed: { badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20" },
+};
+
+const normalizeRequestStatus = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (raw === "new") return "new";
+  if (["inprogress", "inprocess", "processing", "ongoing"].includes(raw))
+    return "inprogress";
+  if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
+  if (["closed", "close", "completed", "done", "resolved"].includes(raw))
+    return "closed";
+  return null;
+};
+
+const requestToneOf = (value) => {
+  const key = normalizeRequestStatus(value);
+  if (!key) return { badge: TONES.neutral.badge, key: null };
+  return { ...REQUEST_STATUS_TONES[key], key };
 };
 
 const requestStatusOf = (item) => {
@@ -94,17 +123,63 @@ const requestStatusOf = (item) => {
   return "-";
 };
 
-const TOAST_ICON = {
-  ok: { bg: "bg-emerald-500", Icon: CheckIcon },
-  warn: { bg: "bg-amber-500", Icon: AlertIcon },
-  err: { bg: "bg-rose-500", Icon: XIcon },
+/* --------------------------- COLUMN DEFINITION --------------------------- */
+/* Used for search only. */
+const COLUMNS = [
+  { key: "name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "mobile", label: "Mobile" },
+  { key: "subject", label: "Subject" },
+  { key: "message", label: "Message" },
+  { key: "createdAt", label: "Submitted", format: formatDate },
+];
+
+/* Visible table columns — matches CareerEnquiryList's shape.
+   Order: Sr.No → Request ID → Name → Email → Mobile → Subject
+          → Request Status → Status → Actions */
+const TABLE_COLUMNS = [
+  { key: "srNo",        label: "Sr.No",          width: "60px"  },
+  { key: "requestId",   label: "Request ID",     width: "160px" },
+  { key: "name",        label: "Name",           width: "200px" },
+  { key: "email",       label: "Email",          width: "220px" },
+  { key: "mobile",      label: "Mobile",         width: "130px" },
+  { key: "subject",     label: "Subject",        width: "200px" },
+  { key: "statusName",  label: "Request Status", width: "150px" },
+  { key: "status",      label: "Status",         width: "140px" },
+  { key: "actions",     label: "Actions",        width: "130px" },
+];
+
+const TABLE_COL_COUNT = TABLE_COLUMNS.length;
+
+const cfg = {
+  title: "Contact Enquiries",
+  entityName: "Contact enquiry",
+  idField: "CN_contact_enquiry_id",
+  activeField: "CN_is_active",
+  titleField: "CN_full_name",
+  searchPlaceholder: "Search by name, email, mobile or subject",
+  categoryField: null,
+  detailPath: "/admin/contact",
+  listColumns: [
+    { key: "requestId", label: "Request ID" },
+    { key: "CN_full_name", label: "Name" },
+    { key: "CN_email", label: "Email" },
+    { key: "CN_mobile", label: "Mobile" },
+    { key: "UserTypeName", label: "You are" },
+    { key: "CN_subject", label: "Subject" },
+    { key: "CN_created_at", label: "Submitted", format: formatDate },
+  ],
 };
 
 /* ------------------------------ NORMALIZE ------------------------------ */
 
 const toListRow = (item, cfg, srNo) => ({
   ...item,
-  requestId: item.cN_request_no ?? item.CN_request_no ?? item.cN_reference_no ?? item.CN_reference_no,
+  requestId:
+    item.cN_request_no ??
+    item.CN_request_no ??
+    item.cN_reference_no ??
+    item.CN_reference_no,
   id: item.cN_contact_enquiry_id ?? item[cfg.idField],
   name: item.cN_full_name,
   email: item.cN_email,
@@ -118,56 +193,6 @@ const toListRow = (item, cfg, srNo) => ({
   srNo,
 });
 
-/* --------------------------- COLUMN DEFINITION --------------------------- */
-/* Used for search + export only. */
-const COLUMNS = [
-  { key: "name", label: "Name" },
-  { key: "email", label: "Email" },
-  { key: "mobile", label: "Mobile" },
-  { key: "subject", label: "Subject" },
-  { key: "message", label: "Message" },
-  { key: "createdAt", label: "Submitted", format: formatDate },
-];
-
-/* Visible table columns — matches CityList's shape (fixed colgroup, matching
-   sr.No + N data + Status + Actions). Widths intentionally mirror CityList:
-   60px for srNo, auto for the two most variable text columns, fixed for the rest. */
-const TABLE_COLUMNS = [
-  { key: "srNo",      label: "Sr.No",      width: "60px"  },
-  { key: "requestId", label: "Request ID", width: "140px" },
-  { key: "name",      label: "Name",       width: "200px"  },
-  { key: "email",     label: "Email",      width: "220px"  },
-  { key: "mobile",    label: "Mobile",     width: "130px" },
-  { key: "subject",   label: "Subject",    width: "200px" },
-  { key: "createdAt", label: "Submitted",  width: "130px" },
-  { key: "status",    label: "Status",     width: "130px" },
-  { key: "statusName",label: "Request Status", width: "150px" },
-  { key: "actions",   label: "Actions",    width: "130px" },
-];
-
-const TABLE_COL_COUNT = TABLE_COLUMNS.length; // 9
-
-const cfg = {
-  title: "Contact Enquiries",
-  entityName: "Contact enquiry",
-  idField: "CN_contact_enquiry_id",
-  activeField: "CN_is_active",
-  titleField: "CN_full_name",
-  searchPlaceholder: "Search by name, email, mobile or subject",
-  categoryField: null,
-  detailPath: "/admin/contact",
-  exportFileName: "ishraq-contact-enquiries.xlsx",
-  listColumns: [
-    { key: "requestId", label: "Request ID" },
-    { key: "CN_full_name", label: "Name" },
-    { key: "CN_email", label: "Email" },
-    { key: "CN_mobile", label: "Mobile" },
-    { key: "UserTypeName", label: "You are" },
-    { key: "CN_subject", label: "Subject" },
-    { key: "CN_created_at", label: "Submitted", format: formatDate },
-  ],
-};
-
 /* ------------------------------ COMPONENT ------------------------------ */
 
 const ContactEnquiryList = ({ formType = "contact" }) => {
@@ -179,8 +204,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
 
   const [query, setQuery] = useState({
     search: "",
@@ -191,7 +214,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
-  const [exporting, setExporting] = useState(false);
 
   /* --------------------------- FETCH --------------------------- */
 
@@ -206,15 +228,8 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
           toListRow(item, cfg, (page - 1) * pageSize + i + 1),
         ),
       );
-      setTotalRecords(result.totalRecords ?? list.length);
-      setTotalPages(
-        result.totalPages ??
-          Math.max(1, Math.ceil((result.totalRecords ?? list.length) / pageSize)),
-      );
     } catch (err) {
       setRows([]);
-      setTotalRecords(0);
-      setTotalPages(0);
       setError(err?.message || "Unable to load records.");
     } finally {
       setLoading(false);
@@ -260,10 +275,7 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
   }, [rows, query, cfg]);
 
   const count = filteredRows.length;
-  const totalPagesLocal = Math.max(
-    1,
-    totalPages || Math.ceil(count / pageSize),
-  );
+  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
   const pageRows = filteredRows.slice(start, start + pageSize);
@@ -332,42 +344,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
     }
   };
 
-  /* --------------------------- EXPORT --------------------------- */
-
-  const handleExport = async () => {
-    if (!cfg.exportFileName) return;
-    setExporting(true);
-    try {
-      const toExportRow = (row, index) => ({
-        "Sr.No": (currentPage - 1) * pageSize + index + 1,
-        ...Object.fromEntries(
-          COLUMNS.map((c) => [
-            c.label,
-            c.format ? c.format(row[c.key], row) : (row[c.key] ?? ""),
-          ]),
-        ),
-        Status: row.status,
-        "Request Status": row.statusName ?? "",
-      });
-
-      const XLSX = await import("xlsx");
-      const data = filteredRows.map(toExportRow);
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, cfg.title || "Sheet1");
-      XLSX.writeFile(wb, `${cfg.exportFileName}.xlsx`);
-      setToast({ id: Date.now(), tone: "ok", msg: "Export ready" });
-    } catch (err) {
-      setToast({
-        id: Date.now(),
-        tone: "err",
-        msg: err?.message || "Export failed",
-      });
-    } finally {
-      setExporting(false);
-    }
-  };
-
   /* --------------------------- STYLES --------------------------- */
 
   const pageBtn =
@@ -375,8 +351,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
   const td =
     "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
-  /* Matches CityList exactly: gradient only (no solid fallback needed — the
-     two-table pattern means the header table has no scrolling ancestor). */
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
@@ -446,8 +420,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
               />
             </div>
           )}
-
-         
         </div>
       </div>
       <div
@@ -469,14 +441,13 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
         </div>
       )}
 
-      {/* TABLE — two-table pattern matching CityList.
-          Header table stays fixed; only the body scrolls. */}
+      {/* TABLE */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div
           className="common-scrollbar max-h-[55vh] overflow-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[1000px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
             <colgroup>
               {TABLE_COLUMNS.map((c) => (
                 <col key={c.key} style={{ width: c.width }} />
@@ -486,7 +457,13 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
             <thead className="sticky top-0 z-10">
               <tr>
                 {TABLE_COLUMNS.map((c) => (
-                  <th key={c.key} scope="col" className={`${thClass} ${c.key === "actions" ? "sticky right-0 top-0 z-30" : ""}`}>
+                  <th
+                    key={c.key}
+                    scope="col"
+                    className={`${thClass} ${
+                      c.key === "actions" ? "sticky right-0 top-0 z-30" : ""
+                    }`}
+                  >
                     {c.label}
                   </th>
                 ))}
@@ -523,129 +500,132 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
                   </td>
                 </tr>
               ) : (
-                pageRows.map((row, index) => (
-                  <tr
-                    key={row.id ?? index}
-                    style={{
-                      animationDelay: `${Math.min(index, 12) * 35}ms`,
-                    }}
-                    className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
-                  >
-                    <td className={`${td} tabular-nums`}>
-                      {start + index + 1}
-                    </td>
+                pageRows.map((row, index) => {
+                  const reqTone = requestToneOf(row.statusName);
+                  return (
+                    <tr
+                      key={row.id ?? index}
+                      style={{
+                        animationDelay: `${Math.min(index, 12) * 35}ms`,
+                      }}
+                      className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                    >
+                      <td className={`${td} tabular-nums`}>
+                        {start + index + 1}
+                      </td>
 
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">{row.requestId ?? "-"}</div>
-                    </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.requestId ?? "-"}
+                        </div>
+                      </td>
 
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row.name ?? "-"}
-                      </div>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row.email ?? "-"}
-                      </div>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row.mobile ?? "-"}
-                      </div>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row.subject ?? "-"}
-                      </div>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row.createdAt)}
-                      </div>
-                    </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.name ?? "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.email ?? "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.mobile ?? "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.subject ?? "-"}
+                        </div>
+                      </td>
 
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        <span
-                          className={`${BADGE_BASE} ${toneOf(row.status).badge}`}
-                        >
-                          {row.status || "-"}
-                        </span>
-                      </div>
-                    </td>
+                      {/* Request Status — plain badge, no icon */}
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <div className="w-full min-w-0 truncate">
+                          <span className={`${BADGE_BASE} ${reqTone.badge}`}>
+                            {row.statusName || "-"}
+                          </span>
+                        </div>
+                      </td>
 
-                    <td className={`${td} whitespace-nowrap text-center`}>
-                      <div className="w-full min-w-0 truncate">
-                        <span
-                          className={`${BADGE_BASE} ${toneOf(row.status).badge}`}
-                        >
-                          {row.statusName || "-"}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className={`${td} sticky right-0 z-20 justify-center bg-white text-center group-hover:bg-[#e8f1f6]`}>
-                      <div className="flex items-center justify-center text-center gap-2">
-                        <button
-                          type="button"
-                          title={`View ${row[cfg.titleField] || "Record"}`}
-                          aria-label={`View ${row[cfg.titleField] || "Record"}`}
-                          onClick={() =>
-                            navigate(`${cfg.detailPath}/${row.id}`)
-                          }
-                          className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                        >
-                          <ChevronsRight size={14} strokeWidth={2.2} />
-                        </button>
-
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={row.status === "Active"}
-                          aria-label={
-                            row.status === "Active"
-                              ? `Deactivate ${row[cfg.titleField] || "Record"}`
-                              : `Activate ${row[cfg.titleField] || "Record"}`
-                          }
-                          title={
-                            row.status === "Active"
-                              ? "Active. Click to deactivate"
-                              : "Not active. Click to activate"
-                          }
-                          onClick={() => askToggle(row)}
-                          className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
-                            row.status === "Active"
-                              ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                              : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                          }`}
-                        >
+                      {/* Status — Active / Inactive */}
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <div className="w-full min-w-0 truncate">
                           <span
-                            className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                            className={`${BADGE_BASE} ${toneOf(row.status).badge}`}
+                          >
+                            {row.status || "-"}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Actions — sticky right */}
+                      <td
+                        className={`${td} sticky right-0 z-20 justify-center bg-white text-center group-hover:bg-[#e8f1f6]`}
+                      >
+                        <div className="flex items-center justify-center text-center gap-2">
+                          <button
+                            type="button"
+                            title={`View ${row[cfg.titleField] || "Record"}`}
+                            aria-label={`View ${row[cfg.titleField] || "Record"}`}
+                            onClick={() =>
+                              navigate(`${cfg.detailPath}/${row.id}`)
+                            }
+                            className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                          >
+                            <ChevronsRight size={14} strokeWidth={2.2} />
+                          </button>
+
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={row.status === "Active"}
+                            aria-label={
                               row.status === "Active"
-                                ? "translate-x-[18px]"
-                                : "translate-x-0"
+                                ? `Deactivate ${row[cfg.titleField] || "Record"}`
+                                : `Activate ${row[cfg.titleField] || "Record"}`
+                            }
+                            title={
+                              row.status === "Active"
+                                ? "Active. Click to deactivate"
+                                : "Not active. Click to activate"
+                            }
+                            onClick={() => askToggle(row)}
+                            className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
+                              row.status === "Active"
+                                ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                                : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
                             }`}
                           >
-                            {row.status === "Active" ? (
-                              <UserRoundCheck
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-emerald-700"
-                              />
-                            ) : (
-                              <UserRoundX
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-rose-700"
-                              />
-                            )}
-                          </span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                            <span
+                              className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                                row.status === "Active"
+                                  ? "translate-x-[18px]"
+                                  : "translate-x-0"
+                              }`}
+                            >
+                              {row.status === "Active" ? (
+                                <UserRoundCheck
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-emerald-700"
+                                />
+                              ) : (
+                                <UserRoundX
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-rose-700"
+                                />
+                              )}
+                            </span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -805,8 +785,7 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
           );
         })()}
 
-      {/* TOAST — matches CityList exactly (icon is the hardcoded ✓; only
-          the circle color reflects tone). */}
+      {/* TOAST */}
       {toast && (
         <div
           key={toast.id}
