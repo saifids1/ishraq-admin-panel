@@ -16,10 +16,11 @@ import {
   BadgeCheck,
   UserPlus,
   Users,
-  Building2,
+  Building2,Flag ,
 } from "lucide-react";
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
 import jobRequirementApi from "../../../api/Services/jobRequirementApi";
+import jobStatusApi from "../../../api/Services/jobStatusApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
@@ -62,11 +63,16 @@ const BADGE_BASE =
 const STATUS_TONES = {
   Open: "success",
   Closed: "danger",
+  Hold: "warning",
   Active: "success",
   Inactive: "danger",
 };
 
 const toneOf = (value) => TONES[STATUS_TONES[value]] ?? TONES.neutral;
+
+const dateInputValue = (value) => (value ? String(value).slice(0, 10) : "");
+
+const apiDateValue = (value) => (value ? `${value}T00:00:00.000Z` : null);
 
 /* ------------------------------ NORMALIZE ------------------------------ */
 
@@ -172,7 +178,15 @@ const toListRow = (item, srNo) => {
       "jobLocation",
     ),
     isActive,
-    status: hasActiveValue ? (isActive ? status || "Open" : "Closed") : status || "-",
+    status: hasActiveValue ? (isActive ? "Active" : "Inactive") : status || "-",
+    requirementStatus: status || "-",
+    requirementStatusId: firstValue(
+      item,
+      "jQ_job_status_id",
+      "JQ_job_status_id",
+      "jobStatusId",
+    ),
+    deadline: firstValue(item, "jQ_deadline", "JQ_deadline", "deadline"),
     srNo,
   };
 };
@@ -200,6 +214,15 @@ const JobRequirementList = () => {
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
+  const [statusDialog, setStatusDialog] = useState(null);
+  const [jobStatuses, setJobStatuses] = useState([]);
+  const [statusForm, setStatusForm] = useState({
+    jobStatusId: "",
+    deadline: "",
+  });
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusError, setStatusError] = useState("");
 
   /* --------------------------- FETCH --------------------------- */
 
@@ -370,6 +393,65 @@ const JobRequirementList = () => {
     }
   };
 
+  const openStatusDialog = async (row) => {
+    setStatusDialog(row);
+    setStatusError("");
+    setStatusForm({
+      jobStatusId: String(row.requirementStatusId || ""),
+      deadline: dateInputValue(row.deadline),
+    });
+
+    if (jobStatuses.length > 0) return;
+
+    setStatusLoading(true);
+    try {
+      const response = await jobStatusApi.getAllList();
+      const payload = response?.data?.data ?? response?.data?.Data ?? [];
+      setJobStatuses(Array.isArray(payload) ? payload : []);
+    } catch (err) {
+      setStatusError(getApiErrorMessage(err) || "Unable to load job statuses.");
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  const closeStatusDialog = () => {
+    if (!statusSaving) setStatusDialog(null);
+  };
+
+  const submitStatusUpdate = async (event) => {
+    event.preventDefault();
+    if (!statusDialog || statusSaving) return;
+
+    if (!statusForm.jobStatusId || !statusForm.deadline) {
+      setStatusError("Job requirement status and deadline are required.");
+      return;
+    }
+
+    setStatusSaving(true);
+    setStatusError("");
+    try {
+      await jobRequirementApi.updateStatusAndDeadline(statusDialog.id, {
+        jQ_job_status_id: Number(statusForm.jobStatusId),
+        jQ_deadline: apiDateValue(statusForm.deadline),
+      });
+      setStatusDialog(null);
+      setToast({
+        id: Date.now(),
+        tone: "ok",
+        msg: "Requirement status and deadline updated successfully.",
+      });
+      await load();
+    } catch (err) {
+      setStatusError(
+        getApiErrorMessage(err) ||
+          "Unable to update the requirement status and deadline.",
+      );
+    } finally {
+      setStatusSaving(false);
+    }
+  };
+
   /* ---------------------------- STYLES ---------------------------- */
 
   const pageBtn =
@@ -481,220 +563,265 @@ const JobRequirementList = () => {
         )}
 
         {/* TABLE */}
-        <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] table-fixed border-collapse text-[15px]">
-              <colgroup>
-                <col style={{ width: "60px" }} />
-                <col style={{ width: "260px" }} />
-                <col style={{ width: "220px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "140px" }} />
-              </colgroup>
+<div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
+  <div
+    className="common-scrollbar max-h-[55vh] overflow-auto"
+    style={{ scrollbarGutter: "stable" }}
+  >
+    <table className="w-full min-w-[1400px] table-fixed border-separate border-spacing-0 text-[15px]">
+      <colgroup>
+        <col style={{ width: "60px" }} />
+        <col style={{ width: "200px" }} />
+        <col style={{ width: "170px" }} />
+        <col style={{ width: "120px" }} />
+        <col style={{ width: "140px" }} />
+        <col style={{ width: "140px" }} />
+        <col style={{ width: "100px" }} />
+        <col style={{ width: "110px" }} />
+        <col style={{ width: "130px" }} />
+      </colgroup>
 
-              <thead className="sticky top-0 z-10">
-                <tr>
-                  <th scope="col" className={thClass}>Sr.No</th>
-                  <th scope="col" className={thClass}>Organization</th>
-                  <th scope="col" className={thClass}>Position</th>
-                  <th scope="col" className={thClass}>Vacancies</th>
-                  <th scope="col" className={thClass}>Applicants</th>
-                  <th scope="col" className={thClass}>Status</th>
-                  <th scope="col" className={thClass}>Job Category</th>
-                  <th scope="col" className={thClass}>Actions</th>
-                </tr>
-              </thead>
-            </table>
-          </div>
-
-          {/* Body-only scroll container */}
-          <div
-            className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
-            style={{ scrollbarGutter: "stable" }}
+      <thead>
+        <tr>
+          <th scope="col" className={`${thClass} sticky top-0 z-20`}>
+            Sr.No
+          </th>
+          <th scope="col" className={`${thClass} sticky top-0 z-20`}>
+            Organization
+          </th>
+          <th scope="col" className={`${thClass} sticky top-0 z-20`}>
+            Position
+          </th>
+          <th scope="col" className={`${thClass} sticky top-0 z-20`}>
+            Status
+          </th>
+          <th scope="col" className={`${thClass} sticky top-0 z-20`}>
+            Requirement Status
+          </th>
+          <th scope="col" className={`${thClass} sticky top-0 z-20`}>
+            Job Category
+          </th>
+          <th scope="col" className={`${thClass} sticky top-0 z-20`}>
+            Vacancies
+          </th>
+          <th scope="col" className={`${thClass} sticky top-0 z-20`}>
+            Applicants
+          </th>
+          
+          <th
+            scope="col"
+            className={`${thClass} sticky right-0 top-0 z-30 !border-l !border-l-white/30 shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]`}
           >
-            <table className="w-full min-w-[1000px] table-fixed border-collapse text-[15px]">
-              <colgroup>
-                <col style={{ width: "60px" }} />
-                <col style={{ width: "260px" }} />
-                <col style={{ width: "220px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "140px" }} />
-              </colgroup>
+            Actions
+          </th>
+        </tr>
+      </thead>
 
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center">
-                      <div className="flex flex-col items-center">
-                        <span
-                          aria-hidden="true"
-                          className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
-                        />
-                        <p className="mt-3 text-[15px] text-[#6b7a88]">Loading...</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : pageRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
-                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                        <Inbox size={22} />
-                      </div>
-                      <p className="mt-3 text-[15px] text-[#1e2b36]">
-                        No job requirements yet
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  pageRows.map((row, index) => (
-                    <tr
-                      key={row.id ?? index}
-                      style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
-                      className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+      <tbody>
+        {loading ? (
+          <tr>
+            <td colSpan={9} className="px-4 py-12 text-center">
+              <div className="flex flex-col items-center">
+                <span
+                  aria-hidden="true"
+                  className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
+                />
+                <p className="mt-3 text-[15px] text-[#6b7a88]">Loading...</p>
+              </div>
+            </td>
+          </tr>
+        ) : pageRows.length === 0 ? (
+          <tr>
+            <td
+              colSpan={9}
+              className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+            >
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                <Inbox size={22} />
+              </div>
+              <p className="mt-3 text-[15px] text-[#1e2b36]">
+                No job requirements yet
+              </p>
+            </td>
+          </tr>
+        ) : (
+          pageRows.map((row, index) => {
+            const rowBg =
+              index % 2 === 0
+                 "bg-white group-hover:bg-[#e8f1f6]"
+                
+            return (
+              <tr
+                key={row.id ?? index}
+                style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                className="js-row group transition-colors"
+              >
+                {/* Sr.No */}
+                <td className={`${td} tabular-nums ${rowBg}`}>
+                  {start + index + 1}
+                </td>
+
+                {/* Organization */}
+                <td className={`${td} whitespace-nowrap ${rowBg}`}>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate font-medium text-slate-900">
+                      {row.organizationName || "-"}
+                    </span>
+                    {row.mobile && (
+                      <span className="truncate text-[12px] text-[#6b7a88]">
+                        {row.mobile}
+                      </span>
+                    )}
+                  </span>
+                </td>
+
+                {/* Position */}
+                <td className={`${td} whitespace-nowrap ${rowBg}`}>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate font-medium text-slate-900">
+                      {row.position || "-"}
+                    </span>
+                    {row.department && (
+                      <span className="truncate text-[12px] text-[#6b7a88]">
+                        {row.department}
+                      </span>
+                    )}
+                  </span>
+                </td>
+                
+                {/* Status */}
+                <td className={`${td} whitespace-nowrap text-center ${rowBg}`}>
+                  <div className="w-full min-w-0 truncate">
+                    <span
+                      className={`${BADGE_BASE} ${toneOf(row.status).badge}`}
                     >
-                      {/* Sr.No */}
-                      <td className={`${td} tabular-nums`}>
-                        {start + index + 1}
-                      </td>
+                      {row.status || "-"}
+                    </span>
+                  </div>
+                </td>
 
-                      {/* Organization */}
-                      <td className={`${td} whitespace-nowrap`}>
-                        <span className="flex flex-col min-w-0">
-                          <span className="font-medium text-slate-900 truncate">
-                            {row.organizationName || "-"}
-                          </span>
-                          {row.mobile && (
-                            <span className="text-[12px] text-[#6b7a88] truncate">
-                              {row.mobile}
-                            </span>
-                          )}
-                        </span>
-                      </td>
+                {/* Requirement Status */}
+                <td className={`${td} whitespace-nowrap text-center ${rowBg}`}>
+                  <span
+                    className={`${BADGE_BASE} ${
+                      toneOf(row.requirementStatus).badge
+                    }`}
+                  >
+                    {row.requirementStatus || "-"}
+                  </span>
+                </td>
 
-                      {/* Position */}
-                      <td className={`${td} whitespace-nowrap`}>
-                        <span className="flex flex-col min-w-0">
-                          <span className="font-medium text-slate-900 truncate">
-                            {row.position || "-"}
-                          </span>
-                          {row.department && (
-                            <span className="text-[12px] text-[#6b7a88] truncate">
-                              {row.department}
-                            </span>
-                          )}
-                        </span>
-                      </td>
+                {/* Job Category */}
+                <td className={`${td} whitespace-nowrap ${rowBg}`}>
+                  {row.employmentType ? (
+                    <span className="block truncate text-[15px]">
+                      {row.jobCategory}
+                    </span>
+                  ) : (
+                    <span className="text-[#9aa5b1]">-</span>
+                  )}
+                </td>
 
-                      {/* Vacancies */}
-                      <td className={`${td} whitespace-nowrap tabular-nums`}>
-                        <strong className="font-semibold">
-                          {row.vacancies ?? 0}
-                        </strong>
-                      </td>
+                {/* Vacancies */}
+                <td
+                  className={`${td} whitespace-nowrap text-center tabular-nums ${rowBg}`}
+                >
+                  <strong className="font-semibold">
+                    {row.vacancies ?? 0}
+                  </strong>
+                </td>
 
-                      {/* Applicants */}
-                      <td className={`${td} whitespace-nowrap tabular-nums`}>
-                        <Link
-                          to={`/admin/job-applicant/${row.id}`}
-                          className="font-semibold text-sky-700 hover:underline"
-                        >
-                          {Number(row.applicants || 0)}
-                        </Link>
-                      </td>
+                {/* Applicants */}
+                <td
+                  className={`${td} whitespace-nowrap text-center tabular-nums ${rowBg}`}
+                >
+                  <Link
+                    to={`/admin/job-applicant/${row.id}`}
+                    className="font-semibold text-sky-700 hover:underline"
+                  >
+                    {Number(row.applicants || 0)}
+                  </Link>
+                </td>
 
-                      {/* Status */}
-                      <td className={`${td} whitespace-nowrap`}>
-                        <div className="w-full min-w-0 truncate">
-                          <span className={`${BADGE_BASE} ${toneOf(row.status).badge}`}>
-                            {row.status || "-"}
-                          </span>
-                        </div>
-                      </td>
 
-                      {/* Job Category */}
-                      <td className={`${td} whitespace-nowrap`}>
-                        {row.employmentType ? (
-                          <span className="text-[15px] truncate block">
-                            {row.jobCategory}
-                          </span>
+                {/* Actions — sticky right */}
+                <td
+                  className={`${td} sticky right-0 z-10 text-center  bg-white `}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      title={`View ${row.position || "Job"}`}
+                      aria-label={`View ${row.position || "Job"}`}
+                      onClick={() =>
+                        navigate(`/admin/job-requirements/${row.id}`)
+                      }
+                      className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                    >
+                      <ChevronsRight size={14} strokeWidth={2.2} />
+                    </button>
+
+                    <button
+                      type="button"
+                      title="Update requirement status and deadline"
+                      aria-label="Update requirement status and deadline"
+                      onClick={() => openStatusDialog(row)}
+                      className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#7c4dca] to-[#a878e8] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                    >
+                      <Flag  size={14} strokeWidth={2.2} />
+                    </button>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={row.isActive}
+                      aria-label={
+                        row.isActive
+                          ? `Deactivate ${row.position || "Job"}`
+                          : `Activate ${row.position || "Job"}`
+                      }
+                      title={
+                        row.isActive
+                          ? "Active. Click to deactivate"
+                          : "Inactive. Click to activate"
+                      }
+                      onClick={() => askToggle(row)}
+                      className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
+                        row.isActive
+                          ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                          : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
+                      }`}
+                    >
+                      <span
+                        className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                          row.isActive ? "translate-x-[18px]" : "translate-x-0"
+                        }`}
+                      >
+                        {row.isActive ? (
+                          <UserRoundCheck
+                            size={13}
+                            strokeWidth={2.7}
+                            className="text-emerald-700"
+                          />
                         ) : (
-                          <span className="text-[#9aa5b1]">-</span>
+                          <UserRoundX
+                            size={13}
+                            strokeWidth={2.7}
+                            className="text-rose-700"
+                          />
                         )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className={`${td} justify-center text-center`}>
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            title={`View ${row.position || "Job"}`}
-                            aria-label={`View ${row.position || "Job"}`}
-                            onClick={() => navigate(`/admin/job-requirements/${row.id}`)}
-                            className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                          >
-                            <ChevronsRight size={14} strokeWidth={2.2} />
-                          </button>
-
-                         
-
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={row.isActive}
-                            aria-label={
-                              row.isActive
-                                ? `Deactivate ${row.position || "Job"}`
-                                : `Activate ${row.position || "Job"}`
-                            }
-                            title={
-                              row.isActive
-                                ? "Active. Click to deactivate"
-                                : "Inactive. Click to activate"
-                            }
-                            onClick={() => askToggle(row)}
-                            className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
-                              row.isActive
-                                ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                                : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                            }`}
-                          >
-                            <span
-                              className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                                row.isActive
-                                  ? "translate-x-[18px]"
-                                  : "translate-x-0"
-                              }`}
-                            >
-                              {row.isActive ? (
-                                <UserRoundCheck
-                                  size={13}
-                                  strokeWidth={2.7}
-                                  className="text-emerald-700"
-                                />
-                              ) : (
-                                <UserRoundX
-                                  size={13}
-                                  strokeWidth={2.7}
-                                  className="text-rose-700"
-                                />
-                              )}
-                            </span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                      </span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })
+        )}
+      </tbody>
+    </table>
+  </div>
+</div>
 
         {/* PAGINATION */}
         <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
@@ -764,6 +891,112 @@ const JobRequirementList = () => {
             </button>
           </nav>
         </div>
+
+        {statusDialog && (
+          <div className="fixed inset-0 z-50 grid place-items-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
+              onClick={closeStatusDialog}
+              aria-hidden="true"
+            />
+            <form
+              onSubmit={submitStatusUpdate}
+              className="relative w-full max-w-[520px] overflow-hidden rounded-2xl bg-white shadow-2xl"
+            >
+              <div className="h-1.5 w-full bg-gradient-to-r from-[#2c6b8a] to-[#4a9bb3]" />
+              <div className="flex items-center justify-between border-b border-[#e2e8ee] px-6 py-4">
+                <div>
+                  <h2 className="text-[18px] font-bold text-[#1e2b36]">
+                    Update Requirement Status
+                  </h2>
+                  <p className="mt-1 text-[13px] text-[#6b7a88]">
+                    {statusDialog.position || "Job requirement"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeStatusDialog}
+                  disabled={statusSaving}
+                  aria-label="Close"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-[#9aa5b1] hover:bg-slate-100 disabled:opacity-50"
+                >
+                  <CloseIcon size={16} />
+                </button>
+              </div>
+
+              {statusError && (
+                <div className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+                  {statusError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-5 px-6 py-5 sm:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Job Requirement Status
+                  <select
+                    value={statusForm.jobStatusId}
+                    onChange={(event) =>
+                      setStatusForm((current) => ({
+                        ...current,
+                        jobStatusId: event.target.value,
+                      }))
+                    }
+                    disabled={statusLoading || statusSaving}
+                    required
+                    className="mt-1.5 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50"
+                  >
+                    <option value="">
+                      {statusLoading ? "Loading statuses..." : "Select status"}
+                    </option>
+                    {jobStatuses.map((item) => (
+                      <option
+                        key={item.jS_job_status_id}
+                        value={item.jS_job_status_id}
+                      >
+                        {item.jS_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="text-sm font-medium text-slate-700">
+                  Deadline
+                  <input
+                    type="date"
+                    value={statusForm.deadline}
+                    onChange={(event) =>
+                      setStatusForm((current) => ({
+                        ...current,
+                        deadline: event.target.value,
+                      }))
+                    }
+                    disabled={statusSaving}
+                    required
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50"
+                  />
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2.5 border-t border-[#e2e8ee] bg-[#f9fbfc] px-6 py-3.5">
+                <button
+                  type="button"
+                  onClick={closeStatusDialog}
+                  disabled={statusSaving}
+                  className="h-10 rounded-[10px] border border-[#dce3eb] bg-white px-5 text-[13.5px] font-semibold text-[#34445a] hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={statusLoading || statusSaving}
+                  className="h-10 rounded-[10px] bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-5 text-[13.5px] font-semibold text-white shadow-md hover:brightness-105 disabled:opacity-60"
+                >
+                  {statusSaving ? "Saving..." : "Submit"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* DIALOG */}
         {confirm &&

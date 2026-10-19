@@ -44,12 +44,12 @@ const normalizeKeys = (obj) => {
     return obj;
   }
 
-  return Object.fromEntries(
-    Object.entries(obj).map(([key, value]) => [
-      key.charAt(0).toUpperCase() + key.slice(1),
-      value,
-    ]),
-  );
+  return Object.entries(obj).reduce((result, [key, value]) => {
+    const normalizedKey = key.charAt(0).toUpperCase() + key.slice(1);
+    result[key] = value;
+    result[normalizedKey] = value;
+    return result;
+  }, {});
 };
 
 // Supports:

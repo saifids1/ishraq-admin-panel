@@ -39,10 +39,14 @@ import CityList from "../pages/admin/MasterData/City/CityList";
 import CreateCity from "../pages/admin/MasterData/City/CreateCity";
 
 // admin enquiry imports
-import EnquiryListPage from "../pages/admin/EnquiryListPage";
-import EnquiryDetails from "../components/form/EnquiryDetails";
-import FeedbackListPage from "../pages/admin/FeedBack/Feedback";
-import FeedbackDetails from "../pages/admin/FeedBack/FeedbackDetails";
+import CareerEnquiryList from "../pages/admin/Enquiries/Career/CareerEnquiryList";
+import CareerEnquiryDetails from "../pages/admin/Enquiries/Career/CareerEnquiryDetails";
+import ContactEnquiryList from "../pages/admin/Enquiries/Contact/ContactEnquiryList";
+import ContactEnquiryDetails from "../pages/admin/Enquiries/Contact/ContactEnquiryDetails";
+import ComplaintList from "../pages/admin/Enquiries/Complaints/ComplaintList";
+import ComplaintDetails from "../pages/admin/Enquiries/Complaints/ComplaintDetails";
+import FeedbackList from "../pages/admin/Enquiries/Feedback/FeedbackList";
+import FeedbackDetails from "../pages/admin/Enquiries/Feedback/FeedbackDetails";
 import CreateEmployer from "../pages/admin/Employer/CreateEmployer.jsx";
 
 const AdminRoutes = (
@@ -235,31 +239,21 @@ const AdminRoutes = (
 
       <Route
         path="complaints"
-        element={<EnquiryListPage formType="complaint" />}
+        element={<ComplaintList />}
       />
       <Route
         path="complaints/:id"
-        element={<EnquiryDetails formType="complaint" />}
+        element={<ComplaintDetails />}
       />
-      <Route path="career" element={<EnquiryListPage formType="career" />} />
-      <Route path="career/:id" element={<EnquiryDetails formType="career" />} />
-      <Route path="contact" element={<EnquiryListPage formType="contact" />} />
+      <Route path="career" element={<CareerEnquiryList />} />
       <Route
         path="contact/:id"
-        element={<EnquiryDetails formType="contact" />}
+        element={<ContactEnquiryDetails />}
       />
-      {/* <Route
-        path="feedback"
-        element={<EnquiryListPage formType="feedback" />}
-      /> */}
-      <Route
-        path="feedback"
-        element={<FeedbackListPage formType="feedback" />}
-      />
-      <Route
-        path="feedback/:id"
-        element={<FeedbackDetails formType="feedback" />}
-      />
+      <Route path="career/:id" element={<CareerEnquiryDetails />} />
+      <Route path="contact" element={<ContactEnquiryList />} />
+      <Route path="feedback" element={<FeedbackList />} />
+      <Route path="feedback/:id" element={<FeedbackDetails />} />
     </Route>
   </Route>
 );
