@@ -1,53 +1,38 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  AlertCircle,
-  Briefcase,
-  Building2,
-  CalendarDays,
-  ChevronLeft,
-  ChevronsLeft,
-  Clock,
-  Globe,
-  Hash,
-  LoaderCircle,
-  Mail,
-  MapPin,
-  Pencil,
-  Phone,
-  UserRound,
-  Users,
-} from "lucide-react";
+import { ChevronsLeft, ExternalLink, Building2 } from "lucide-react";
 import { getCurrentUserId } from "../../../utils/authUtils";
 import { getEmployerById } from "../../../api/employerApi";
 
-const ACCENT = "#2f6b8a";
+/* ---------------- Design tokens (same as admin profile) ---------------- */
+const T = {
+  radius: "rounded-lg",
+  border: "border-[#e3e8ee]",
+  bg: "bg-[#f4f8fb]",
+  text: "text-[#1a2b3c]",
+  textMuted: "text-[#5b6b7c]",
+  textFaint: "text-[#8895a4]",
+};
 
-const val = (value) =>
-  value !== null && value !== undefined && String(value).trim()
-    ? String(value).trim()
-    : "-";
+const FIELD_LABEL = `text-[11.5px] font-semibold uppercase tracking-wide ${T.textFaint}`;
+const FIELD_BOX = (mono) =>
+  `flex h-9 items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
+    mono ? "font-mono text-[12.5px]" : ""
+  }`;
 
-const initials = (name = "") =>
-  name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
+const BTN_PRIMARY =
+  "inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
 
-const formatDate = (value) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "-"
-    : date.toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
+/* ---------------- Helpers ---------------- */
+const val = (v) => (v !== null && v !== undefined && String(v).trim() ? String(v).trim() : "—");
+
+const formatDateTime = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
 };
 
 const getPayload = (response) => {
@@ -80,7 +65,7 @@ const normalizeEmployer = (record) => {
   return {
     ...record,
     EM_employer_id: record.eM_employer_id ?? record.EM_employer_id,
-    EM_user_id: record.eM_user_id ?? record.EM_user_id,
+    EM_request_no: record.eM_request_no ?? record.EM_request_no,
     UserName: record.userName ?? record.UserName,
     Email: record.email ?? record.Email,
     Mobile: record.mobile ?? record.Mobile,
@@ -115,60 +100,13 @@ const getErrorMessage = (error) =>
   error?.message ??
   "Unable to load organization details. Please try again.";
 
-// Temporary sample job requirements. Replace with the job-requirements API later.
-const DUMMY_JOBS = [
-  { id: "dummy-1", title: "Registered Nurse", category: "Nursing", status: "Open", vacancies: 5, applicants: 18, postedOn: "10/10/2026" },
-  { id: "dummy-2", title: "Medical Laboratory Technician", category: "Diagnostics", status: "Open", vacancies: 2, applicants: 7, postedOn: "06/10/2026" },
-  { id: "dummy-3", title: "Clinic Administrator", category: "Administration", status: "Paused", vacancies: 1, applicants: 4, postedOn: "01/10/2026" },
-];
-
-const STATUS_STYLES = {
-  Open: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  Paused: "bg-amber-50 text-amber-700 ring-amber-200",
-  Closed: "bg-slate-100 text-slate-600 ring-slate-200",
-};
-
-const Card = ({ title, icon: Icon, children, className = "" }) => (
-  <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
-    <header className="mb-4 flex items-center gap-2.5">
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#eaf3f7]" style={{ color: ACCENT }}>
-        <Icon size={16} />
-      </span>
-      <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-    </header>
-    {children}
-  </section>
-);
-
-const InfoItem = ({ icon: Icon, label, value, href }) => {
-  const display = val(value);
-  const content = (
-    <>
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-50" style={{ color: ACCENT }}>
-        <Icon size={15} />
-      </span>
-      <div className="min-w-0">
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className="mt-0.5 break-words text-sm font-medium text-slate-800">{display}</p>
-      </div>
-    </>
-  );
-
-  return href && display !== "-" ? (
-    <a href={href} className="flex items-start gap-3 rounded-xl p-2 transition hover:bg-slate-50">
-      {content}
-    </a>
-  ) : (
-    <div className="flex items-start gap-3 p-2">{content}</div>
-  );
-};
-
+/* ---------------- Page ---------------- */
 const OrganizationDetails = () => {
   const navigate = useNavigate();
+
   const [employer, setEmployer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [jobFilter, setJobFilter] = useState("All");
 
   useEffect(() => {
     let cancelled = false;
@@ -212,136 +150,125 @@ const OrganizationDetails = () => {
     };
   }, []);
 
-  const visibleJobs = useMemo(
-    () => DUMMY_JOBS.filter((job) => jobFilter === "All" || job.status === jobFilter),
-    [jobFilter],
-  );
-
+  /* ---------- Loading ---------- */
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center bg-white p-6">
-        <div className="flex items-center gap-3 text-sm text-slate-600">
-          <LoaderCircle className="animate-spin" style={{ color: ACCENT }} size={20} />
-          Loading organization details...
+      <div className={`min-h-full ${T.bg} p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+          <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#2f6b8a] border-t-transparent" />
+          <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>Loading organization…</p>
         </div>
       </div>
     );
   }
 
+  /* ---------- Error ---------- */
   if (error || !employer) {
     return (
-      <div className="min-h-full bg-white p-4">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          <ChevronLeft size={16} /> Back
-        </button>
-        <div className="mx-auto flex max-w-xl items-start gap-3 rounded-2xl border border-red-200 bg-white p-5 text-red-700 shadow-sm">
-          <AlertCircle className="mt-0.5 shrink-0" size={20} />
-          <div>
-            <h1 className="font-semibold">Could not load organization</h1>
-            <p className="mt-1 text-sm">{error || "Organization details are unavailable."}</p>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="mt-3 rounded-lg px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-              style={{ backgroundColor: ACCENT }}
-            >
-              Try again
-            </button>
-          </div>
+      <div className={`min-h-full ${T.bg} p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+          <Building2 size={28} className="mx-auto text-[#8895a4]" />
+          <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
+            {error || "Organization not found"}
+          </p>
+          <p className={`mt-1 text-[13px] ${T.textMuted}`}>
+            The details could not be loaded right now.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className={`mt-4 ${BTN_PRIMARY}`}
+          >
+            Try again
+          </button>
         </div>
       </div>
     );
   }
 
-  const companyName = employer.EM_organization_name;
-  const website = employer.EM_website;
-  const websiteHref = website
-    ? `${/^https?:\/\//i.test(website) ? "" : "https://"}${website}`
-    : undefined;
-  const location = [employer.CityName, employer.StateName, employer.CountryName]
-    .filter(Boolean)
-    .join(", ");
-  const contactName = employer.EM_contact_person || employer.FullName;
-  const isActive = Boolean(employer.EM_is_active);
+  const websiteHref = employer.EM_website
+    ? `${/^https?:\/\//i.test(employer.EM_website) ? "" : "https://"}${employer.EM_website}`
+    : null;
+
+  const fields = [
+    { label: "Request No.", value: employer.EM_request_no, mono: true },
+    { label: "Organization Name", value: employer.EM_organization_name },
+    { label: "Organization Type", value: employer.InstituteTypeName },
+    { label: "Username", value: employer.UserName },
+    { label: "Website", value: employer.EM_website, link: websiteHref },
+    { label: "Contact Person", value: employer.EM_contact_person },
+    { label: "Designation", value: employer.EM_designation },
+    { label: "Email", value: employer.Email },
+    { label: "Mobile", value: employer.Mobile, mono: true },
+    { label: "City", value: employer.CityName },
+    { label: "State", value: employer.StateName },
+    { label: "Country", value: employer.CountryName },
+    { label: "Consent Given", value: employer.EM_consent_given ? "Yes" : "No" },
+    { label: "Consent At", value: formatDateTime(employer.EM_consent_at) },
+    { label: "Created At", value: formatDateTime(employer.EM_created_at) },
+    { label: "Updated At", value: formatDateTime(employer.EM_updated_at) },
+    { label: "Activated At", value: formatDateTime(employer.EM_activated_at) },
+    { label: "Status", value: employer.EM_is_active ? "Active" : "Inactive" },
+  ];
 
   return (
-    <div className="min-h-full bg-white text-slate-800">
-      {/* Header */}
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-2">
-        <div className="flex min-w-0 items-center gap-3">
-          {/* <button
+    <div className={`min-h-full ${T.bg}`}>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              title="Back"
+              aria-label="Back"
+              className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
+            >
+              <ChevronsLeft size={18} strokeWidth={2} />
+            </button>
+
+            <h2 className="font-semibold text-slate-800">
+              {val(employer.EM_organization_name)}
+            </h2>
+          </div>
+
+          <button
             type="button"
-            onClick={() => navigate(-1)}
-            aria-label="Go back"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+            onClick={() =>
+              navigate(`/employer/organization-profile/edit/${employer.EM_employer_id}`)
+            }
+            className={BTN_PRIMARY}
           >
-            <ChevronsLeft size={18} />
-          </button> */}
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-slate-800">Organization Details</h1>
-          </div>
+            Edit Profile
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate(`/employer/organization-profile/edit/${employer.EM_employer_id}`)}
-          className="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
-          style={{ backgroundColor: ACCENT }}
-        >
-          <Pencil size={14} /> Edit Profile
-        </button>
-      </header>
 
-      {/* Profile summary */}
-      <div className="mb-4 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center">
-        <div
-          className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl text-xl font-semibold text-white"
-          style={{ backgroundColor: ACCENT }}
-        >
-          {initials(companyName) || <Building2 size={26} />}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="break-words text-lg font-semibold text-slate-800">{val(companyName)}</h2>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
-            <span className="inline-flex items-center gap-1.5">
-              <Building2 size={14} style={{ color: ACCENT }} /> {val(employer.InstituteTypeName)}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <MapPin size={14} style={{ color: ACCENT }} /> {val(location)}
-            </span>
+        {/* Body */}
+        <section className="p-4">
+          <div className={`${T.radius} border ${T.border} bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {fields.map((field) => (
+                <div key={field.label} className="flex flex-col gap-1.5">
+                  <label className={FIELD_LABEL}>{field.label}</label>
+                  <div className={FIELD_BOX(field.mono)}>
+                    {field.link ? (
+                      <a
+                        href={field.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex min-w-0 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
+                      >
+                        {val(field.value)} <ExternalLink size={11} className="shrink-0" />
+                      </a>
+                    ) : (
+                      <span className="min-w-0 flex-1 truncate">{val(field.value)}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-        
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card title="Organization Information" icon={Building2}>
-          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-            <InfoItem icon={Building2} label="Organization Name" value={companyName} />
-            <InfoItem icon={Briefcase} label="Organization Type" value={employer.InstituteTypeName} />
-            <InfoItem icon={Globe} label="Website" value={website} href={websiteHref} />
-            {/* <InfoItem icon={Hash} label="Employer ID" value={employer.EM_employer_id} /> */}
-            <InfoItem icon={CalendarDays} label="Profile Created On" value={formatDate(employer.EM_created_at)} />
-            <InfoItem icon={Clock} label="Profile Last Updated" value={formatDate(employer.EM_updated_at)} />
-          </div>
-        </Card>
-
-        <Card title="Contact & Location" icon={MapPin}>
-          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-            <InfoItem icon={UserRound} label="Contact Person" value={contactName} />
-            <InfoItem icon={Briefcase} label="Designation" value={employer.EM_designation} />
-            <InfoItem icon={Mail} label="Email Address" value={employer.Email} href={employer.Email ? `mailto:${employer.Email}` : undefined} />
-            <InfoItem icon={Phone} label="Mobile Number" value={employer.Mobile} href={employer.Mobile ? `tel:${employer.Mobile.replace(/\s/g, "")}` : undefined} />
-            <InfoItem icon={MapPin} label="City" value={employer.CityName} />
-            <InfoItem icon={MapPin} label="State" value={employer.StateName} />
-            <InfoItem icon={Globe} label="Country" value={employer.CountryName} />
-          </div>
-        </Card>
-
-       
+        </section>
       </div>
     </div>
   );
