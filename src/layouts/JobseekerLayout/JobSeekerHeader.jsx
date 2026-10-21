@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bell,
   ChevronDown,
@@ -10,79 +10,173 @@ import {
 
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import {
-  getCurrentUser,
-  getCurrentUserId,
-} from "../../utils/authUtils.js";
+import { getCurrentUser, getCurrentUserId } from "../../utils/authUtils.js";
 import jobseekerApi from "../../api/Services/adjobseekerApi.js";
+
+const PROFILE_CACHE_KEY = "jobseekerProfileCached";
+const PROFILE_CACHE_VERSION = "1";
+
+// Shared across component mounts, including React StrictMode effect reruns.
+let profileRequestPromise = null;
+
+const PROFILE_FIELDS = [
+  "jB_jobseeker_id",
+  "jB_institute_type_id",
+  "jB_job_role_id",
+  "jB_job_category_id",
+  "jB_jobseeker_no",
+  "fullName",
+  "email",
+  "userName",
+  "mobile",
+];
+
+const readCachedProfile = () => {
+  try {
+    if (localStorage.getItem(PROFILE_CACHE_KEY) !== PROFILE_CACHE_VERSION) {
+      return null;
+    }
+
+    const profile = {};
+
+    for (const field of PROFILE_FIELDS) {
+      const value = localStorage.getItem(field);
+      if (value !== null) profile[field] = value;
+    }
+
+    const requiredIds = [
+      "jB_jobseeker_id",
+      "jB_institute_type_id",
+      "jB_job_role_id",
+      "jB_job_category_id",
+    ];
+
+    if (
+      requiredIds.some(
+        (key) => !profile[key] || !Number.isFinite(Number(profile[key])),
+      )
+    ) {
+      return null;
+    }
+
+    return profile;
+  } catch {
+    return null;
+  }
+};
+
+const saveProfileToCache = (record) => {
+  const fields = {
+    jB_jobseeker_id: record.jB_jobseeker_id,
+    jB_institute_type_id: record.jB_institute_type_id,
+    jB_job_role_id: record.jB_job_role_id,
+    jB_job_category_id: record.jB_job_category_id,
+    jB_jobseeker_no: record.jB_jobseeker_no,
+    fullName: record.fullName,
+    email: record.email,
+    userName: record.userName,
+    mobile: record.mobile,
+  };
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined && value !== null) {
+      localStorage.setItem(key, String(value));
+    }
+  }
+
+  // Maintain the existing cache keys for compatibility.
+  if (record.fullName) {
+    localStorage.setItem("jobseekerName", record.fullName);
+  }
+
+  if (record.email) {
+    localStorage.setItem("jobseekerEmail", record.email);
+  }
+
+  if (record.mobile) {
+    localStorage.setItem("jobseekerMobile", record.mobile);
+  }
+
+  if (record.jB_jobseeker_no) {
+    localStorage.setItem("jobseekerNumber", record.jB_jobseeker_no);
+  }
+
+  // Mark the cache complete only after all fields have been written.
+  localStorage.setItem(PROFILE_CACHE_KEY, PROFILE_CACHE_VERSION);
+};
+
+const loadJobseekerProfileOnce = () => {
+  const cachedProfile = readCachedProfile();
+
+  if (cachedProfile) {
+    return Promise.resolve(cachedProfile);
+  }
+
+  // Reuse a request already in progress.
+  if (profileRequestPromise) {
+    return profileRequestPromise;
+  }
+
+  const userId = getCurrentUserId();
+
+  if (userId == null || userId === "") {
+    return Promise.reject(new Error("Jobseeker user ID is missing."));
+  }
+
+  profileRequestPromise = (async () => {
+    try {
+      const response = await jobseekerApi.getById(userId);
+
+      const record =
+        response?.data?.data ?? response?.data?.Data ?? response?.data;
+
+      if (!record?.jB_jobseeker_id) {
+        throw new Error("Jobseeker profile could not be found.");
+      }
+
+      saveProfileToCache(record);
+
+      return record;
+    } finally {
+      profileRequestPromise = null;
+    }
+  })();
+
+  return profileRequestPromise;
+};
 
 const JobSeekerHeader = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
 
   const [profileOpen, setProfileOpen] = useState(false);
-  const [jobseeker, setJobseeker] = useState(null);
+  const [jobseeker, setJobseeker] = useState(() => readCachedProfile());
 
   const user = getCurrentUser();
 
-  // Load the logged-in jobseeker profile.
   useEffect(() => {
     let cancelled = false;
 
-    const loadJobseeker = async () => {
-      try {
-        const userId = getCurrentUserId();
-
-        if (userId == null || userId === "") {
-          console.error("Jobseeker user ID is missing.");
-          return;
+    loadJobseekerProfileOnce()
+      .then((record) => {
+        if (!cancelled) {
+          setJobseeker(record);
         }
-
-        // GET /api/Jobseeker/{id}
-        const response = await jobseekerApi.getById(userId);
-
-        // API response: { success, message, data: {...} }
-        const record = response?.data?.data;
-
-        if (!record || cancelled) return;
-
-        setJobseeker(record);
-
-        // Cache profile information for fallback use.
-        if (record.fullName) {
-          localStorage.setItem("jobseekerName", record.fullName);
-        }
-
-        if (record.email) {
-          localStorage.setItem("jobseekerEmail", record.email);
-        }
-
-        if (record.mobile) {
-          localStorage.setItem("jobseekerMobile", record.mobile);
-        }
-
-        if (record.jB_jobseeker_no) {
-          localStorage.setItem(
-            "jobseekerNumber",
-            record.jB_jobseeker_no
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error(
+            "Failed to load jobseeker profile:",
+            error.response?.data || error.message,
           );
         }
-      } catch (error) {
-        console.error(
-          "Failed to load jobseeker profile:",
-          error.response?.data || error.message
-        );
-      }
-    };
-
-    loadJobseeker();
+      });
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Map the exact fields returned by the Jobseeker API.
   const userName =
     jobseeker?.fullName?.trim() ||
     localStorage.getItem("jobseekerName") ||
@@ -100,14 +194,10 @@ const JobSeekerHeader = () => {
     "";
 
   const userMobile =
-    jobseeker?.mobile ||
-    localStorage.getItem("jobseekerMobile") ||
-    "";
+    jobseeker?.mobile || localStorage.getItem("jobseekerMobile") || "";
 
   const jobseekerNumber =
-    jobseeker?.jB_jobseeker_no ||
-    localStorage.getItem("jobseekerNumber") ||
-    "";
+    jobseeker?.jB_jobseeker_no || localStorage.getItem("jobseekerNumber") || "";
 
   const userRole = "Job Seeker";
 
@@ -121,6 +211,25 @@ const JobSeekerHeader = () => {
 
   const handleLogout = () => {
     setProfileOpen(false);
+
+    // Remove profile-specific cached data on logout.
+    [
+      PROFILE_CACHE_KEY,
+      "jB_jobseeker_id",
+      "jB_institute_type_id",
+      "jB_job_role_id",
+      "jB_job_category_id",
+      "jB_jobseeker_no",
+      "fullName",
+      "email",
+      "userName",
+      "mobile",
+      "jobseekerName",
+      "jobseekerEmail",
+      "jobseekerMobile",
+      "jobseekerNumber",
+    ].forEach((key) => localStorage.removeItem(key));
+
     logout();
     navigate("/login");
   };
@@ -130,12 +239,9 @@ const JobSeekerHeader = () => {
       className="h-[62px] shrink-0 bg-white border-b border-gray-200
       flex items-center justify-between px-4 sm:px-6 relative z-40"
     >
-      {/* LEFT SIDE */}
       <div />
 
-      {/* RIGHT SIDE */}
       <div className="flex items-center gap-3 sm:gap-5 ml-3">
-        {/* NOTIFICATIONS */}
         <button
           type="button"
           title="Notifications"
@@ -146,17 +252,14 @@ const JobSeekerHeader = () => {
             transition-colors"
         >
           <Bell size={17} strokeWidth={1.8} />
-
           <span
             className="absolute top-1 right-1 w-1.5 h-1.5
             rounded-full bg-[#2f6b8a] ring-2 ring-white"
           />
         </button>
 
-        {/* DIVIDER */}
         <div className="h-7 w-px bg-gray-200" />
 
-        {/* PROFILE */}
         <div className="relative">
           <button
             type="button"
@@ -167,7 +270,6 @@ const JobSeekerHeader = () => {
               rounded-lg px-2 py-1.5
               hover:bg-gray-50 transition-colors"
           >
-            {/* AVATAR */}
             <div
               className="w-8 h-8 rounded-full bg-[#e8f0f5]
               flex items-center justify-center shrink-0
@@ -178,19 +280,14 @@ const JobSeekerHeader = () => {
                   {initials}
                 </span>
               ) : (
-                <UserRound
-                  size={17}
-                  className="text-[#2f6b8a]"
-                />
+                <UserRound size={17} className="text-[#2f6b8a]" />
               )}
             </div>
 
-            {/* USER DETAILS */}
             <div className="hidden sm:block text-left leading-tight max-w-[180px]">
               <p className="text-xs font-semibold text-gray-800 truncate">
                 {userName}
               </p>
-
               <p className="text-[10px] text-gray-500 mt-0.5 truncate">
                 {userRole}
               </p>
@@ -203,7 +300,6 @@ const JobSeekerHeader = () => {
             )}
           </button>
 
-          {/* PROFILE DROPDOWN */}
           {profileOpen && (
             <>
               <button
@@ -219,7 +315,6 @@ const JobSeekerHeader = () => {
                 border border-gray-100 z-50 overflow-hidden
                 animate-in fade-in slide-in-from-top-2 duration-200"
               >
-                {/* PROFILE INFORMATION */}
                 <div className="p-4 flex items-center gap-3">
                   <div
                     className="w-10 h-10 rounded-full shrink-0
@@ -230,10 +325,7 @@ const JobSeekerHeader = () => {
                         {initials}
                       </span>
                     ) : (
-                      <UserRound
-                        size={20}
-                        className="text-[#2f6b8a]"
-                      />
+                      <UserRound size={20} className="text-[#2f6b8a]" />
                     )}
                   </div>
 
@@ -241,18 +333,15 @@ const JobSeekerHeader = () => {
                     <h3 className="text-sm font-semibold text-gray-800 truncate">
                       {userName}
                     </h3>
-
                     <p className="text-xs text-gray-500 truncate mt-0.5">
                       {userEmail || "Email not available"}
                     </p>
-
                     <p className="text-[11px] text-[#2f6b8a] mt-1">
                       {userRole}
                     </p>
                   </div>
                 </div>
 
-                {/* ADDITIONAL JOBSEEKER DETAILS */}
                 {(jobseekerNumber || userMobile) && (
                   <div className="px-4 pb-3 space-y-1">
                     {jobseekerNumber && (
@@ -260,7 +349,6 @@ const JobSeekerHeader = () => {
                         ID: {jobseekerNumber}
                       </p>
                     )}
-
                     {userMobile && (
                       <p className="text-[11px] text-gray-500">
                         Mobile: {userMobile}
@@ -271,7 +359,6 @@ const JobSeekerHeader = () => {
 
                 <div className="border-t border-gray-100" />
 
-                {/* ACCOUNT SETTINGS */}
                 <button
                   type="button"
                   onClick={() => {
@@ -289,7 +376,6 @@ const JobSeekerHeader = () => {
 
                 <div className="border-t border-gray-100" />
 
-                {/* LOGOUT */}
                 <button
                   type="button"
                   onClick={handleLogout}
