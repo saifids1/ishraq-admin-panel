@@ -1,5 +1,7 @@
   import { useEffect, useMemo, useState } from "react";
   import { useLocation } from "react-router-dom";
+  import { useStatusToast } from "./StatusModalProvider";
+  import StatusModal from "./StatusModal";
   import * as XLSX from "xlsx";
   import {
     ChevronDown,
@@ -163,89 +165,18 @@
     onCancel,
     onConfirm,
   }) => {
-    useEffect(() => {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      const onKey = (e) => e.key === "Escape" && onCancel();
-      document.addEventListener("keydown", onKey);
-      return () => {
-        document.removeEventListener("keydown", onKey);
-        document.body.style.overflow = prev;
-      };
-    }, [onCancel]);
-
-    const { core, ring, Icon } = tone;
-
     return (
-      <div className="fixed inset-0 z-50 grid place-items-center p-4">
-        <div
-          className="js-fade absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
-          onClick={onCancel}
-          aria-hidden="true"
-        />
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="list-dialog-title"
-          className="js-pop relative w-full max-w-[400px] overflow-hidden rounded-2xl bg-white shadow-2xl"
-        >
-          <div className={`h-1.5 w-full bg-gradient-to-r ${core}`} />
-          <button
-            type="button"
-            onClick={onCancel}
-            aria-label="Close"
-            className="absolute right-3 top-4 grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-[#9aa5b1] hover:bg-slate-100"
-          >
-            <CloseIcon size={16} />
-          </button>
-
-          <div className="px-6 pb-5 pt-6 text-center">
-            <div className="relative mx-auto mb-4 grid h-16 w-16 place-items-center">
-              <span className={`js-halo absolute inset-0 rounded-full ${ring}`} />
-              <span
-                className={`relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br ${core} text-white shadow-lg`}
-              >
-                <Icon size={22} />
-              </span>
-            </div>
-            <h2
-              id="list-dialog-title"
-              className="text-[18px] font-bold text-[#1e2b36]"
-            >
-              Set {entityName.toLowerCase()} to {next}?
-            </h2>
-            <p className="mx-auto mt-1.5 max-w-[320px] text-[13.5px] leading-relaxed text-[#6b7a88]">
-              This {entityName.toLowerCase()} will be marked as{" "}
-              {next.toLowerCase()}.
-            </p>
-            <div className="mt-4 rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] p-3 text-left">
-              <p className="truncate text-[14px] font-semibold text-[#1e2b36]">
-                {label}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-2.5 border-t border-[#e2e8ee] bg-[#f9fbfc] px-6 py-3.5">
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={busy}
-              className="h-10 flex-1 cursor-pointer rounded-[10px] border border-[#dce3eb] bg-white text-[13.5px] font-semibold text-[#34445a] hover:bg-slate-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              autoFocus
-              onClick={onConfirm}
-              disabled={busy}
-              className={`h-10 flex-1 cursor-pointer rounded-[10px] bg-gradient-to-r ${core} text-[13.5px] font-semibold text-white shadow-md hover:brightness-105 active:scale-[0.98] disabled:opacity-60`}
-            >
-              {busy ? "Saving..." : `Yes, set ${next.toLowerCase()}`}
-            </button>
-          </div>
-        </div>
-      </div>
+      <StatusModal
+        isOpen
+        type="confirm"
+        title={`Set ${entityName.toLowerCase()} to ${next}?`}
+        message={`This ${entityName.toLowerCase()} will be marked as ${next.toLowerCase()}: ${label}`}
+        showCancel
+        busy={busy}
+        confirmText={`Yes, set ${next.toLowerCase()}`}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />
     );
   };
 
@@ -306,7 +237,7 @@
     const [query, setQuery] = useState(initialQuery);
     const [confirm, setConfirm] = useState(null);
     const [busy, setBusy] = useState(false);
-    const [toast, setToast] = useState(null);
+    const [toast, setToast] = useStatusToast();
 
     useEffect(() => setQuery(initialQuery), [location.pathname, pageSizes]);
 

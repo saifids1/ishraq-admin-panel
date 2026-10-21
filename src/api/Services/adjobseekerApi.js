@@ -10,6 +10,9 @@ const baseApi = createMasterApi("Jobseeker");
 const jobseekerApi = {
   ...baseApi,
 
+  // GET /api/Jobseeker/list (complete job seeker list for admin workflows)
+  getList: () => axiosInstance.get("/Jobseeker/list"),
+
   // GET /api/Jobseeker/{id}
   getById: (id) => axiosInstance.get(`/Jobseeker/${id}`),
 

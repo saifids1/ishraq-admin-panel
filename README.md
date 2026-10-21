@@ -1,70 +1,126 @@
-# Getting Started with Create React App
+﻿# Ishraq Admin Panel
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+An administrative frontend for the Ishraq HR recruitment portal — a role-based React application for managing job seekers, employers, job requirements, applications, enquiries, feedback, and master data.
+
+## Project Summary
+
+**ishraq-admin-panel** is a React-based single-page application (SPA) that serves as the administrative interface for the Ishraq HR recruitment platform. It provides three role-based dashboards:
+
+- **Admin**: Full system oversight — manage users, employers, job seekers, master data, and system enquiries
+- **Employer**: Post jobs, review applications, manage organization profile, submit feedback/complaints
+- **Job Seeker**: Browse and apply to jobs, manage profile/resume, track applications
+
+The frontend consumes a RESTful backend API at `https://localhost:44367/api` (configurable via environment variables).
+
+## Key Features
+
+| Module | Features |
+|--------|----------|
+| **Authentication** | Role-based login (Admin/Employer/Job Seeker), OTP-based forgot password, session persistence |
+| **Admin Dashboard** | System overview, user/job seeker/employer management, job requirements, master data CRUD, enquiry management, reports |
+| **Employer Dashboard** | Job posting, application management, organization profile, profile progress tracking, feedback/complaints |
+| **Job Seeker Dashboard** | Job search, applications, profile/resume management, feedback/complaints |
+| **Master Data** | Generic CRUD for cities, countries, states, job categories, roles, statuses, employment types, institute types, user types, complaint categories |
+| **Documents** | Resume/CV upload and management with View/Download links |
+
+## Technology Stack
+
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| Framework | React | ^19.3.0 |
+| Routing | React Router DOM | ^7.18.4 |
+| Build Tool | react-scripts (Create React App) | 5.0.1 |
+| Styling | Tailwind CSS | ^3.4.19 |
+| HTTP Client | Axios | ^1.20.0 |
+| Icons | Lucide React | ^1.47.0 |
+| Charts | Recharts | ^2.15.4 |
+| Notifications | React Hot Toast | ^2.6.1 |
+| Excel Export | XLSX | ^0.18.5 |
+| Testing | @testing-library/react, jest-dom | ^16.3.3 |
+
+## High-Level Architecture
+
+\`\`\`
+┌─────────────────┐      HTTPS/API      ┌──────────────────┐
+│   Browser       │ ◄──────────────────► │  Backend API    │
+│  (React SPA)    │                      │  (localhost:44367)│
+└─────────────────┘                      └──────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  AuthContext    │  Session (localStorage)
+│  (Auth state)   │
+└─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Axios Instance │  HTTP client + error interceptor
+└─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  API Services   │  auth, applications, employers, jobs,
+│  (CRUD layer)   │  job seekers, master data, enquiries
+└─────────────────┘
+\`\`\`
+
+## Prerequisites
+
+- Node.js 16+ (recommended 18+)
+- npm 8+
+- Backend API running at `https://localhost:44367/api` (or configured URL)
+
+## Quick Setup
+
+\`\`\`bash
+# 1. Clone the repository
+git clone https://github.com/IDS-Farah/ishraq-admin-panel.git
+cd ishraq-admin-panel
+
+# 2. Install dependencies
+npm install
+
+# 3. Configure environment (review .env)
+# REACT_APP_API_BASE_URL=https://localhost:44367/api
+
+# 4. Start development server
+npm start
+
+# 5. Open http://localhost:3000
+\`\`\`
 
 ## Available Scripts
 
-In the project directory, you can run:
+| Script | Description |
+|--------|-------------|
+| \`npm start\` | Start development server (port 3000) |
+| \`npm run dev\` | Same as start |
+| \`npm run build\` | Production build to \`build/\` folder |
+| \`npm test\` | Run test suite |
+| \`npm run eject\` | Eject build configuration (one-way) |
 
-### `npm start`
+## Documentation
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Comprehensive documentation is available in the \`docs/\` folder:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+| Document | Description |
+|----------|-------------|
+| [docs/README.md](./docs/README.md) | Documentation index |
+| [docs/project-overview.md](./docs/project-overview.md) | Project purpose, business problem, tech stack |
+| [docs/requirements-and-features.md](./docs/requirements-and-features.md) | Module-by-module features and business rules |
+| [docs/system-architecture.md](./docs/system-architecture.md) | Architecture, data flow, Mermaid diagrams |
+| [docs/folder-structure.md](./docs/folder-structure.md) | Directory layout and file responsibilities |
+| [docs/frontend-documentation.md](./docs/frontend-documentation.md) | React setup, routing, pages, components |
+| [docs/backend-documentation.md](./docs/backend-documentation.md) | Backend integration notes (frontend-only repo) |
+| [docs/api-documentation.md](./docs/api-documentation.md) | API reference: endpoints, payloads, responses |
+| [docs/database-documentation.md](./docs/database-documentation.md) | Database notes (backend concern) |
+| [docs/authentication-and-authorization.md](./docs/authentication-and-authorization.md) | Auth flow, roles, protected routes |
+| [docs/business-workflows.md](./docs/business-workflows.md) | End-to-end workflows with diagrams |
+| [docs/setup-and-installation.md](./docs/setup-and-installation.md) | Prerequisites, installation, running the app |
+| [docs/environment-configuration.md](./docs/environment-configuration.md) | Environment variables and configuration |
+| [docs/testing-and-troubleshooting.md](./docs/testing-and-troubleshooting.md) | Test commands, known issues, troubleshooting |
+| [docs/deployment-guide.md](./docs/deployment-guide.md) | Build and deployment process |
 
-### `npm test`
+## License
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+This project is private and proprietary.
