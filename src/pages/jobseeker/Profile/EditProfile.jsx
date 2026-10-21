@@ -76,8 +76,8 @@ const emptyForm = {
 
 // When a parent selection changes, these children are cleared.
 const CASCADE_RESETS = {
-  instituteTypeId: ["jobRoleId", "jobCategoryId"],
-  jobRoleId: ["jobCategoryId"],
+  instituteTypeId: ["jobCategoryId", "jobRoleId"],
+  jobCategoryId: ["jobRoleId"],
   countryId: ["stateId", "cityId"],
   stateId: ["cityId"],
 };
@@ -219,19 +219,21 @@ const toOptions = (list, config, parentValue) =>
     }))
     .filter((option) => option.value);
 
-const fetchRoles = (instituteTypeId) =>
-  requestOnce(`roles:${instituteTypeId}`, async () =>
+const fetchCategories = (instituteTypeId) =>
+  requestOnce(`categories:${instituteTypeId}`, async () =>
     toOptions(
-      extractList(await jobRoleApi.getByInstituteType(Number(instituteTypeId))),
-      OPTION_CONFIG.role,
+      extractList(
+        await jobCategoryApi.getByInstituteType(Number(instituteTypeId)),
+      ),
+      OPTION_CONFIG.category,
     ),
   );
 
-const fetchCategories = (jobRoleId) =>
-  requestOnce(`categories:${jobRoleId}`, async () =>
+const fetchRoles = (jobCategoryId) =>
+  requestOnce(`roles:${jobCategoryId}`, async () =>
     toOptions(
-      extractList(await jobCategoryApi.getByJobRole(Number(jobRoleId))),
-      OPTION_CONFIG.category,
+      extractList(await jobRoleApi.getByJobCategory(Number(jobCategoryId))),
+      OPTION_CONFIG.role,
     ),
   );
 
@@ -299,7 +301,8 @@ const toBooleanString = (value) => {
   return text === "true" || text === "yes" || text === "1" ? "true" : "false";
 };
 
-const toText = (value) => (value === null || value === undefined ? "" : String(value));
+const toText = (value) =>
+  value === null || value === undefined ? "" : String(value);
 
 const getErrorMessage = (error) => {
   const data = error?.response?.data;
@@ -332,8 +335,8 @@ export default function JobseekerEdit() {
   });
 
   // Dependent dropdowns, loaded from the parent selections.
-  const roles = useDependentOptions(form.instituteTypeId, fetchRoles);
-  const categories = useDependentOptions(form.jobRoleId, fetchCategories);
+  const categories = useDependentOptions(form.instituteTypeId, fetchCategories);
+  const roles = useDependentOptions(form.jobCategoryId, fetchRoles);
   const states = useDependentOptions(form.countryId, fetchStates);
   const cities = useDependentOptions(form.stateId, fetchCities);
 
@@ -368,7 +371,9 @@ export default function JobseekerEdit() {
     const load = async () => {
       try {
         const [response, institutes, countries, allCities] = await Promise.all([
-          requestOnce(`jobseeker:${numericId}`, () => jobseekerApi.getById(numericId)),
+          requestOnce(`jobseeker:${numericId}`, () =>
+            jobseekerApi.getById(numericId),
+          ),
           getMasterList(instituteTypeApi),
           getMasterList(countryMasterApi),
           getMasterList(cityMasterApi),
@@ -376,7 +381,11 @@ export default function JobseekerEdit() {
 
         const item = unwrap(response);
 
-        if (!item || typeof item !== "object" || !pick(item, "jB_jobseeker_id")) {
+        if (
+          !item ||
+          typeof item !== "object" ||
+          !pick(item, "jB_jobseeker_id")
+        ) {
           throw new Error("Jobseeker not found.");
         }
 
@@ -409,8 +418,12 @@ export default function JobseekerEdit() {
           cityId: toText(pick(item, "jB_city_id")),
           expectedSalary: toText(pick(item, "jB_expected_salary")),
           preferredLocationId: toText(pick(item, "jB_preferred_location")),
-          willingToRelocate: toBooleanString(pick(item, "jB_willing_to_relocate")),
-          availabilityToJoin: toDateInput(pick(item, "jB_availability_to_join")),
+          willingToRelocate: toBooleanString(
+            pick(item, "jB_willing_to_relocate"),
+          ),
+          availabilityToJoin: toDateInput(
+            pick(item, "jB_availability_to_join"),
+          ),
         });
 
         setExistingCvPath(pick(item, "jB_cv_file_path") ?? "");
@@ -442,7 +455,10 @@ export default function JobseekerEdit() {
 
     if (selected) {
       if (!/\.(pdf|doc|docx|jpg|jpeg|png)$/i.test(selected.name)) {
-        setToast({ tone: "bad", msg: "Only PDF, Word, or image files are allowed." });
+        setToast({
+          tone: "bad",
+          msg: "Only PDF, Word, or image files are allowed.",
+        });
         event.target.value = "";
         return;
       }
@@ -468,7 +484,8 @@ export default function JobseekerEdit() {
 
     if (!form.fullName.trim()) next.fullName = "Full name is required.";
     if (!form.mobile.trim()) next.mobile = "Mobile number is required.";
-    if (!form.instituteTypeId) next.instituteTypeId = "Select an institute type.";
+    if (!form.instituteTypeId)
+      next.instituteTypeId = "Select an institute type.";
     if (!form.jobRoleId) next.jobRoleId = "Select a job role.";
     if (!form.jobCategoryId) next.jobCategoryId = "Select a job category.";
     if (!form.countryId) next.countryId = "Select a country.";
@@ -500,7 +517,10 @@ export default function JobseekerEdit() {
     payload.append("JB_institute_type_id", form.instituteTypeId);
     payload.append("JB_job_role_id", form.jobRoleId);
     payload.append("JB_job_category_id", form.jobCategoryId);
-    payload.append("JB_highest_qualification", form.highestQualification.trim());
+    payload.append(
+      "JB_highest_qualification",
+      form.highestQualification.trim(),
+    );
     payload.append("JB_speciality", form.speciality.trim());
     payload.append("JB_registration_number", form.registrationNumber.trim());
     payload.append("JB_total_experience", form.totalExperience || "0");
@@ -539,8 +559,22 @@ export default function JobseekerEdit() {
   };
 
   /* FIELD RENDERING */
-  const renderInput = ({ name, label, icon, type = "text", required = false, disabled = false, min, step }) => (
-    <Field label={label} htmlFor={name} required={required} error={errors[name]}>
+  const renderInput = ({
+    name,
+    label,
+    icon,
+    type = "text",
+    required = false,
+    disabled = false,
+    min,
+    step,
+  }) => (
+    <Field
+      label={label}
+      htmlFor={name}
+      required={required}
+      error={errors[name]}
+    >
       <IconField icon={icon}>
         <input
           id={name}
@@ -566,7 +600,12 @@ export default function JobseekerEdit() {
     disabled = false,
     placeholder,
   }) => (
-    <Field label={label} htmlFor={name} required={required} error={errors[name]}>
+    <Field
+      label={label}
+      htmlFor={name}
+      required={required}
+      error={errors[name]}
+    >
       <IconField icon={icon}>
         <SelectField
           value={form[name] ?? ""}
@@ -584,7 +623,11 @@ export default function JobseekerEdit() {
     return (
       <div className="flex min-h-[50vh] items-center justify-center bg-white p-6">
         <div className="flex items-center gap-3 text-sm text-slate-600">
-          <LoaderCircle className="animate-spin" style={{ color: ACCENT }} size={20} />
+          <LoaderCircle
+            className="animate-spin"
+            style={{ color: ACCENT }}
+            size={20}
+          />
           Loading jobseeker...
         </div>
       </div>
@@ -621,10 +664,32 @@ export default function JobseekerEdit() {
         <div className="grid grid-cols-1 gap-4">
           <Card title="Personal Details" icon={UserRound}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {renderInput({ name: "fullName", label: "Full Name", icon: Type, required: true })}
-              {renderInput({ name: "email", label: "Email", icon: Mail, type: "email", disabled: true })}
-              {renderInput({ name: "mobile", label: "Mobile Number", icon: Phone, type: "tel", required: true })}
-              {renderInput({ name: "whatsapp", label: "WhatsApp Number", icon: Phone, type: "tel" })}
+              {renderInput({
+                name: "fullName",
+                label: "Full Name",
+                icon: Type,
+                required: true,
+              })}
+              {renderInput({
+                name: "email",
+                label: "Email",
+                icon: Mail,
+                type: "email",
+                disabled: true,
+              })}
+              {renderInput({
+                name: "mobile",
+                label: "Mobile Number",
+                icon: Phone,
+                type: "tel",
+                required: true,
+              })}
+              {renderInput({
+                name: "whatsapp",
+                label: "WhatsApp Number",
+                icon: Phone,
+                type: "tel",
+              })}
             </div>
           </Card>
 
@@ -646,7 +711,9 @@ export default function JobseekerEdit() {
                 options: states.options,
                 loading: states.loading,
                 disabled: !form.countryId,
-                placeholder: form.countryId ? "Select State" : "Select Country First",
+                placeholder: form.countryId
+                  ? "Select State"
+                  : "Select Country First",
               })}
               {renderSelect({
                 name: "cityId",
@@ -656,7 +723,9 @@ export default function JobseekerEdit() {
                 options: cities.options,
                 loading: cities.loading,
                 disabled: !form.stateId,
-                placeholder: form.stateId ? "Select City" : "Select State First",
+                placeholder: form.stateId
+                  ? "Select City"
+                  : "Select State First",
               })}
             </div>
           </Card>
@@ -672,28 +741,44 @@ export default function JobseekerEdit() {
                 placeholder: "Select Institute Type",
               })}
               {renderSelect({
-                name: "jobRoleId",
-                label: "Job Role",
-                icon: Briefcase,
-                required: true,
-                options: roles.options,
-                loading: roles.loading,
-                disabled: !form.instituteTypeId,
-                placeholder: form.instituteTypeId ? "Select Job Role" : "Select Institute Type First",
-              })}
-              {renderSelect({
                 name: "jobCategoryId",
                 label: "Job Category",
                 icon: Tag,
                 required: true,
                 options: categories.options,
                 loading: categories.loading,
-                disabled: !form.jobRoleId,
-                placeholder: form.jobRoleId ? "Select Job Category" : "Select Job Role First",
+                disabled: !form.instituteTypeId,
+                placeholder: form.instituteTypeId
+                  ? "Select Job Category"
+                  : "Select Institute Type First",
               })}
-              {renderInput({ name: "highestQualification", label: "Highest Qualification", icon: GraduationCap })}
-              {renderInput({ name: "speciality", label: "Speciality / Department", icon: ClipboardList })}
-              {renderInput({ name: "registrationNumber", label: "Registration Number", icon: Hash })}
+              {renderSelect({
+                name: "jobRoleId",
+                label: "Job Role",
+                icon: Briefcase,
+                required: true,
+                options: roles.options,
+                loading: roles.loading,
+                disabled: !form.jobCategoryId,
+                placeholder: form.jobCategoryId
+                  ? "Select Job Role"
+                  : "Select Job Category First",
+              })}
+              {renderInput({
+                name: "highestQualification",
+                label: "Highest Qualification",
+                icon: GraduationCap,
+              })}
+              {renderInput({
+                name: "speciality",
+                label: "Speciality / Department",
+                icon: ClipboardList,
+              })}
+              {renderInput({
+                name: "registrationNumber",
+                label: "Registration Number",
+                icon: Hash,
+              })}
               {renderInput({
                 name: "totalExperience",
                 label: "Total Experience (Years)",
@@ -702,8 +787,16 @@ export default function JobseekerEdit() {
                 min: 0,
                 step: 0.5,
               })}
-              {renderInput({ name: "currentDesignation", label: "Current Designation", icon: Briefcase })}
-              {renderInput({ name: "currentEmployer", label: "Current Employer", icon: Building2 })}
+              {renderInput({
+                name: "currentDesignation",
+                label: "Current Designation",
+                icon: Briefcase,
+              })}
+              {renderInput({
+                name: "currentEmployer",
+                label: "Current Employer",
+                icon: Building2,
+              })}
               {renderInput({
                 name: "currentSalary",
                 label: "Current Salary",
@@ -754,7 +847,8 @@ export default function JobseekerEdit() {
 
               {existingCvName && (
                 <p className="mb-2 text-xs text-slate-500">
-                  Current file: {existingCvName}. Choose a new file to replace it.
+                  Current file: {existingCvName}. Choose a new file to replace
+                  it.
                 </p>
               )}
 
@@ -791,7 +885,9 @@ export default function JobseekerEdit() {
                     </button>
                   </span>
                 ) : (
-                  <span className="text-xs text-slate-500">PDF, Word or image, up to 5 MB</span>
+                  <span className="text-xs text-slate-500">
+                    PDF, Word or image, up to 5 MB
+                  </span>
                 )}
               </div>
             </div>
@@ -800,7 +896,9 @@ export default function JobseekerEdit() {
           <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-sm">
             <span
               className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
-                consent ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+                consent
+                  ? "bg-emerald-50 text-emerald-600"
+                  : "bg-amber-50 text-amber-600"
               }`}
             >
               <ShieldCheck size={16} />
@@ -829,7 +927,11 @@ export default function JobseekerEdit() {
             className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             style={{ backgroundColor: ACCENT }}
           >
-            {saving ? <LoaderCircle size={15} className="animate-spin" /> : <Save size={15} />}
+            {saving ? (
+              <LoaderCircle size={15} className="animate-spin" />
+            ) : (
+              <Save size={15} />
+            )}
             {saving ? "Saving..." : "Save Changes"}
           </button>
         </div>

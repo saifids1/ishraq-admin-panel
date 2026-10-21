@@ -229,7 +229,7 @@ const JobSeekerHeader = () => {
       "jobseekerMobile",
       "jobseekerNumber",
     ].forEach((key) => localStorage.removeItem(key));
-
+    localStorage.clear();
     logout();
     navigate("/login");
   };

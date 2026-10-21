@@ -99,6 +99,7 @@ const EmployeeHeader = () => {
 
   const handleLogout = () => {
     setProfileOpen(false);
+    localStorage.clear();
     logout();
     navigate("/login");
   };
