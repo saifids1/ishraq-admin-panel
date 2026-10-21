@@ -15,36 +15,11 @@ import {
   Plus,
 } from "lucide-react";
 import jobRoleApi from "../../../../api/Services/jobRoleApi";
+import jobCategoryApi from "../../../../api/Services/jobCategoryApi";
+import instituteTypeApi from "../../../../api/Services/instituteTypeApi";
 import { getApiErrorMessage } from "../../../../api/utils/apiHelpers";
 
 /* ------------------------------ HELPERS ------------------------------ */
-
-/**
- * Format any date value into dd-mm-yyyy.
- * Returns "-" for invalid / missing / .NET default values.
- */
-const formatDate = (value) => {
-  if (value === null || value === undefined || value === "") return "-";
-
-  const s = String(value).trim();
-  if (s.startsWith("0001-01-01")) return "-";
-
-  let d;
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (plain) {
-    d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
-  } else {
-    d = value instanceof Date ? value : new Date(s);
-  }
-
-  if (Number.isNaN(d.getTime())) return "-";
-
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-
-  return `${dd}-${mm}-${yyyy}`;
-};
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
@@ -95,6 +70,8 @@ const toListRow = (item, srNo) => ({
   ...item,
   id: item["jR_job_role_id"],
   name: item["jR_name"],
+  jobCategoryName: item.jobCategoryName ?? "",
+  instituteTypeName: item.instituteTypeName ?? "",
   status: item["jR_is_active"] ? "Active" : "Inactive",
   srNo,
 });
@@ -164,9 +141,107 @@ const JobRoleList = () => {
       const { list, totalRecords: total, totalPages: pages } =
         parseListResponse(response, pageSize);
 
+      let categoryById = new Map();
+      let instituteTypeById = new Map();
+      if (list.length) {
+        try {
+          const categoriesResponse = await jobCategoryApi.getAllList();
+          const categoriesRoot = categoriesResponse?.data ?? categoriesResponse;
+          const categoryCandidates = [
+            categoriesRoot?.data?.data,
+            categoriesRoot?.Data?.Data,
+            categoriesRoot?.data,
+            categoriesRoot?.Data,
+            categoriesRoot,
+          ];
+          const categories = categoryCandidates.find(Array.isArray) || [];
+          categoryById = new Map(
+            categories.map((category) => [
+              String(category.jC_job_category_id),
+              category,
+            ]),
+          );
+          const missingInstituteTypeNames = categories.some(
+            (category) =>
+              category.jC_institute_type_id &&
+              !category.instituteTypeName,
+          );
+          if (missingInstituteTypeNames) {
+            try {
+              const institutesResponse = await instituteTypeApi.getAllList();
+              const institutesRoot = institutesResponse?.data ?? institutesResponse;
+              const instituteCandidates = [
+                institutesRoot?.data?.data,
+                institutesRoot?.Data?.Data,
+                institutesRoot?.data,
+                institutesRoot?.Data,
+                institutesRoot,
+              ];
+              const institutes = instituteCandidates.find(Array.isArray) || [];
+              instituteTypeById = new Map(
+                institutes.map((institute) => [
+                  String(institute.iT_institute_type_id),
+                  institute.iT_name ?? "",
+                ]),
+              );
+            } catch (err) {
+              console.error(
+                "Failed to resolve institute type names for job roles:",
+                err,
+              );
+              setError(
+                "Job roles loaded, but some Institute Type names could not be resolved.",
+              );
+            }
+          }
+        } catch (err) {
+          console.error("Failed to resolve job role relationships:", err);
+          setError(
+            "Job roles loaded, but their relationship names could not be resolved.",
+          );
+        }
+      }
+
+      if (
+        list.some((item) => {
+          const category = categoryById.get(String(item.jR_job_category_id));
+          return (
+            !category?.jC_name ||
+            !(
+              category.instituteTypeName ||
+              instituteTypeById.get(String(category.jC_institute_type_id))
+            )
+          );
+        })
+      ) {
+        setError(
+          "Job roles loaded, but one or more relationship names are unavailable.",
+        );
+      }
+
+      if (requestId !== loadRequestRef.current) return;
+
       setRows(
         list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
+          toListRow(
+            {
+              ...item,
+              jobCategoryName:
+                categoryById.get(String(item.jR_job_category_id))?.jC_name ??
+                "",
+              instituteTypeName:
+                categoryById.get(String(item.jR_job_category_id))
+                  ?.instituteTypeName ??
+                instituteTypeById.get(
+                  String(
+                    categoryById.get(String(item.jR_job_category_id))
+                      ?.jC_institute_type_id,
+                  ),
+                ) ??
+                "",
+            },
+            (page - 1) * pageSize + index + 1,
+          ),
         ),
       );
       setTotalRecords(total);
@@ -353,39 +428,41 @@ const JobRoleList = () => {
         </div>
       )}
 
-      {/* TABLE — header stays fixed; only body scrolls */}
+      {/* TABLE */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[930px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
-              <col style={{ width: "auto" }} />
+              <col style={{ width: "200px" }} />
+              <col style={{ width: "190px" }} />
+              <col style={{ width: "190px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
-
             <thead className="sticky top-0 z-10">
               <tr>
                 <th scope="col" className={thClass}>Sr.No</th>
                 <th scope="col" className={thClass}>Job Role</th>
-                {/* <th scope="col" className={thClass}>Created At</th> */}
-                {/* <th scope="col" className={thClass}>Updated At</th> */}
+                <th scope="col" className={thClass}>Job Category</th>
+                <th scope="col" className={thClass}>Institute Type</th>
                 <th scope="col" className={thClass}>Status</th>
-                <th scope="col" className={thClass}>Actions</th>
+                <th scope="col" className={`${thClass} sticky right-0 z-20`}>Actions</th>
               </tr>
             </thead>
           </table>
         </div>
 
-        {/* Body-only scroll container */}
         <div
           className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[620px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[930px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
-              <col style={{ width: "auto" }} />
+              <col style={{ width: "200px" }} />
+              <col style={{ width: "190px" }} />
+              <col style={{ width: "190px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
@@ -393,7 +470,7 @@ const JobRoleList = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-12 text-center">
+                  <td colSpan={6} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center">
                       <span
                         aria-hidden="true"
@@ -405,7 +482,7 @@ const JobRoleList = () => {
                 </tr>
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
+                  <td colSpan={6} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
                     <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                       <Inbox size={22} />
                     </div>
@@ -433,23 +510,23 @@ const JobRoleList = () => {
                       </div>
                     </td>
 
-                    {/* Created At */}
-                    {/*
                     <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row["jR_created_at"])}
+                      <div
+                        className="w-full min-w-0 truncate"
+                        title={String(row.jobCategoryName ?? "")}
+                      >
+                        {row.jobCategoryName || "-"}
                       </div>
                     </td>
-                    */}
 
-                    {/* Updated At */}
-                    {/*
                     <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row["jR_updated_at"])}
+                      <div
+                        className="w-full min-w-0 truncate"
+                        title={String(row.instituteTypeName ?? "")}
+                      >
+                        {row.instituteTypeName || "-"}
                       </div>
                     </td>
-                    */}
 
                     {/* Status */}
                     <td className={`${td} whitespace-nowrap`}>
@@ -461,7 +538,7 @@ const JobRoleList = () => {
                     </td>
 
                     {/* Actions */}
-                    <td className={`${td} justify-center text-center`}>
+                    <td className={`${td} sticky right-0 z-10 justify-center bg-white text-center`}>
                       <div className="flex items-center justify-center text-center gap-2">
                         <button
                           type="button"

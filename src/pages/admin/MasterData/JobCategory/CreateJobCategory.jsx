@@ -54,7 +54,14 @@ const formatDate = (value) => {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
 
-  return `${dd}-${mm}-${yyyy}`;
+  const hours = d.getHours();
+  const time = `${String(hours % 12 || 12).padStart(2, "0")}:${String(
+    d.getMinutes(),
+  ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")} ${
+    hours >= 12 ? "PM" : "AM"
+  }`;
+
+  return `${dd}-${mm}-${yyyy} ${time}`;
 };
 
 const extractRecord = (response) => {
@@ -137,10 +144,11 @@ const CreateJobCategory = ({ mode }) => {
   const [status, setStatus] = useState("Active");
   const [jobResponsibility, setJobResponsibility] = useState("");
 
-  const needsInstituteType = isCreate;
+  const needsInstituteType = isCreate || isEdit;
 
   const [instituteTypes, setInstituteTypes] = useState([]);
   const [instituteTypeId, setInstituteTypeId] = useState("");
+  const [instituteTypeName, setInstituteTypeName] = useState("");
 
   const [audit, setAudit] = useState({
     createdAt: "",
@@ -212,6 +220,7 @@ const CreateJobCategory = ({ mode }) => {
       setStatus("Active");
       setJobResponsibility("");
       setInstituteTypeId("");
+      setInstituteTypeName("");
 
       setAudit({
         createdAt: "",
@@ -252,6 +261,23 @@ const CreateJobCategory = ({ mode }) => {
         setStatus(item[config.activeField] ? "Active" : "Inactive");
 
         setInstituteTypeId(String(item[config.instituteTypeField] ?? ""));
+        let relatedInstituteTypeName = item.instituteTypeName ?? "";
+        if (!relatedInstituteTypeName && item[config.instituteTypeField]) {
+          try {
+            const instituteResponse = await instituteTypeApi.getById(
+              item[config.instituteTypeField],
+            );
+            const institute = extractRecord(instituteResponse);
+            relatedInstituteTypeName = institute?.iT_name ?? "";
+          } catch (relationshipError) {
+            console.error(
+              "Failed to resolve job category institute type:",
+              relationshipError,
+            );
+            setError("Job category loaded, but its Institute Type name could not be resolved.");
+          }
+        }
+        if (!cancelled) setInstituteTypeName(relatedInstituteTypeName);
         setJobResponsibility(item[config.responsibilityField] ?? "");
 
         setAudit({
@@ -404,7 +430,8 @@ const CreateJobCategory = ({ mode }) => {
 
           <form onSubmit={handleSubmit} className="p-4">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              {needsInstituteType && (
+
+                {needsInstituteType ? (
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">
                     Institute Type
@@ -438,7 +465,20 @@ const CreateJobCategory = ({ mode }) => {
                     />
                   </div>
                 </div>
-              )}
+                ) : (
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Institute Type
+                    </label>
+                    <input
+                      type="text"
+                      value={instituteTypeName || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                )}
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">

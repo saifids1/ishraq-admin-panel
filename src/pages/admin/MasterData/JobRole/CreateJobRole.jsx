@@ -134,6 +134,8 @@ const CreateJobRole = ({ mode }) => {
   const [instituteTypeId, setInstituteTypeId] = useState("");
   const [jobCategories, setJobCategories] = useState([]);
   const [jobCategoryId, setJobCategoryId] = useState("");
+  const [jobCategoryName, setJobCategoryName] = useState("");
+  const [instituteTypeName, setInstituteTypeName] = useState("");
   const [loadingCategories, setLoadingCategories] = useState(false);
 
   const [audit, setAudit] = useState({
@@ -204,6 +206,8 @@ const CreateJobRole = ({ mode }) => {
       setStatus("Active");
       setInstituteTypeId("");
       setJobCategoryId("");
+      setJobCategoryName("");
+      setInstituteTypeName("");
 
       setAudit({
         createdAt: "",
@@ -245,14 +249,47 @@ const CreateJobRole = ({ mode }) => {
 
         const savedCategoryId = String(item[config.jobCategoryField] ?? "");
         setJobCategoryId(savedCategoryId);
+        let relatedCategoryName = "";
+        let relatedInstituteTypeName = "";
         if (savedCategoryId) {
-          const categoryResponse = await jobCategoryApi.getById(savedCategoryId);
-          const category = extractRecord(categoryResponse);
-          if (!cancelled) {
-            setInstituteTypeId(
-              String(category?.jC_institute_type_id ?? ""),
+          try {
+            const categoryResponse =
+              await jobCategoryApi.getById(savedCategoryId);
+            const category = extractRecord(categoryResponse);
+            relatedCategoryName = category?.jC_name ?? "";
+            const savedInstituteTypeId = category?.jC_institute_type_id;
+            setInstituteTypeId(String(savedInstituteTypeId ?? ""));
+            relatedInstituteTypeName = category?.instituteTypeName ?? "";
+
+            if (!relatedInstituteTypeName && savedInstituteTypeId) {
+              try {
+                const instituteResponse =
+                  await instituteTypeApi.getById(savedInstituteTypeId);
+                const institute = extractRecord(instituteResponse);
+                relatedInstituteTypeName = institute?.iT_name ?? "";
+              } catch (relationshipError) {
+                console.error(
+                  "Failed to resolve job role institute type:",
+                  relationshipError,
+                );
+                setError(
+                  "Job role loaded, but its Institute Type name could not be resolved.",
+                );
+              }
+            }
+          } catch (relationshipError) {
+            console.error(
+              "Failed to resolve job role category:",
+              relationshipError,
+            );
+            setError(
+              "Job role loaded, but its relationship names could not be resolved.",
             );
           }
+        }
+        if (!cancelled) {
+          setJobCategoryName(relatedCategoryName);
+          setInstituteTypeName(relatedInstituteTypeName);
         }
 
         setAudit({
@@ -531,6 +568,35 @@ const CreateJobRole = ({ mode }) => {
                     />
                   </div>
                 </div>
+              )}
+
+              {!needsInstituteType && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Job Category
+                    </label>
+                    <input
+                      type="text"
+                      value={jobCategoryName || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Institute Type
+                    </label>
+                    <input
+                      type="text"
+                      value={instituteTypeName || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                </>
               )}
 
               <div>

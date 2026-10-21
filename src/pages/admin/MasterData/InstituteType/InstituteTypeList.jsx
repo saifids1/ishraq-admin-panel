@@ -19,41 +19,12 @@ import { getApiErrorMessage } from "../../../../api/utils/apiHelpers";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
-/**
- * Format any date value into dd-mm-yyyy.
- * Returns "-" for invalid / missing / .NET default values.
- */
-const formatDate = (value) => {
-  if (value === null || value === undefined || value === "") return "-";
-
-  const s = String(value).trim();
-  if (s.startsWith("0001-01-01")) return "-";
-
-  let d;
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (plain) {
-    d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
-  } else {
-    d = value instanceof Date ? value : new Date(s);
-  }
-
-  if (Number.isNaN(d.getTime())) return "-";
-
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-
-  return `${dd}-${mm}-${yyyy}`;
-};
-
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
 
 const LIST_COLUMNS = [
   { key: "iT_name",       label: "Institute Type", format: (v) => v ?? "-" },
-  // { key: "iT_created_at", label: "Created At",     format: (v) => formatDate(v) },
-  // { key: "iT_updated_at", label: "Updated At",     format: (v) => formatDate(v) },
 ];
 
 /* ------------------------------ TONES ----------------------------- */
@@ -382,7 +353,7 @@ const InstituteTypeList = () => {
         </div>
       )}
 
-      {/* TABLE — header stays fixed; only body scrolls */}
+      {/* TABLE */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[620px] table-fixed border-collapse text-[15px]">
@@ -397,16 +368,13 @@ const InstituteTypeList = () => {
               <tr>
                 <th scope="col" className={thClass}>Sr.No</th>
                 <th scope="col" className={thClass}>Institute Type</th>
-                {/* <th scope="col" className={thClass}>Created At</th> */}
-                {/* <th scope="col" className={thClass}>Updated At</th> */}
                 <th scope="col" className={thClass}>Status</th>
-                <th scope="col" className={thClass}>Actions</th>
+                <th scope="col" className={`${thClass} sticky right-0 z-20`}>Actions</th>
               </tr>
             </thead>
           </table>
         </div>
 
-        {/* Body-only scroll container */}
         <div
           className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
           style={{ scrollbarGutter: "stable" }}
@@ -418,7 +386,6 @@ const InstituteTypeList = () => {
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
-
             <tbody>
               {loading ? (
                 <tr>
@@ -462,24 +429,6 @@ const InstituteTypeList = () => {
                       </div>
                     </td>
 
-                    {/* Created At */}
-                    {/*
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row["iT_created_at"])}
-                      </div>
-                    </td>
-                    */}
-
-                    {/* Updated At */}
-                    {/*
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row["iT_updated_at"])}
-                      </div>
-                    </td>
-                    */}
-
                     {/* Status */}
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
@@ -490,7 +439,7 @@ const InstituteTypeList = () => {
                     </td>
 
                     {/* Actions */}
-                    <td className={`${td} justify-center text-center`}>
+                    <td className={`${td} sticky right-0 z-10 justify-center bg-white text-center`}>
                       <div className="flex items-center justify-center text-center gap-2">
                         <button
                           type="button"

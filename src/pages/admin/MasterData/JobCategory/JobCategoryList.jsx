@@ -18,34 +18,6 @@ import { getApiErrorMessage } from "../../../../api/utils/apiHelpers";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
-const formatDate = (value) => {
-  if (value === null || value === undefined || value === "") return "-";
-
-  const s = String(value).trim();
-  if (s.startsWith("0001-01-01")) return "-";
-
-  let d;
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-
-  if (plain) {
-    d = new Date(
-      Number(plain[1]),
-      Number(plain[2]) - 1,
-      Number(plain[3])
-    );
-  } else {
-    d = value instanceof Date ? value : new Date(s);
-  }
-
-  if (Number.isNaN(d.getTime())) return "-";
-
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-
-  return `${dd}-${mm}-${yyyy}`;
-};
-
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
@@ -53,8 +25,7 @@ const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
 const LIST_COLUMNS = [
   { key: "jC_name", label: "Job Category" },
   { key: "jC_job_responsibility", label: "Job Responsibility" },
-  // { key: "jC_created_at", label: "Created At" },
-  // { key: "jC_updated_at", label: "Updated At" },
+  { key: "instituteTypeName", label: "Institute Type " },
 ];
 
 const TONES = {
@@ -98,6 +69,7 @@ const toListRow = (item, srNo) => ({
   ...item,
   id: item.jC_job_category_id,
   name: item.jC_name,
+  instituteTypeName: item.instituteTypeName ?? "",
   status: item.jC_is_active ? "Active" : "Inactive",
   srNo,
 });
@@ -399,15 +371,13 @@ const JobCategoryList = () => {
 
       {/* TABLE */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
-        {/* TABLE HEADER */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[1050px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
+              <col style={{ width: "300px" }} />
               <col style={{ width: "200px" }} />
-              <col style={{ width: "auto" }} />
-              {/* <col style={{ width: "130px" }} /> */}
-              {/* <col style={{ width: "130px" }} /> */}
+              <col style={{ width: "200px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
@@ -416,36 +386,32 @@ const JobCategoryList = () => {
               <tr>
                 <th scope="col" className={thClass}>Sr.No</th>
                 <th scope="col" className={thClass}>Job Category</th>
+                <th scope="col" className={thClass}>Institute Type Name</th>
                 <th scope="col" className={thClass}>Job Responsibility</th>
-                {/* <th scope="col" className={thClass}>Created At</th> */}
-                {/* <th scope="col" className={thClass}>Updated At</th> */}
                 <th scope="col" className={thClass}>Status</th>
-                <th scope="col" className={thClass}>Actions</th>
+                <th scope="col" className={`${thClass} sticky right-0 z-20`}>Actions</th>
               </tr>
             </thead>
           </table>
         </div>
 
-        {/* TABLE BODY */}
         <div
           className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[800px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[1050px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
+              <col style={{ width: "300px" }} />
               <col style={{ width: "200px" }} />
-              <col style={{ width: "auto" }} />
-              {/* <col style={{ width: "130px" }} /> */}
-              {/* <col style={{ width: "130px" }} /> */}
+              <col style={{ width: "200px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
-
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center">
+                  <td colSpan={6} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center">
                       <span
                         aria-hidden="true"
@@ -460,7 +426,7 @@ const JobCategoryList = () => {
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="border-t border-[#e2e8ee] px-4 py-12 text-center"
                   >
                     <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
@@ -496,29 +462,19 @@ const JobCategoryList = () => {
                     <td className={`${td} whitespace-nowrap`}>
                       <div
                         className="w-full min-w-0 truncate"
+                        title={String(row.instituteTypeName ?? "")}
+                      >
+                        {row.instituteTypeName || "-"}
+                      </div>
+                    </td>
+                    <td className={`${td} whitespace-nowrap`}>
+                      <div
+                        className="w-full min-w-0 truncate"
                         title={String(row.jC_job_responsibility ?? "")}
                       >
                         {row.jC_job_responsibility || "-"}
                       </div>
                     </td>
-
-                    {/* Created At */}
-                    {/*
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row.jC_created_at)}
-                      </div>
-                    </td>
-                    */}
-
-                    {/* Updated At */}
-                    {/*
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row.jC_updated_at)}
-                      </div>
-                    </td>
-                    */}
 
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
@@ -530,7 +486,7 @@ const JobCategoryList = () => {
                       </div>
                     </td>
 
-                    <td className={`${td} justify-center text-center`}>
+                    <td className={`${td} sticky right-0 z-10 justify-center bg-white text-center`}>
                       <div className="flex items-center justify-center gap-2 text-center">
                         <button
                           type="button"
