@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ChevronDown, ChevronsLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import StatusModal from "../../../../components/common/StatusModal";
 import countryMasterApi from "../../../../api/Services/countryMasterApi";
 
 const selectClass =
@@ -31,22 +32,15 @@ const listPath = "/admin/settings/master/countryMaster";
 
 /* --------------------------- DATE HELPERS ------------------------- */
 
-/**
- * Format a date value into dd-mm-yyyy.
- * Empty / invalid / .NET default (0001-01-01) → "".
- */
 const formatDate = (value) => {
   if (value === null || value === undefined || value === "") return "";
 
   const s = String(value).trim();
-
-  // .NET default / unset date
   if (s.startsWith("0001-01-01")) return "";
 
   let d;
   const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (plain) {
-    // Treat plain "yyyy-mm-dd" as local date (avoid UTC shift)
     d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
   } else {
     d = value instanceof Date ? value : new Date(s);
@@ -61,18 +55,15 @@ const formatDate = (value) => {
   return `${dd}-${mm}-${yyyy}`;
 };
 
-// Supports Axios responses and ApiResponseDto<T> responses.
 const extractRecord = (response) => {
   let result = response?.data ?? response;
 
-  // ApiResponseDto: { success, message, data: record }
   if (result?.data !== undefined) {
     result = result.data;
   } else if (result?.Data !== undefined) {
     result = result.Data;
   }
 
-  // Handle an additional wrapper if present.
   if (result?.data && !Array.isArray(result.data)) {
     result = result.data;
   } else if (result?.Data && !Array.isArray(result.Data)) {
@@ -88,13 +79,19 @@ const getErrorMessage = (error, fallback) =>
   error?.message ||
   fallback;
 
+const getSuccessMessage = (response, fallback) =>
+  response?.data?.message ||
+  response?.data?.Message ||
+  response?.data?.data?.message ||
+  response?.data?.data?.Message ||
+  fallback;
+
 const CreateCountry = ({ mode }) => {
   const navigate = useNavigate();
   const { id } = useParams();
 
   const isCreate = mode === "create";
 
-  // Driven by state so the Edit button can flip view → edit in place.
   const [isView, setIsView] = useState(mode === "view");
   const [isEdit, setIsEdit] = useState(mode === "edit");
 
@@ -112,21 +109,69 @@ const CreateCountry = ({ mode }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Reset create form or load the existing record for edit/view.
+  // ───────────────────────────────────────────────────────────────────
+  // Local StatusModal state (no provider)
+  // ───────────────────────────────────────────────────────────────────
+  const [modal, setModal] = useState(null);
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      message,
+      title: extra.title,
+      confirmText: extra.confirmText || "OK",
+      cancelText: extra.cancelText || "Cancel",
+      showCancel: false,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        extra.onCancel?.();
+      },
+    });
+  };
+
+  const openConfirm = ({
+    title,
+    message,
+    confirmText,
+    cancelText,
+    onConfirm,
+    onCancel,
+  }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: cancelText || "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        onCancel?.();
+      },
+    });
+  };
+
+  // Reset create form or load the existing record.
   useEffect(() => {
     let cancelled = false;
 
     if (isCreate) {
       setName("");
       setStatus("Active");
-
       setAudit({
         createdAt: "",
         createdBy: "",
         updatedAt: "",
         updatedBy: "",
       });
-
       setError("");
       setLoading(false);
       return;
@@ -166,7 +211,9 @@ const CreateCountry = ({ mode }) => {
         });
       } catch (err) {
         if (!cancelled) {
-          setError(getErrorMessage(err, "Failed to load record."));
+          const msg = getErrorMessage(err, "Failed to load record.");
+          setError(msg);
+          openStatus("error", msg);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -183,15 +230,11 @@ const CreateCountry = ({ mode }) => {
   const title = config.singular;
   const disabled = isView || loading || saving;
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
+  // ───────────────────────────────────────────────────────────────────
+  // Core save (shared by create + update)
+  // ───────────────────────────────────────────────────────────────────
+  const runSave = async () => {
     const trimmed = name.trim();
-
-    if (!trimmed) {
-      setError(`${title} name is required.`);
-      return;
-    }
 
     const payload = {
       [config.nameField]: trimmed,
@@ -203,23 +246,75 @@ const CreateCountry = ({ mode }) => {
 
     try {
       if (isCreate) {
-        await config.api.create(payload);
+        const response = await config.api.create(payload);
+
+        openStatus(
+          "success",
+          getSuccessMessage(
+            response,
+            `${title} "${trimmed}" created successfully.`,
+          ),
+          {
+            title: "Created",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
       } else {
         await config.api.update({
           ...payload,
           [config.idField]: Number(id),
         });
-      }
 
-      navigate(listPath);
+        openStatus(
+          "update",
+          `${title} "${trimmed}" updated successfully.`,
+          {
+            title: "Updated",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
+      }
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to save. Please try again."));
+      const msg = getErrorMessage(err, "Failed to save. Please try again.");
+      setError(msg);
+      openStatus("error", msg);
     } finally {
       setSaving(false);
     }
   };
 
-  // Clicking Edit flips the view into edit mode (matches the siblings).
+  // ───────────────────────────────────────────────────────────────────
+  // Submit
+  // ───────────────────────────────────────────────────────────────────
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (saving) return;
+
+    const trimmed = name.trim();
+
+    if (!trimmed) {
+      const msg = `${title} name is required.`;
+      setError(msg);
+      openStatus("warning", msg);
+      return;
+    }
+
+    if (isCreate) {
+      runSave();
+    } else {
+      openConfirm({
+        title: `Update ${title}?`,
+        message: "Are you sure you want to save these changes?",
+        confirmText: "Update",
+        cancelText: "Cancel",
+        onConfirm: runSave,
+      });
+    }
+  };
+
   const handleEditClick = () => {
     setIsView(false);
     setIsEdit(true);
@@ -302,68 +397,60 @@ const CreateCountry = ({ mode }) => {
                 </div>
               </div>
 
-              {/* Created At — read only */}
               {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Created At
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.createdAt || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Created At
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.createdAt || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
 
-              {/* Created By — read only */}
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Created By
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.createdBy || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Created By
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.createdBy || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
 
-              {/* Updated At — read only */}
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Updated At
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.updatedAt || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Updated At
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.updatedAt || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
 
-              {/* Updated By — read only */}
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Updated By
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.updatedBy || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Updated By
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.updatedBy || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                </>
               )}
             </div>
 
@@ -376,7 +463,6 @@ const CreateCountry = ({ mode }) => {
                 {isView ? "Back" : "Cancel"}
               </button>
 
-              {/* Edit button — only in view mode */}
               {isView && (
                 <button
                   type="button"
@@ -387,7 +473,6 @@ const CreateCountry = ({ mode }) => {
                 </button>
               )}
 
-              {/* Save button — only when NOT in view mode */}
               {!isView && (
                 <button
                   type="submit"
@@ -401,6 +486,20 @@ const CreateCountry = ({ mode }) => {
           </form>
         </div>
       </div>
+
+      {/* ───── Directly mounted StatusModal (no provider) ───── */}
+      <StatusModal
+        isOpen={!!modal}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
     </div>
   );
 };

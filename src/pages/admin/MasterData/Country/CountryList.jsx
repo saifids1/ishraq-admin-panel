@@ -1,6 +1,6 @@
 import StatusModal from "../../../../components/common/StatusModal";
 import { useStatusToast } from "../../../../components/common/StatusModalProvider";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -50,11 +50,9 @@ const formatDate = (value) => {
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
 
-const LIST_COLUMNS = [
-  { key: "cM_CountryName", label: "Country Name", format: (v) => v ?? "-" },
-  { key: "cM_CreatedAt",   label: "Created At",   format: (v) => formatDate(v) },
-  { key: "cM_UpdatedAt",   label: "Updated At",   format: (v) => formatDate(v) },
-];
+// Previously included in the table's LIST_COLUMNS configuration:
+// { key: "cM_CreatedAt", label: "Created At", format: (v) => formatDate(v) },
+// { key: "cM_UpdatedAt", label: "Updated At", format: (v) => formatDate(v) },
 
 /* ------------------------------ TONES ----------------------------- */
 
@@ -116,10 +114,11 @@ const parseListResponse = (response, pageSize) => {
     };
   }
 
-  const list = inner?.data ?? [];
-  const totalRecords = inner?.totalRecords ?? list.length;
-  const totalPages =
-    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize));
+  const list = Array.isArray(inner?.data) ? inner.data : [];
+  const totalRecords = Number(inner?.totalRecords ?? list.length);
+  const totalPages = Number(
+    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize)),
+  );
 
   return { list, totalRecords, totalPages };
 };
@@ -137,6 +136,7 @@ const CountryList = () => {
   const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const loadRequestRef = useRef(0);
 
   const [query, setQuery] = useState({
     search: "",
@@ -150,10 +150,21 @@ const CountryList = () => {
   /* --------------------------- FETCH --------------------------- */
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const response = await countryMasterApi.getAll({ pageNo: page, pageSize });
+      const params = {
+        PageNo: page,
+        PageSize: pageSize,
+        Search: query.search.trim(),
+      };
+
+      if (query.status === "Active") params.IsActive = true;
+      if (query.status === "Inactive") params.IsActive = false;
+
+      const response = await countryMasterApi.getAll(params);
+      if (requestId !== loadRequestRef.current) return;
       const { list, totalRecords: total, totalPages: pages } =
         parseListResponse(response, pageSize);
 
@@ -163,75 +174,64 @@ const CountryList = () => {
         ),
       );
       setTotalRecords(total);
-      setTotalPages(pages);
+      setTotalPages(Math.max(1, Number(pages) || 1));
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       setRows([]);
       setTotalRecords(0);
-      setTotalPages(0);
+      setTotalPages(1);
       setError(getApiErrorMessage(err) || "Unable to load country records.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, query.search, query.status]);
 
   useEffect(() => {
     load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
   const handleToggle = async (row) => {
     try {
       await countryMasterApi.toggleActive(row.id);
-      const response = await countryMasterApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
-
-      setRows(
-        list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
-      );
-      setTotalRecords(total);
-      setTotalPages(pages);
+      await load();
     } catch (err) {
       setError(getApiErrorMessage(err) || "Unable to update status.");
+      throw err;
     }
   };
 
   /* ---------------------------- QUERY HELPERS ---------------------------- */
 
-  const patchFilter = (patch) => setQuery((q) => ({ ...q, ...patch }));
+  const patchFilter = (patch) => {
+    setQuery((q) => ({ ...q, ...patch }));
+    setPage(1);
+  };
 
-  /* ---------------------------- FILTERED ROWS ---------------------------- */
+  /* ---------------------------- SERVER PAGINATION ---------------------------- */
 
-  const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (
-        q &&
-        !LIST_COLUMNS.some((c) =>
-          String(r[c.key] ?? "").toLowerCase().includes(q),
-        )
-      )
-        return false;
-      if (query.status !== "All" && r.status !== query.status) return false;
-      return true;
-    });
-  }, [rows, query]);
-
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
+  const count = totalRecords;
+  const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
-  const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const start = count === 0 ? 0 : (currentPage - 1) * pageSize;
+  const pageRows = rows;
 
   const pageNumbers = useMemo(() => {
     const win = 5;
     let from = Math.max(1, currentPage - Math.floor(win / 2));
     const to = Math.min(totalPagesLocal, from + win - 1);
     from = Math.max(1, to - win + 1);
-    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+    return Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => from + i);
   }, [currentPage, totalPagesLocal]);
 
   /* ---------------------------- TOAST ---------------------------- */
@@ -360,12 +360,10 @@ const CountryList = () => {
       {/* TABLE — header stays fixed; only body scrolls */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[620px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
@@ -373,9 +371,9 @@ const CountryList = () => {
             <thead className="sticky top-0 z-10">
               <tr>
                 <th scope="col" className={thClass}>Sr.No</th>
-                <th scope="col" className={thClass}>Country Name</th>
-                <th scope="col" className={thClass}>Created At</th>
-                <th scope="col" className={thClass}>Updated At</th>
+                <th scope="col" className={thClass}>Country</th>
+                {/* <th scope="col" className={thClass}>Created At</th> */}
+                {/* <th scope="col" className={thClass}>Updated At</th> */}
                 <th scope="col" className={thClass}>Status</th>
                 <th scope="col" className={thClass}>Actions</th>
               </tr>
@@ -388,12 +386,10 @@ const CountryList = () => {
           className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[620px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
@@ -401,7 +397,7 @@ const CountryList = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
+                  <td colSpan={4} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center">
                       <span
                         aria-hidden="true"
@@ -413,7 +409,7 @@ const CountryList = () => {
                 </tr>
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
+                  <td colSpan={4} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
                     <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                       <Inbox size={22} />
                     </div>
@@ -434,7 +430,7 @@ const CountryList = () => {
                       {start + index + 1}
                     </td>
 
-                    {/* Country Name */}
+                    {/* Country */}
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
                         {row["cM_CountryName"] ?? "-"}
@@ -442,18 +438,22 @@ const CountryList = () => {
                     </td>
 
                     {/* Created At */}
+                    {/*
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
                         {formatDate(row["cM_CreatedAt"])}
                       </div>
                     </td>
+                    */}
 
                     {/* Updated At */}
+                    {/*
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
                         {formatDate(row["cM_UpdatedAt"])}
                       </div>
                     </td>
+                    */}
 
                     {/* Status */}
                     <td className={`${td} whitespace-nowrap`}>
@@ -471,7 +471,7 @@ const CountryList = () => {
                           type="button"
                           title={`View ${row["cM_CountryName"] || "Country"}`}
                           aria-label={`View ${row["cM_CountryName"] || "Country"}`}
-                          onClick={() => navigate(`/admin/settings/master/countryMaster/${row.id}/view`)}
+                          onClick={() => navigate(`/admin/settings/master/countryMaster/${row.id}/view` )}
                           className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                         >
                           <ChevronsRight size={14} strokeWidth={2.2} />

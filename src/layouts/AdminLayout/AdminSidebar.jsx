@@ -22,6 +22,15 @@ import {
   ChevronRight,
   Database,
   MapPin,
+  School,
+  Briefcase,
+  Globe,
+  Landmark,
+  Map,
+  Clock,
+  Users,
+  AlertTriangle,
+  BadgeCheck,
 } from "lucide-react";
 
 // Keyframes live here so no tailwind.config changes are needed
@@ -98,7 +107,6 @@ export const AdminSidebar = () => {
       icon: BookUser,
       link: "/admin/jobseekers",
       tile: "from-emerald-400 to-teal-500",
-      // alert: true,
     },
     {
       text: "Employers List",
@@ -135,7 +143,6 @@ export const AdminSidebar = () => {
       icon: ShieldAlert,
       link: "/admin/complaints",
       tile: "from-rose-400 to-red-500",
-      // alert: true,
     },
     {
       text: "Feedback",
@@ -148,11 +155,32 @@ export const AdminSidebar = () => {
       icon: Database,
       link: "/admin/master-data",
       tile: "from-teal-400 to-cyan-600",
+      // Children sorted alphabetically by `text`
       children: [
+        {
+          text: "City",
+          link: "/admin/settings/master/cityMaster",
+          icon: Map,
+        },
+        {
+          text: "Complaint Category",
+          link: "/admin/settings/master/complaintCategory",
+          icon: AlertTriangle,
+        },
+        {
+          text: "Country",
+          link: "/admin/settings/master/countryMaster",
+          icon: Globe,
+        },
+        {
+          text: "Employment Preference",
+          link: "/admin/settings/master/employmentType",
+          icon: Clock,
+        },
         {
           text: "Institute Type",
           link: "/admin/settings/master/instituteType",
-          icon: Building2,
+          icon: School,
         },
         {
           text: "Job Category",
@@ -162,42 +190,22 @@ export const AdminSidebar = () => {
         {
           text: "Job Role",
           link: "/admin/settings/master/jobRole",
-          icon: BookUser,
-        },
-        {
-          text: "Country",
-          link: "/admin/settings/master/countryMaster",
-          icon: MapPin,
-        },
-        {
-          text: "State",
-          link: "/admin/settings/master/stateMaster",
-          icon: MapPin,
-        },
-        {
-          text: "City",
-          link: "/admin/settings/master/cityMaster",
-          icon: MapPin,
-        },
-        {
-          text: "Employment Preference",
-          link: "/admin/settings/master/employmentType",
-          icon: ClipboardList,
-        },
-        {
-          text: "You Are",
-          link: "/admin/settings/master/userType",
-          icon: BookUser,
-        },
-        {
-          text: "Complaint Category",
-          link: "/admin/settings/master/complaintCategory",
-          icon: ShieldAlert,
+          icon: Briefcase,
         },
         {
           text: "Job Status",
           link: "/admin/settings/master/jobStatus",
-          icon: Activity,
+          icon: BadgeCheck,
+        },
+        {
+          text: "State",
+          link: "/admin/settings/master/stateMaster",
+          icon: Landmark,
+        },
+        {
+          text: "User Type",
+          link: "/admin/settings/master/userType",
+          icon: Users,
         },
       ],
     },

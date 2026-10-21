@@ -1,6 +1,6 @@
 import StatusModal from "../../../../components/common/StatusModal";
 import { useStatusToast } from "../../../../components/common/StatusModalProvider";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -50,8 +50,8 @@ const LIST_COLUMNS = [
   { key: "ctM_CityName",   label: "City Name",   format: (v) => v ?? "-" },
   { key: "stateName",      label: "State",       format: (v) => v ?? "-" },
   { key: "ctM_PostalCode", label: "Postal Code", format: (v) => v ?? "-" },
-  { key: "ctM_CreatedAt",  label: "Created At",  format: (v) => formatDate(v) },
-  { key: "ctM_UpdatedAt",  label: "Updated At",  format: (v) => formatDate(v) },
+  // { key: "ctM_CreatedAt",  label: "Created At",  format: (v) => formatDate(v) },
+  // { key: "ctM_UpdatedAt",  label: "Updated At",  format: (v) => formatDate(v) },
 ];
 
 /* ------------------------------ TONES ----------------------------- */
@@ -114,10 +114,11 @@ const parseListResponse = (response, pageSize) => {
     };
   }
 
-  const list = inner?.data ?? [];
-  const totalRecords = inner?.totalRecords ?? list.length;
-  const totalPages =
-    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize));
+  const list = Array.isArray(inner?.data) ? inner.data : [];
+  const totalRecords = Number(inner?.totalRecords ?? list.length);
+  const totalPages = Number(
+    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize)),
+  );
 
   return { list, totalRecords, totalPages };
 };
@@ -135,6 +136,7 @@ const CityList = () => {
   const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const loadRequestRef = useRef(0);
 
   const [query, setQuery] = useState({
     search: "",
@@ -148,10 +150,19 @@ const CityList = () => {
   /* --------------------------- FETCH --------------------------- */
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const response = await cityMasterApi.getAll({ pageNo: page, pageSize });
+      const response = await cityMasterApi.getAll({
+        PageNo: page,
+        PageSize: pageSize,
+        Search: query.search.trim(),
+        ...(query.status !== "All" && {
+          IsActive: query.status === "Active",
+        }),
+      });
+      if (requestId !== loadRequestRef.current) return;
       const { list, totalRecords: total, totalPages: pages } =
         parseListResponse(response, pageSize);
 
@@ -163,35 +174,35 @@ const CityList = () => {
       setTotalRecords(total);
       setTotalPages(pages);
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       setRows([]);
       setTotalRecords(0);
       setTotalPages(0);
       setError(getApiErrorMessage(err) || "Unable to load city records.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, query.search, query.status]);
 
   useEffect(() => {
     load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
   const handleToggle = async (row) => {
     try {
       await cityMasterApi.toggleActive(row.id);
-      const response = await cityMasterApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
-
-      setRows(
-        list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
-      );
-      setTotalRecords(total);
-      setTotalPages(pages);
+      await load();
     } catch (err) {
       setError(getApiErrorMessage(err) || "Unable to update status.");
     }
@@ -199,30 +210,18 @@ const CityList = () => {
 
   /* ---------------------------- QUERY HELPERS ---------------------------- */
 
-  const patchFilter = (patch) => setQuery((q) => ({ ...q, ...patch }));
+  const patchFilter = (patch) => {
+    setQuery((q) => ({ ...q, ...patch }));
+    setPage(1);
+  };
 
   /* ---------------------------- FILTERED ROWS ---------------------------- */
 
-  const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (
-        q &&
-        !LIST_COLUMNS.some((c) =>
-          String(r[c.key] ?? "").toLowerCase().includes(q),
-        )
-      )
-        return false;
-      if (query.status !== "All" && r.status !== query.status) return false;
-      return true;
-    });
-  }, [rows, query]);
-
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
+  const count = totalRecords;
+  const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
-  const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const start = count === 0 ? 0 : (currentPage - 1) * pageSize;
+  const pageRows = rows;
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -358,7 +357,7 @@ const CityList = () => {
       {/* TABLE — header stays fixed; only body scrolls */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[760px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />
@@ -386,7 +385,7 @@ const CityList = () => {
           className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[760px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />

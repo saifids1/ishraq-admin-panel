@@ -1,6 +1,6 @@
 import StatusModal from "../../../../components/common/StatusModal";
 import { useStatusToast } from "../../../../components/common/StatusModalProvider";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -52,8 +52,8 @@ const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
 
 const LIST_COLUMNS = [
   { key: "iT_name",       label: "Institute Type", format: (v) => v ?? "-" },
-  { key: "iT_created_at", label: "Created At",     format: (v) => formatDate(v) },
-  { key: "iT_updated_at", label: "Updated At",     format: (v) => formatDate(v) },
+  // { key: "iT_created_at", label: "Created At",     format: (v) => formatDate(v) },
+  // { key: "iT_updated_at", label: "Updated At",     format: (v) => formatDate(v) },
 ];
 
 /* ------------------------------ TONES ----------------------------- */
@@ -105,9 +105,15 @@ const toListRow = (item, srNo) => ({
   srNo,
 });
 
+/**
+ * Robust response parser.
+ * Handles various backend response formats and adds a fallback 
+ * for pagination if the backend doesn't explicitly return total counts.
+ */
 const parseListResponse = (response, pageSize) => {
   const inner = response?.data?.data;
 
+  // If backend just returns a plain array
   if (Array.isArray(inner)) {
     return {
       list: inner,
@@ -116,10 +122,20 @@ const parseListResponse = (response, pageSize) => {
     };
   }
 
-  const list = inner?.data ?? [];
-  const totalRecords = inner?.totalRecords ?? list.length;
-  const totalPages =
-    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize));
+  const list = Array.isArray(inner?.data) ? inner.data : [];
+  const totalRecords = Number(
+    inner?.totalRecords ?? 
+    inner?.totalCount ?? 
+    inner?.totalItems ?? 
+    inner?.total ??
+    list.length,
+  );
+  const totalPages = Number(
+    inner?.totalPages ?? 
+    inner?.pageCount ?? 
+    inner?.totalPage ??
+    Math.max(1, Math.ceil(totalRecords / pageSize)),
+  );
 
   return { list, totalRecords, totalPages };
 };
@@ -137,7 +153,9 @@ const InstituteTypeList = () => {
   const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const loadRequestRef = useRef(0);
 
+  const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState({
     search: "",
     status: "All",
@@ -151,10 +169,18 @@ const InstituteTypeList = () => {
   /* --------------------------- FETCH --------------------------- */
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const response = await instituteTypeApi.getAll({ pageNo: page, pageSize });
+      const response = await instituteTypeApi.getAll({
+        pageNo: page,
+        pageSize,
+        search: query.search.trim() || undefined,
+        status: query.status === "All" ? undefined : query.status,
+      });
+      if (requestId !== loadRequestRef.current) return;
+
       const { list, totalRecords: total, totalPages: pages } =
         parseListResponse(response, pageSize);
 
@@ -164,68 +190,66 @@ const InstituteTypeList = () => {
         ),
       );
       setTotalRecords(total);
-      setTotalPages(pages);
+      setTotalPages(Math.max(0, pages || 0));
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       setRows([]);
       setTotalRecords(0);
       setTotalPages(0);
       setError(getApiErrorMessage(err) || "Unable to load institute type records.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, query.search, query.status]);
 
   useEffect(() => {
     load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [load]);
+
+  /* ------------------------- DEBOUNCE SEARCH ------------------------- */
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQuery((q) =>
+        q.search === searchInput ? q : { ...q, search: searchInput },
+      );
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  /* ------------------------- CLAMP PAGE ------------------------- */
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
 
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
   const handleToggle = async (row) => {
-    try {
-      await instituteTypeApi.toggleActive(row.id);
-      const response = await instituteTypeApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
-
-      setRows(
-        list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
-      );
-      setTotalRecords(total);
-      setTotalPages(pages);
-    } catch (err) {
-      setError(getApiErrorMessage(err) || "Unable to update status.");
-    }
+    await instituteTypeApi.toggleActive(row.id);
+    await load();
   };
-
-  /* ---------------------------- QUERY HELPERS ---------------------------- */
 
   const patchFilter = (patch) => setQuery((q) => ({ ...q, ...patch }));
 
-  /* ---------------------------- FILTERED ROWS ---------------------------- */
+  const onStatusChange = (status) => {
+    setPage(1);
+    patchFilter({ status });
+  };
 
-  const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (
-        q &&
-        !LIST_COLUMNS.some((c) =>
-          String(r[c.key] ?? "").toLowerCase().includes(q),
-        )
-      )
-        return false;
-      if (query.status !== "All" && r.status !== query.status) return false;
-      return true;
-    });
-  }, [rows, query]);
+  /* ---------------------------- DERIVED ---------------------------- */
 
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
+  const count = totalRecords;
+  const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const pageRows = rows;
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -305,8 +329,8 @@ const InstituteTypeList = () => {
               type="search"
               aria-label="Search institute types..."
               placeholder="Search institute types..."
-              value={query.search}
-              onChange={(e) => patchFilter({ search: e.target.value })}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
             />
           </div>
@@ -315,7 +339,7 @@ const InstituteTypeList = () => {
             <select
               aria-label="Status"
               value={query.status}
-              onChange={(e) => patchFilter({ status: e.target.value })}
+              onChange={(e) => onStatusChange(e.target.value)}
               className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[15px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
             >
               <option value="All">Status: All</option>
@@ -361,12 +385,10 @@ const InstituteTypeList = () => {
       {/* TABLE — header stays fixed; only body scrolls */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[620px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
@@ -375,8 +397,8 @@ const InstituteTypeList = () => {
               <tr>
                 <th scope="col" className={thClass}>Sr.No</th>
                 <th scope="col" className={thClass}>Institute Type</th>
-                <th scope="col" className={thClass}>Created At</th>
-                <th scope="col" className={thClass}>Updated At</th>
+                {/* <th scope="col" className={thClass}>Created At</th> */}
+                {/* <th scope="col" className={thClass}>Updated At</th> */}
                 <th scope="col" className={thClass}>Status</th>
                 <th scope="col" className={thClass}>Actions</th>
               </tr>
@@ -389,12 +411,10 @@ const InstituteTypeList = () => {
           className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[620px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
@@ -402,7 +422,7 @@ const InstituteTypeList = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
+                  <td colSpan={4} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center">
                       <span
                         aria-hidden="true"
@@ -414,7 +434,7 @@ const InstituteTypeList = () => {
                 </tr>
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
+                  <td colSpan={4} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
                     <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                       <Inbox size={22} />
                     </div>
@@ -443,18 +463,22 @@ const InstituteTypeList = () => {
                     </td>
 
                     {/* Created At */}
+                    {/*
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
                         {formatDate(row["iT_created_at"])}
                       </div>
                     </td>
+                    */}
 
                     {/* Updated At */}
+                    {/*
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
                         {formatDate(row["iT_updated_at"])}
                       </div>
                     </td>
+                    */}
 
                     {/* Status */}
                     <td className={`${td} whitespace-nowrap`}>
@@ -615,7 +639,7 @@ const InstituteTypeList = () => {
         />
       )}
 
-      {/* TOAST */}{/* TOAST */}
+      {/* TOAST */}
       {toast && (
         <div
           key={toast.id}

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ChevronDown, ChevronsLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import StatusModal from "../../../../components/common/StatusModal";
 import employmentTypeApi from "../../../../api/Services/employmentTypeApi";
 
 const selectClass =
@@ -84,6 +85,13 @@ const getErrorMessage = (error, fallback) =>
   error?.message ||
   fallback;
 
+const getSuccessMessage = (response, fallback) =>
+  response?.data?.message ||
+  response?.data?.Message ||
+  response?.data?.data?.message ||
+  response?.data?.data?.Message ||
+  fallback;
+
 /**
  * Prefer the display name if present, otherwise fall back to the raw value.
  */
@@ -122,6 +130,58 @@ const CreateEmploymentType = ({ mode }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Local StatusModal state (replaces StatusModalProvider)
+  // modal = { type, title, message, confirmText, cancelText, showCancel,
+  //           onConfirm, onCancel }
+  // ─────────────────────────────────────────────────────────────────────
+  const [modal, setModal] = useState(null);
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      message,
+      title: extra.title,
+      confirmText: extra.confirmText || "OK",
+      cancelText: extra.cancelText || "Cancel",
+      showCancel: false,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        extra.onCancel?.();
+      },
+    });
+  };
+
+  const openConfirm = ({
+    title,
+    message,
+    confirmText,
+    cancelText,
+    onConfirm,
+    onCancel,
+  }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: cancelText || "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        onCancel?.();
+      },
+    });
+  };
 
   // Reset create form or load the existing record for edit/view.
   useEffect(() => {
@@ -211,7 +271,9 @@ const CreateEmploymentType = ({ mode }) => {
     const trimmed = name.trim();
 
     if (!trimmed) {
-      setError(`${title} name is required.`);
+      const msg = `${title} name is required.`;
+      setError(msg);
+      openStatus("warning", msg);
       return;
     }
 
@@ -226,7 +288,19 @@ const CreateEmploymentType = ({ mode }) => {
           [config.activeField]: status === "Active",
         };
 
-        await config.api.create(payload);
+        const response = await config.api.create(payload);
+        openStatus(
+          "success",
+          getSuccessMessage(
+            response,
+            `${config.singular} "${trimmed}" created successfully.`,
+          ),
+          {
+            title: "Created",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
       } else {
         // PUT /EmploymentType — id goes INSIDE the body (createMasterApi
         // signature: update(payload)).
@@ -236,17 +310,27 @@ const CreateEmploymentType = ({ mode }) => {
           [config.activeField]: status === "Active",
         };
 
-        await config.api.update(payload);
+        const response = await config.api.update(payload);
+        openStatus(
+          "update",
+          getSuccessMessage(
+            response,
+            `${config.singular} "${trimmed}" updated successfully.`,
+          ),
+          {
+            title: "Updated",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
       }
-
-      navigate(listPath);
     } catch (err) {
-      setError(
-        getErrorMessage(
-          err,
-          `Failed to ${isCreate ? "create" : "update"} ${title.toLowerCase()}.`,
-        ),
+      const msg = getErrorMessage(
+        err,
+        `Failed to ${isCreate ? "create" : "update"} ${title.toLowerCase()}.`,
       );
+      setError(msg);
+      openStatus("error", msg);
     } finally {
       setSaving(false);
     }
@@ -434,6 +518,18 @@ const CreateEmploymentType = ({ mode }) => {
           </form>
         </div>
       </div>
+      <StatusModal
+        isOpen={!!modal}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
     </div>
   );
 };

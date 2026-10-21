@@ -16,6 +16,7 @@ import jobRoleApi from "../../../api/Services/jobRoleApi";
 import jobCategoryApi from "../../../api/Services/jobCategoryApi";
 import employmentTypeApi from "../../../api/Services/employmentTypeApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
+import { useStatusModal } from "../../../components/common/StatusModalProvider";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 
 const inputClass =
@@ -176,6 +177,8 @@ export default function JobRequirementCreate({ mode = "create" }) {
   const [errors, setErrors] = useState({});
   const [loadingRecord, setLoadingRecord] = useState(!isCreate);
 
+  const { showStatus } = useStatusModal();
+
   useEffect(() => {
     setIsView(mode === "view");
   }, [mode, id]);
@@ -282,8 +285,46 @@ export default function JobRequirementCreate({ mode = "create" }) {
 
   useEffect(() => {
     let cancelled = false;
-    setSources((current) => ({ ...current, roles: [], categories: [] }));
+    setSources((current) => ({ ...current, categories: [], roles: [] }));
     if (!form.instituteTypeId) {
+      setLoadingCategories(false);
+      return undefined;
+    }
+
+    const loadCategories = async () => {
+      setLoadingCategories(true);
+      try {
+        const response = await jobCategoryApi.getByInstituteType(
+          Number(form.instituteTypeId),
+        );
+        if (!cancelled) {
+          setSources((current) => ({
+            ...current,
+            categories: options(
+              response,
+              ["jC_job_category_id", "JC_job_category_id", "jobCategoryId", "id"],
+              ["jC_name", "JC_name", "JC_job_category_name", "name"],
+            ),
+          }));
+        }
+      } catch (err) {
+        if (!cancelled)
+          setError(getApiErrorMessage(err) || "Unable to load job categories.");
+      } finally {
+        if (!cancelled) setLoadingCategories(false);
+      }
+    };
+
+    loadCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.instituteTypeId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSources((current) => ({ ...current, roles: [] }));
+    if (!form.categoryId) {
       setLoadingRoles(false);
       return undefined;
     }
@@ -291,9 +332,9 @@ export default function JobRequirementCreate({ mode = "create" }) {
     const loadRoles = async () => {
       setLoadingRoles(true);
       try {
-        const response = await jobRoleApi.getAllList({
-          instituteTypeId: Number(form.instituteTypeId),
-        });
+        const response = await jobRoleApi.getByJobCategory(
+          Number(form.categoryId),
+        );
         if (!cancelled) {
           setSources((current) => ({
             ...current,
@@ -316,55 +357,14 @@ export default function JobRequirementCreate({ mode = "create" }) {
     return () => {
       cancelled = true;
     };
-  }, [form.instituteTypeId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSources((current) => ({ ...current, categories: [] }));
-    if (!form.roleId) {
-      setLoadingCategories(false);
-      return undefined;
-    }
-
-    const loadCategories = async () => {
-      setLoadingCategories(true);
-      try {
-        const response = await jobCategoryApi.getByJobRole(Number(form.roleId));
-        if (!cancelled) {
-          setSources((current) => ({
-            ...current,
-            categories: options(
-              response,
-              [
-                "jC_job_category_id",
-                "JC_job_category_id",
-                "jobCategoryId",
-                "id",
-              ],
-              ["jC_name", "JC_name", "JC_job_category_name", "name"],
-            ),
-          }));
-        }
-      } catch (err) {
-        if (!cancelled)
-          setError(getApiErrorMessage(err) || "Unable to load job categories.");
-      } finally {
-        if (!cancelled) setLoadingCategories(false);
-      }
-    };
-
-    loadCategories();
-    return () => {
-      cancelled = true;
-    };
-  }, [form.roleId]);
+  }, [form.categoryId]);
 
   const set = (name, value) => {
     setForm((current) => ({
       ...current,
       [name]: value,
-      ...(name === "instituteTypeId" ? { roleId: "", categoryId: "" } : {}),
-      ...(name === "roleId" ? { categoryId: "" } : {}),
+      ...(name === "instituteTypeId" ? { categoryId: "", roleId: "" } : {}),
+      ...(name === "categoryId" ? { roleId: "" } : {}),
     }));
     setErrors((current) => ({ ...current, [name]: undefined }));
   };
@@ -390,6 +390,28 @@ export default function JobRequirementCreate({ mode = "create" }) {
       nextErrors.vacancies = "Vacancies must be greater than zero.";
     if (Object.keys(nextErrors).length) {
       setErrors(nextErrors);
+      return;
+    }
+    if (
+      !sources.categories.some(
+        (category) => String(category.id) === String(form.categoryId),
+      ) ||
+      !sources.roles.some(
+        (role) => String(role.id) === String(form.roleId),
+      )
+    ) {
+      setErrors({
+        categoryId: sources.categories.some(
+          (category) => String(category.id) === String(form.categoryId),
+        )
+          ? undefined
+          : "Select a Job Category for the selected Institute Type.",
+        roleId: sources.roles.some(
+          (role) => String(role.id) === String(form.roleId),
+        )
+          ? undefined
+          : "Select a Job Role for the selected Job Category.",
+      });
       return;
     }
     const payload = {
@@ -423,14 +445,14 @@ export default function JobRequirementCreate({ mode = "create" }) {
       setError("");
       if (isCreate) {
         await jobRequirementApi.create(data);
+        showStatus("success", `Created job requirement successfully.`);
       } else {
         await jobRequirementApi.update(id, data);
+        showStatus("update", `Updated job requirement successfully.`);
       }
-      toast.success(
-        `Job requirement ${isCreate ? "created" : "updated"} successfully.`,
-      );
       navigate("/admin/job-requirement-list");
     } catch (err) {
+      showStatus("error", getApiErrorMessage(err) || "Unable to create job requirement.");
       setError(getApiErrorMessage(err) || "Unable to create job requirement.");
     } finally {
       setSaving(false);
@@ -554,15 +576,27 @@ export default function JobRequirementCreate({ mode = "create" }) {
                 { required: true },
               )}
               {field(
-                "roleId",
-                "Job Role",
-                select("roleId", sources.roles, "Select job role"),
+                "categoryId",
+                "Job Category",
+                select(
+                  "categoryId",
+                  sources.categories,
+                  form.instituteTypeId
+                    ? "Select job category"
+                    : "Select institute type first",
+                ),
                 { required: true },
               )}
               {field(
-                "categoryId",
-                "Job Category",
-                select("categoryId", sources.categories, "Select job category"),
+                "roleId",
+                "Job Role",
+                select(
+                  "roleId",
+                  sources.roles,
+                  form.categoryId
+                    ? "Select job role"
+                    : "Select job category first",
+                ),
                 { required: true },
               )}
               {field(

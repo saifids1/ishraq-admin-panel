@@ -1,6 +1,6 @@
 import StatusModal from "../../../../components/common/StatusModal";
 import { useStatusToast } from "../../../../components/common/StatusModalProvider";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import {
@@ -54,8 +54,8 @@ const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
 
 const LIST_COLUMNS = [
   { key: "eT_name",       label: "Employment Type", format: (v) => v ?? "-" },
-  { key: "eT_created_at", label: "Created At",      format: (v) => formatDate(v) },
-  { key: "eT_updated_at", label: "Updated At",      format: (v) => formatDate(v) },
+  // { key: "eT_created_at", label: "Created At",      format: (v) => formatDate(v) },
+  // { key: "eT_updated_at", label: "Updated At",      format: (v) => formatDate(v) },
 ];
 
 /* ------------------------------ TONES ----------------------------- */
@@ -118,10 +118,11 @@ const parseListResponse = (response, pageSize) => {
     };
   }
 
-  const list = inner?.data ?? [];
-  const totalRecords = inner?.totalRecords ?? list.length;
-  const totalPages =
-    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize));
+  const list = Array.isArray(inner?.data) ? inner.data : [];
+  const totalRecords = Number(inner?.totalRecords ?? list.length);
+  const totalPages = Number(
+    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize)),
+  );
 
   return { list, totalRecords, totalPages };
 };
@@ -132,6 +133,7 @@ const EmploymentTypeList = () => {
   const navigate = useNavigate();
 
   const [rows, setRows] = useState([]);
+  const [allRows, setAllRows] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -139,6 +141,7 @@ const EmploymentTypeList = () => {
   const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const loadRequestRef = useRef(0);
 
   const [query, setQuery] = useState({
     search: "",
@@ -152,51 +155,93 @@ const EmploymentTypeList = () => {
 
   /* --------------------------- FETCH --------------------------- */
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
+    if (query.category !== "All" && allRows && !force) {
+      setRows(allRows);
+      setTotalRecords(allRows.length);
+      setTotalPages(Math.max(1, Math.ceil(allRows.length / pageSize)));
+      setLoading(false);
+      setError("");
+      return;
+    }
+
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const response = await employmentTypeApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
+      const response =
+        query.category === "All"
+          ? await employmentTypeApi.getAll({
+              PageNo: page,
+              PageSize: pageSize,
+              Search: query.search.trim(),
+              ...(query.status !== "All" && {
+                IsActive: query.status === "Active",
+              }),
+            })
+          : await employmentTypeApi.getAllList();
+      if (requestId !== loadRequestRef.current) return;
 
-      setRows(
-        list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
-      );
-      setTotalRecords(total);
-      setTotalPages(pages);
+      if (query.category !== "All") {
+        const result = response?.data?.data;
+        const list = Array.isArray(result)
+          ? result
+          : Array.isArray(result?.data)
+            ? result.data
+            : null;
+
+        if (!list) {
+          throw new Error("Unexpected employment type list response.");
+        }
+
+        const fullRows = list.map((item, index) => toListRow(item, index + 1));
+        setAllRows(fullRows);
+        setRows(fullRows);
+        setTotalRecords(fullRows.length);
+        setTotalPages(Math.max(1, Math.ceil(fullRows.length / pageSize)));
+      } else {
+        const { list, totalRecords: total, totalPages: pages } =
+          parseListResponse(response, pageSize);
+
+        setRows(
+          list.map((item, index) =>
+            toListRow(item, (page - 1) * pageSize + index + 1),
+          ),
+        );
+        setTotalRecords(total);
+        setTotalPages(pages);
+      }
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       setRows([]);
       setTotalRecords(0);
       setTotalPages(0);
       setError(getApiErrorMessage(err) || "Unable to load employment type records.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [allRows, page, pageSize, query.category, query.search, query.status]);
 
   useEffect(() => {
     load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
   const handleToggle = async (row) => {
     try {
       await employmentTypeApi.toggleActive(row.id);
-      const response = await employmentTypeApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
-
-      setRows(
-        list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
-      );
-      setTotalRecords(total);
-      setTotalPages(pages);
+      setAllRows(null);
+      await load(true);
     } catch (err) {
       setError(getApiErrorMessage(err) || "Unable to update status.");
     }
@@ -211,9 +256,14 @@ const EmploymentTypeList = () => {
 
   /* ---------------------------- QUERY HELPERS ---------------------------- */
 
-  const patchFilter = (patch) => setQuery((q) => ({ ...q, ...patch }));
-  const resetFilters = () =>
+  const patchFilter = (patch) => {
+    setQuery((q) => ({ ...q, ...patch }));
+    setPage(1);
+  };
+  const resetFilters = () => {
     setQuery((q) => ({ ...q, search: "", status: "All", category: "All" }));
+    setPage(1);
+  };
 
   const isFiltered =
     query.search.trim() !== "" ||
@@ -222,27 +272,33 @@ const EmploymentTypeList = () => {
 
   /* ---------------------------- FILTERED ROWS ---------------------------- */
 
+  const clientSideFiltering = query.category !== "All" && allRows !== null;
   const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((r) => {
+    const searchValue = query.search.trim().toLowerCase();
+    return rows.filter((row) => {
       if (
-        q &&
-        !LIST_COLUMNS.some((c) =>
-          String(r[c.key] ?? "").toLowerCase().includes(q),
+        searchValue &&
+        !LIST_COLUMNS.some((column) =>
+          String(row[column.key] ?? "").toLowerCase().includes(searchValue),
         )
-      )
+      ) {
         return false;
-      if (query.status !== "All" && r.status !== query.status) return false;
-      if (query.category !== "All" && r["name"] !== query.category) return false;
+      }
+      if (query.status !== "All" && row.status !== query.status) return false;
+      if (query.category !== "All" && row.name !== query.category) return false;
       return true;
     });
-  }, [rows, query]);
+  }, [query, rows]);
 
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
+  const count = clientSideFiltering ? filteredRows.length : totalRecords;
+  const totalPagesLocal = clientSideFiltering
+    ? Math.max(1, Math.ceil(count / pageSize))
+    : Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
-  const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const start = count === 0 ? 0 : (currentPage - 1) * pageSize;
+  const pageRows = clientSideFiltering
+    ? filteredRows.slice(start, start + pageSize)
+    : rows;
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -424,12 +480,10 @@ const EmploymentTypeList = () => {
       {/* TABLE — header stays fixed; only body scrolls */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[620px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
@@ -438,8 +492,8 @@ const EmploymentTypeList = () => {
               <tr>
                 <th scope="col" className={thClass}>Sr.No</th>
                 <th scope="col" className={thClass}>Employment Type</th>
-                <th scope="col" className={thClass}>Created At</th>
-                <th scope="col" className={thClass}>Updated At</th>
+                {/* <th scope="col" className={thClass}>Created At</th> */}
+                {/* <th scope="col" className={thClass}>Updated At</th> */}
                 <th scope="col" className={thClass}>Status</th>
                 <th scope="col" className={thClass}>Actions</th>
               </tr>
@@ -452,12 +506,10 @@ const EmploymentTypeList = () => {
           className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[620px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
@@ -465,7 +517,7 @@ const EmploymentTypeList = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
+                  <td colSpan={4} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center">
                       <span
                         aria-hidden="true"
@@ -477,7 +529,7 @@ const EmploymentTypeList = () => {
                 </tr>
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
+                  <td colSpan={4} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
                     <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                       <Inbox size={22} />
                     </div>
@@ -517,18 +569,22 @@ const EmploymentTypeList = () => {
                     </td>
 
                     {/* Created At */}
+                    {/*
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
                         {formatDate(row["eT_created_at"])}
                       </div>
                     </td>
+                    */}
 
                     {/* Updated At */}
+                    {/*
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
                         {formatDate(row["eT_updated_at"])}
                       </div>
                     </td>
+                    */}
 
                     {/* Status */}
                     <td className={`${td} whitespace-nowrap`}>
