@@ -346,7 +346,7 @@ const JobSeekerHeader = () => {
                   <div className="px-4 pb-3 space-y-1">
                     {jobseekerNumber && (
                       <p className="text-[11px] text-gray-500">
-                        ID: {jobseekerNumber}
+                        {/* ID: {jobseekerNumber} */}
                       </p>
                     )}
                     {userMobile && (

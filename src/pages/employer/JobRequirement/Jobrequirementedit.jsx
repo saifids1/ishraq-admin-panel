@@ -95,8 +95,8 @@ const getMasterList = (api) => {
 
 const emptyForm = {
   instituteTypeId: "",
-  jobRoleId: "",
   jobCategoryId: "",
+  jobRoleId: "",
   position: "",
   department: "",
   vacancies: "",
@@ -117,7 +117,8 @@ const emptyForm = {
 
 // When a parent selection changes, these children are cleared.
 const CASCADE_RESETS = {
-  jobRoleId: ["jobCategoryId"],
+  instituteTypeId: ["jobCategoryId", "jobRoleId"],
+  jobCategoryId: ["jobRoleId"],
   countryId: ["stateId", "cityId"],
   stateId: ["cityId"],
 };
@@ -236,21 +237,23 @@ const toOptions = (list, config, parentValue) =>
     }))
     .filter((option) => option.value);
 
-// const getMasterList = async (api) => extractList(await api.getAllList());
-
-const fetchRoles = (instituteTypeId) =>
-  requestOnce(`roles:${instituteTypeId}`, async () =>
+// Institute type -> Job Category.
+const fetchCategories = (instituteTypeId) =>
+  requestOnce(`categories:${instituteTypeId}`, async () =>
     toOptions(
-      extractList(await jobRoleApi.getByInstituteType(Number(instituteTypeId))),
-      OPTION_CONFIG.role,
+      extractList(
+        await jobCategoryApi.getByInstituteType(Number(instituteTypeId)),
+      ),
+      OPTION_CONFIG.category,
     ),
   );
 
-const fetchCategories = (jobRoleId) =>
-  requestOnce(`categories:${jobRoleId}`, async () =>
+// Job Category -> Job Role.
+const fetchRoles = (jobCategoryId) =>
+  requestOnce(`roles:${jobCategoryId}`, async () =>
     toOptions(
-      extractList(await jobCategoryApi.getByJobRole(Number(jobRoleId))),
-      OPTION_CONFIG.category,
+      extractList(await jobRoleApi.getByJobCategory(Number(jobCategoryId))),
+      OPTION_CONFIG.role,
     ),
   );
 
@@ -348,8 +351,8 @@ export default function JobRequirementEdit() {
   });
 
   // Dependent dropdowns load from the parent selections.
-  const roles = useDependentOptions(form.instituteTypeId, fetchRoles);
-  const categories = useDependentOptions(form.jobRoleId, fetchCategories);
+  const categories = useDependentOptions(form.instituteTypeId, fetchCategories);
+  const roles = useDependentOptions(form.jobCategoryId, fetchRoles);
   const states = useDependentOptions(form.countryId, fetchStates);
   const cities = useDependentOptions(form.stateId, fetchCities);
 
@@ -444,8 +447,8 @@ export default function JobRequirementEdit() {
         setJob(item);
         setForm({
           instituteTypeId: String(pick(item, "JQ_institute_type_id") ?? ""),
-          jobRoleId: String(pick(item, "JQ_job_role_id") ?? ""),
           jobCategoryId: String(pick(item, "JQ_job_category_id") ?? ""),
+          jobRoleId: String(pick(item, "JQ_job_role_id") ?? ""),
           position: pick(item, "JQ_position_title") ?? "",
           department: pick(item, "JQ_department_speciality") ?? "",
           vacancies: String(pick(item, "JQ_vacancies") ?? ""),
@@ -522,8 +525,8 @@ export default function JobRequirementEdit() {
   const validateForm = () => {
     const next = {};
 
-    if (!form.jobRoleId) next.jobRoleId = "Job role is required.";
     if (!form.jobCategoryId) next.jobCategoryId = "Job category is required.";
+    if (!form.jobRoleId) next.jobRoleId = "Job role is required.";
     if (!form.position.trim()) next.position = "Position title is required.";
     if (!form.vacancies || Number(form.vacancies) < 1) {
       next.vacancies = "Enter at least one vacancy.";
@@ -559,8 +562,8 @@ export default function JobRequirementEdit() {
 
     payload.append("JQ_employer_id", String(employerId));
     payload.append("JQ_institute_type_id", form.instituteTypeId);
-    payload.append("JQ_job_role_id", form.jobRoleId);
     payload.append("JQ_job_category_id", form.jobCategoryId);
+    payload.append("JQ_job_role_id", form.jobRoleId);
     payload.append("JQ_position_title", form.position.trim());
     payload.append("JQ_vacancies", String(Number(form.vacancies)));
     payload.append("JQ_employment_type_id", form.employmentTypeId);
@@ -737,25 +740,29 @@ export default function JobRequirementEdit() {
               </Field>
 
               {renderSelect({
-                name: "jobRoleId",
-                label: "Job Role",
-                icon: Briefcase,
-                required: true,
-                options: roles.options,
-                loading: roles.loading,
-                disabled: !form.instituteTypeId,
-                placeholder: "Select Job Role",
-              })}
-
-              {renderSelect({
                 name: "jobCategoryId",
                 label: "Job Category",
                 icon: Tag,
                 required: true,
                 options: categories.options,
                 loading: categories.loading,
-                disabled: !form.jobRoleId,
-                placeholder: "Select Job Category",
+                disabled: !form.instituteTypeId,
+                placeholder: form.instituteTypeId
+                  ? "Select Job Category"
+                  : "Select Job Type First",
+              })}
+
+              {renderSelect({
+                name: "jobRoleId",
+                label: "Job Role",
+                icon: Briefcase,
+                required: true,
+                options: roles.options,
+                loading: roles.loading,
+                disabled: !form.jobCategoryId,
+                placeholder: form.jobCategoryId
+                  ? "Select Job Role"
+                  : "Select Job Category First",
               })}
 
               {renderInput({
@@ -892,10 +899,17 @@ export default function JobRequirementEdit() {
                   Upload Job Description (optional)
                 </span>
 
+                {existingAttachmentName && (
+                  <p className="mb-2 text-xs text-slate-500">
+                    Current file: {existingAttachmentName}. Choose a new file to replace it.
+                  </p>
+                )}
+
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
+                    disabled={saving}
                     className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed bg-[#f4f9fb] px-4 text-sm font-medium transition hover:bg-[#eaf3f7]"
                     style={{ color: ACCENT, borderColor: ACCENT }}
                   >
@@ -911,7 +925,21 @@ export default function JobRequirementEdit() {
                     className="hidden"
                     onChange={onAttachmentChange}
                   />
+
+                  {attachment ? (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-[#eaf3f7] px-3 py-1 text-xs text-slate-700">
+                      {attachment.name}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-500">
+                      PDF or Word, up to 5 MB
+                    </span>
+                  )}
                 </div>
+
+                {errors.attachment && (
+                  <p className="mt-1 text-xs text-red-600">{errors.attachment}</p>
+                )}
               </div>
             </div>
           </Card>

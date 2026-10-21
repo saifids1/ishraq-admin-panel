@@ -56,8 +56,8 @@ import {
 
 const EMPTY = {
   instituteTypeId: "",
-  jobRoleId: "",
   jobCategoryId: "",
+  jobRoleId: "",
   position: "",
   department: "",
   vacancies: "1",
@@ -78,9 +78,10 @@ const EMPTY = {
 };
 
 // When a parent selection changes, these child selections must be cleared
-// so that stale values (e.g. a category from the previous role) are not submitted.
+// so that stale values (e.g. a role from the previous category) are not submitted.
 const CASCADE_RESETS = {
-  jobRoleId: ["jobCategoryId"],
+  instituteTypeId: ["jobCategoryId", "jobRoleId"],
+  jobCategoryId: ["jobRoleId"],
   countryId: ["stateId", "cityId"],
   stateId: ["cityId"],
 };
@@ -183,16 +184,16 @@ const JobRequirementCreate = () => {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const [jobRoles, setJobRoles] = useState([]);
   const [jobCategories, setJobCategories] = useState([]);
+  const [jobRoles, setJobRoles] = useState([]);
   const [employmentTypes, setEmploymentTypes] = useState([]);
   const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
 
   const [loadingMasters, setLoadingMasters] = useState(false);
-  const [loadingRoles, setLoadingRoles] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingRoles, setLoadingRoles] = useState(false);
   const [loadingStates, setLoadingStates] = useState(false);
   const [loadingCities, setLoadingCities] = useState(false);
 
@@ -313,57 +314,21 @@ const JobRequirementCreate = () => {
     };
   }, []);
 
-  // Organization institute type -> Job Role.
+  // Institute type -> Job Category.
   useEffect(() => {
     let cancelled = false;
 
-    setJobRoles([]);
     setJobCategories([]);
+    setJobRoles([]);
 
     if (!form.instituteTypeId) return undefined;
-
-    const loadRoles = async () => {
-      setLoadingRoles(true);
-
-      try {
-        const response = await jobRoleApi.getByInstituteType(
-          Number(form.instituteTypeId),
-        );
-
-        if (!cancelled) setJobRoles(extractList(response));
-      } catch (error) {
-        if (!cancelled) {
-          setToast({
-            tone: "bad",
-            msg: getErrorMessage(error, "Failed to load job roles."),
-          });
-        }
-      } finally {
-        if (!cancelled) setLoadingRoles(false);
-      }
-    };
-
-    loadRoles();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [form.instituteTypeId]);
-
-  // Job Role -> Job Category (loaded by role, not from the full list).
-  useEffect(() => {
-    let cancelled = false;
-
-    setJobCategories([]);
-
-    if (!form.jobRoleId) return undefined;
 
     const loadCategories = async () => {
       setLoadingCategories(true);
 
       try {
-        const response = await jobCategoryApi.getByJobRole(
-          Number(form.jobRoleId),
+        const response = await jobCategoryApi.getByInstituteType(
+          Number(form.instituteTypeId),
         );
 
         if (!cancelled) setJobCategories(extractList(response));
@@ -384,7 +349,43 @@ const JobRequirementCreate = () => {
     return () => {
       cancelled = true;
     };
-  }, [form.jobRoleId]);
+  }, [form.instituteTypeId]);
+
+  // Job Category -> Job Role.
+  useEffect(() => {
+    let cancelled = false;
+
+    setJobRoles([]);
+
+    if (!form.jobCategoryId) return undefined;
+
+    const loadRoles = async () => {
+      setLoadingRoles(true);
+
+      try {
+        const response = await jobRoleApi.getByJobCategory(
+          Number(form.jobCategoryId),
+        );
+
+        if (!cancelled) setJobRoles(extractList(response));
+      } catch (error) {
+        if (!cancelled) {
+          setToast({
+            tone: "bad",
+            msg: getErrorMessage(error, "Failed to load job roles."),
+          });
+        }
+      } finally {
+        if (!cancelled) setLoadingRoles(false);
+      }
+    };
+
+    loadRoles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.jobCategoryId]);
 
   // Country -> State.
   useEffect(() => {
@@ -528,9 +529,9 @@ const JobRequirementCreate = () => {
 
     const validationErrors = validateCreateForm(clean);
 
-    if (!clean.jobRoleId) validationErrors.jobRoleId = "Select a job role.";
     if (!clean.jobCategoryId)
       validationErrors.jobCategoryId = "Select a job category.";
+    if (!clean.jobRoleId) validationErrors.jobRoleId = "Select a job role.";
     if (!clean.countryId) validationErrors.countryId = "Select a country.";
     if (!clean.stateId) validationErrors.stateId = "Select a state.";
     if (!clean.cityId) validationErrors.cityId = "Select a city.";
@@ -757,17 +758,6 @@ const JobRequirementCreate = () => {
               </Field>
 
               {renderSelect({
-                name: "jobRoleId",
-                label: "Job Role",
-                icon: Briefcase,
-                required: true,
-                options: toOptions(jobRoles, "jR_job_role_id", "jR_name"),
-                loading: loadingRoles,
-                disabled: !form.instituteTypeId,
-                placeholder: "Select Job Role",
-              })}
-
-              {renderSelect({
                 name: "jobCategoryId",
                 label: "Job Category",
                 icon: Tag,
@@ -778,8 +768,23 @@ const JobRequirementCreate = () => {
                   "jC_name",
                 ),
                 loading: loadingCategories,
-                disabled: !form.jobRoleId,
-                placeholder: "Select Job Category",
+                disabled: !form.instituteTypeId,
+                placeholder: form.instituteTypeId
+                  ? "Select Job Category"
+                  : "Select Job Type First",
+              })}
+
+              {renderSelect({
+                name: "jobRoleId",
+                label: "Job Role",
+                icon: Briefcase,
+                required: true,
+                options: toOptions(jobRoles, "jR_job_role_id", "jR_name"),
+                loading: loadingRoles,
+                disabled: !form.jobCategoryId,
+                placeholder: form.jobCategoryId
+                  ? "Select Job Role"
+                  : "Select Job Category First",
               })}
 
               {renderInput({
