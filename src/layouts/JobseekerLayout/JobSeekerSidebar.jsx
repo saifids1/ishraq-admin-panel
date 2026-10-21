@@ -89,7 +89,7 @@ export const JobSeekerSidebar = () => {
     {
       text: "My Profile",
       icon: BookUser,
-      link: "/jobseeker/profile/1",
+      link: "/jobseeker/profile",
       tile: "from-emerald-400 to-teal-500",
       // alert: true,
     },
@@ -99,12 +99,12 @@ export const JobSeekerSidebar = () => {
       link: "/jobseeker/job-list",
       tile: "from-violet-400 to-indigo-500",
     },
-    {
-      text: "Applied Jobs",
-      icon: Building2,
-      link: "/jobseeker/applied-jobs",
-      tile: "from-violet-400 to-indigo-500",
-    },
+    // {
+    //   text: "Applied Jobs",
+    //   icon: Building2,
+    //   link: "/jobseeker/applied-jobs",
+    //   tile: "from-violet-400 to-indigo-500",
+    // },
 
     // {
     //   text: "Reset Password",

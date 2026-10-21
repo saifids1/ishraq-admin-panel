@@ -1,198 +1,312 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Briefcase,
   Sparkles,
-  Star,
+  UserRound,
+  MessageSquareText,
+  CircleAlert,
   CalendarDays,
   Search,
   MapPin,
-  Heart,
-  Send,
-  Clock,
-  CircleAlert,
   Building2,
+  Eye,
+  ChevronRight,
 } from "lucide-react";
+import dayjs from "dayjs";
 import {
-  fmt,
   StatCardGrid,
   DashboardHeader,
-  Segmented,
   Panel,
   KitStyles,
 } from "../../../components/common/Dashboardkit";
+import { getJobsForJobseeker } from "../../../api/jobRequirementApi";
+import jobseekerApi from "../../../api/Services/adjobseekerApi";
+import { getCurrentUserId } from "../../../utils/authUtils";
+import ProfileOverviewCard, {
+  getProfileCompletion,
+} from "./ProfileOverviewCard";
 
-/* ---------------- Sample data (replace with your API) ---------------- */
-const JOBS_FOR_YOU_INIT = [
-  {
-    id: 1,
-    title: "Web Developer",
-    company: "Isharq Technologies",
-    city: "Remote",
-    salary: "₹35,000 - 45,000",
-    postedAgo: "2 days ago",
-    match: 92,
-  },
-  {
-    id: 2,
-    title: "Sales Executive",
-    company: "Brightline Pvt Ltd",
-    city: "Pune",
-    salary: "₹25,000 - 30,000",
-    postedAgo: "5 days ago",
-    match: 84,
-  },
-  {
-    id: 3,
-    title: "Office Assistant",
-    company: "Sangli Traders",
-    city: "Sangli",
-    salary: "₹18,000 - 22,000",
-    postedAgo: "1 week ago",
-    match: 78,
-  },
-  {
-    id: 4,
-    title: "Delivery Partner",
-    company: "QuickShip",
-    city: "Mumbai",
-    salary: "₹22,000 - 28,000",
-    postedAgo: "3 days ago",
-    match: 73,
-  },
-  {
-    id: 5,
-    title: "Senior Accountant",
-    company: "Kolhapur Finserv",
-    city: "Kolhapur",
-    salary: "₹40,000 - 50,000",
-    postedAgo: "Today",
-    match: 69,
-  },
-];
+const PAGE_SIZE = 10;
 
-const APPLICATIONS_INIT = [
-  {
-    id: 101,
-    jobId: null,
-    title: "Teacher (Maths)",
-    company: "Kolhapur Public School",
-    appliedOn: "2 days ago",
-    status: "Shortlisted",
-  },
-  {
-    id: 102,
-    jobId: null,
-    title: "Graphic Designer",
-    company: "Pixel Studio",
-    appliedOn: "5 days ago",
-    status: "Applied",
-  },
-  {
-    id: 103,
-    jobId: null,
-    title: "Customer Support Executive",
-    company: "HelpDesk Co.",
-    appliedOn: "1 week ago",
-    status: "Interview",
-  },
-];
+/* ---------------- Feedback & complaints (sample data, replace with your API) ---------------- */
+const FEEDBACK_SUMMARY = { feedback: 4, complaints: 1 };
 
-const STATUS_STYLE = {
-  Applied: "bg-sky-50 text-[#2f6b8a] ring-sky-100",
-  Shortlisted: "bg-emerald-50 text-emerald-600 ring-emerald-100",
-  Interview: "bg-violet-50 text-violet-600 ring-violet-100",
-  Rejected: "bg-rose-50 text-rose-500 ring-rose-100",
+const toCount = (n) => {
+  const num = Number(n);
+  return Number.isFinite(num) ? num : 0;
 };
 
+/* ---------------- Profile completion checklist ---------------- */
+const hasText = (v) => v !== null && v !== undefined && String(v).trim() !== "";
+const hasNumber = (v) => hasText(v) && !Number.isNaN(Number(v));
+
+const PROFILE_CHECKS = [
+  { label: "Full name", done: (p) => hasText(p.fullName) },
+  { label: "Email", done: (p) => hasText(p.email) },
+  { label: "Mobile number", done: (p) => hasText(p.mobile) },
+  { label: "WhatsApp number", done: (p) => hasText(p.jB_whatsapp) },
+  { label: "Country", done: (p) => hasNumber(p.jB_country_id) },
+  { label: "State", done: (p) => hasNumber(p.jB_state_id) },
+  { label: "City", done: (p) => hasNumber(p.jB_city_id) },
+  { label: "Institute type", done: (p) => hasNumber(p.jB_institute_type_id) },
+  { label: "Job category", done: (p) => hasNumber(p.jB_job_category_id) },
+  { label: "Job role", done: (p) => hasNumber(p.jB_job_role_id) },
+  {
+    label: "Highest qualification",
+    done: (p) => hasText(p.jB_highest_qualification),
+  },
+  { label: "Speciality", done: (p) => hasText(p.jB_speciality) },
+  {
+    label: "Registration number",
+    done: (p) => hasText(p.jB_registration_number),
+  },
+  { label: "Total experience", done: (p) => hasNumber(p.jB_total_experience) },
+  {
+    label: "Current designation",
+    done: (p) => hasText(p.jB_current_designation),
+  },
+  { label: "Current employer", done: (p) => hasText(p.jB_current_employer) },
+  { label: "Expected salary", done: (p) => hasNumber(p.jB_expected_salary) },
+  {
+    label: "Preferred location",
+    done: (p) => hasNumber(p.jB_preferred_location),
+  },
+  {
+    label: "Availability to join",
+    done: (p) => hasText(p.jB_availability_to_join),
+  },
+  { label: "CV / resume", done: (p) => hasText(p.jB_cv_file_path) },
+  { label: "Work experience", done: (p) => (p.experiences?.length ?? 0) > 0 },
+  { label: "Education", done: (p) => (p.educations?.length ?? 0) > 0 },
+];
+
+/* ---------------- Job helpers (same logic as JobsForYou) ---------------- */
+const normalizeKeys = (item) =>
+  Object.fromEntries(
+    Object.entries(item ?? {}).map(([key, value]) => [
+      key.toLowerCase(),
+      value,
+    ]),
+  );
+
+const findBody = (response) =>
+  [response?.data?.data, response?.data, response].find(
+    (candidate) =>
+      candidate &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate) &&
+      ("totalRecords" in candidate || "TotalRecords" in candidate),
+  ) ?? {};
+
+const getRows = (body) => {
+  const rows = body?.data ?? body?.Data ?? body?.items ?? body?.Items;
+  return Array.isArray(rows) ? rows : [];
+};
+
+const normalizeJob = (item) => {
+  const row = normalizeKeys(item);
+  const get = (...keys) => {
+    for (const key of keys) {
+      const value = row[key.toLowerCase()];
+      if (hasText(value)) return value;
+    }
+    return undefined;
+  };
+
+  return {
+    id: get("jQ_job_requirement_id"),
+    employerName: get("employerName") ?? "",
+    position: get("jQ_position_title") ?? "Untitled position",
+    location: get("jobLocationName") ?? "-",
+    vacancies: get("jQ_vacancies") ?? 0,
+    deadline: get("jQ_deadline"),
+    applied: get("jobseekerApplied") === true,
+  };
+};
+
+const formatDeadline = (value) =>
+  hasText(value) && dayjs(value).isValid()
+    ? dayjs(value).format("DD-MM-YYYY")
+    : "-";
+
+const isRequestFailure = (response) =>
+  response?.success === false ||
+  response?.Success === false ||
+  response?.data?.success === false ||
+  response?.data?.Success === false;
+
+const getRequestFailureMessage = (response) =>
+  response?.message ||
+  response?.Message ||
+  response?.data?.message ||
+  response?.data?.Message ||
+  "Unable to load matching jobs.";
+
+/* ---------------- Dashboard ---------------- */
 const JobSeekerDashboard = () => {
-  const [jobs, setJobs] = useState(JOBS_FOR_YOU_INIT);
-  const [applications, setApplications] = useState(APPLICATIONS_INIT);
+  const navigate = useNavigate();
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const completion = useMemo(() => getProfileCompletion(profile), [profile]);
+  const { percent, doneCount, total: checksTotal } = completion;
+  const percentText = profileLoading ? "—" : `${percent}%`;
+
+  const [jobs, setJobs] = useState([]);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [jobsError, setJobsError] = useState("");
+
   const [query, setQuery] = useState("");
-  const [toast, setToast] = useState(null);
 
-  const notify = (msg) => setToast({ id: Date.now(), msg });
+  /* Load the logged-in jobseeker's profile */
   useEffect(() => {
-    if (!toast) return undefined;
-    const t = setTimeout(() => setToast(null), 2600);
-    return () => clearTimeout(t);
-  }, [toast]);
+    let cancelled = false;
 
-  const appliedJobIds = useMemo(
-    () => new Set(applications.map((a) => a.jobId).filter(Boolean)),
-    [applications],
+    const load = async () => {
+      try {
+        const userId = getCurrentUserId();
+        if (!userId) {
+          throw new Error("Your login session could not be identified.");
+        }
+
+        const response = await jobseekerApi.getById(userId);
+        const record = response?.data?.data ?? response?.data ?? response;
+
+        if (!record || record.jB_jobseeker_id === undefined) {
+          throw new Error("Your profile details were not returned.");
+        }
+
+        if (!cancelled) setProfile(record);
+      } catch (err) {
+        if (!cancelled) {
+          setProfile(null);
+          setJobsLoading(false);
+          setJobsError(err?.message || "Unable to load your profile.");
+        }
+      } finally {
+        if (!cancelled) setProfileLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const jobseekerId = profile?.jB_jobseeker_id;
+  const instituteTypeId = profile?.jB_institute_type_id;
+  const jobRoleId = profile?.jB_job_role_id;
+  const jobCategoryId = profile?.jB_job_category_id;
+
+  /* Load matching jobs once the profile is known */
+  useEffect(() => {
+    if (!jobseekerId) return;
+
+    if (!instituteTypeId || !jobRoleId || !jobCategoryId) {
+      setJobs([]);
+      setJobsLoading(false);
+      setJobsError(
+        "Add your institute type, job category and job role to see matching jobs.",
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      setJobsLoading(true);
+      setJobsError("");
+
+      try {
+        const response = await getJobsForJobseeker({
+          instituteTypeId: Number(instituteTypeId),
+          jobRoleId: Number(jobRoleId),
+          jobCategoryId: Number(jobCategoryId),
+          jobseekerId: Number(jobseekerId),
+          pageNo: 1,
+          pageSize: PAGE_SIZE,
+        });
+
+        if (isRequestFailure(response)) {
+          throw new Error(getRequestFailureMessage(response));
+        }
+
+        const rows = getRows(findBody(response)).map(normalizeJob);
+        if (!cancelled) setJobs(rows);
+      } catch (err) {
+        if (!cancelled) {
+          setJobs([]);
+          setJobsError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Failed to load matching jobs.",
+          );
+        }
+      } finally {
+        if (!cancelled) setJobsLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobseekerId, instituteTypeId, jobRoleId, jobCategoryId]);
+
+  /* Only jobs the jobseeker has not applied to yet */
+  const unappliedJobs = useMemo(
+    () => jobs.filter((job) => !job.applied),
+    [jobs],
   );
 
   const visibleJobs = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return jobs;
-    return jobs.filter(
-      (j) =>
-        j.title.toLowerCase().includes(q) ||
-        j.company.toLowerCase().includes(q) ||
-        j.city.toLowerCase().includes(q),
+    if (!q) return unappliedJobs;
+
+    return unappliedJobs.filter((job) =>
+      [job.position, job.employerName, job.location]
+        .filter(hasText)
+        .some((value) => String(value).toLowerCase().includes(q)),
     );
-  }, [jobs, query]);
+  }, [unappliedJobs, query]);
 
-  const markInterested = (job) => {
-    if (appliedJobIds.has(job.id)) return;
+ const kpis = [
+  {
+    title: "Profile completion in %",
+    value: toCount(profileLoading ? 0 : percent),
+    note: `${doneCount} of ${checksTotal} sections`,
+    icon: UserRound,
+    color: "#0ea5e9",
+    color2: "#2563eb",
+  },
+  {
+    title: "Jobs for you",
+    value: toCount(unappliedJobs.length),
+    note: "not applied yet",
+    icon: Sparkles,
+    color: "#6366f1",
+    color2: "#8b5cf6",
+  },
+  {
+    title: "Feedback",
+    value: toCount(FEEDBACK_SUMMARY.feedback),
+    note: "received",
+    icon: MessageSquareText,
+    color: "#10b981",
+    color2: "#059669",
+  },
+  {
+    title: "Complaints",
+    value: toCount(FEEDBACK_SUMMARY.complaints),
+    note: "raised",
+    icon: CircleAlert,
+    color: "#f59e0b",
+    color2: "#ef4444",
+  },
+];
 
-    setApplications((prev) => [
-      {
-        id: Date.now(),
-        jobId: job.id,
-        title: job.title,
-        company: job.company,
-        appliedOn: "Just now",
-        status: "Applied",
-      },
-      ...prev,
-    ]);
-    notify(`Marked interested in ${job.title}`);
-  };
-
-  const jobsApplied = applications.length;
-  const shortlisted = applications.filter(
-    (a) => a.status === "Shortlisted",
-  ).length;
-  const interviews = applications.filter(
-    (a) => a.status === "Interview",
-  ).length;
-  const jobsForYou = jobs.filter((j) => !appliedJobIds.has(j.id)).length;
-
-  const kpis = [
-    {
-      title: "Jobs applied",
-      value: jobsApplied,
-      note: "total applications",
-      icon: Send,
-      color: "#0ea5e9",
-      color2: "#2563eb",
-    },
-    {
-      title: "Jobs for you",
-      value: jobsForYou,
-      note: "matched to your profile",
-      icon: Sparkles,
-      color: "#6366f1",
-      color2: "#8b5cf6",
-    },
-    {
-      title: "Shortlisted",
-      value: shortlisted,
-      note: "moving forward",
-      icon: Star,
-      color: "#10b981",
-      color2: "#059669",
-    },
-    {
-      title: "Interviews",
-      value: interviews,
-      note: "scheduled",
-      icon: CalendarDays,
-      color: "#f59e0b",
-      color2: "#ef4444",
-    },
-  ];
+  const jobsLoadingNow = profileLoading || jobsLoading;
 
   return (
     <div className="isharq-dash min-h-full bg-slate-50 pb-4">
@@ -200,10 +314,10 @@ const JobSeekerDashboard = () => {
 
       <DashboardHeader
         title="My Job Search"
-        subtitle="Jobs picked for you, and where your applications stand"
+        subtitle="Jobs picked for you, and your profile progress"
         pills={[
-          { value: jobsApplied, label: "Applied" },
-          { value: jobsForYou, label: "For you" },
+          { value: profileLoading ? 0 : percent, label: "Profile %" },
+          { value: unappliedJobs.length, label: "For you" },
         ]}
       />
 
@@ -214,7 +328,7 @@ const JobSeekerDashboard = () => {
         <Panel
           className="xl:col-span-2"
           title="Jobs for you"
-          subtitle="Tap Interested to apply"
+          subtitle="Jobs you haven't applied to yet"
           icon={Briefcase}
           action={
             <label className="relative min-w-[150px]">
@@ -232,112 +346,76 @@ const JobSeekerDashboard = () => {
             </label>
           }
         >
-          {visibleJobs.length === 0 && (
+          {jobsLoadingNow ? (
             <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-[11px] text-slate-500">
-              No jobs match your search.
+              Finding jobs that match your profile…
             </p>
-          )}
-
-          <ul className="space-y-1.5">
-            {visibleJobs.map((j) => {
-              const applied = appliedJobIds.has(j.id);
-              return (
+          ) : jobsError ? (
+            <p className="rounded-xl bg-rose-50 px-3 py-4 text-center text-[11px] text-rose-600">
+              {jobsError}
+            </p>
+          ) : visibleJobs.length === 0 ? (
+            <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-[11px] text-slate-500">
+              {unappliedJobs.length === 0
+                ? "You've applied to all matching jobs right now."
+                : "No jobs match your search."}
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {visibleJobs.map((job) => (
                 <li
-                  key={j.id}
+                  key={job.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2 hover:bg-slate-50"
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate text-[12px] font-semibold text-slate-800">
-                        {j.title}
-                      </span>
-                      <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600">
-                        {j.match}% match
-                      </span>
+                    <div className="truncate text-[12px] font-semibold text-slate-800">
+                      {job.position}
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-400">
                       <span className="flex items-center gap-1">
-                        <Building2 size={10} /> {j.company}
+                        <Building2 size={10} /> {job.employerName || "—"}
                       </span>
                       <span className="flex items-center gap-1">
-                        <MapPin size={10} /> {j.city}
+                        <MapPin size={10} /> {job.location}
                       </span>
                       <span className="flex items-center gap-1">
-                        <Clock size={10} /> {j.postedAgo}
+                        <CalendarDays size={10} />{" "}
+                        {formatDeadline(job.deadline)}
                       </span>
                       <span className="font-medium text-slate-500">
-                        {j.salary}
+                        {job.vacancies} vacanc
+                        {Number(job.vacancies) === 1 ? "y" : "ies"}
                       </span>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    disabled={applied}
-                    onClick={() => markInterested(j)}
-                    className={`flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6b8a] ${
-                      applied
-                        ? "cursor-default bg-emerald-50 text-emerald-600"
-                        : "bg-[#2f6b8a] text-white hover:bg-[#265976]"
-                    }`}
+                    onClick={() => navigate(`/jobseeker/jobs/${job.id}`)}
+                    className="flex shrink-0 items-center gap-1 rounded-lg bg-[#2f6b8a] px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-[#265976] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6b8a]"
                   >
-                    <Heart size={12} fill={applied ? "currentColor" : "none"} />
-                    {applied ? "Interested" : "Interested?"}
+                    <Eye size={12} />
+                    View & apply
                   </button>
-                </li>
-              );
-            })}
-          </ul>
-        </Panel>
-
-        {/* My applications */}
-        <Panel
-          title="My applications"
-          subtitle={`${jobsApplied} total`}
-          icon={Send}
-        >
-          {applications.length === 0 ? (
-            <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-[11px] text-slate-500">
-              You haven&apos;t applied to any jobs yet.
-            </p>
-          ) : (
-            <ul className="space-y-1">
-              {applications.map((a) => (
-                <li
-                  key={a.id}
-                  className="flex items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-[11px] hover:bg-slate-50"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold text-slate-800">
-                      {a.title}
-                    </div>
-                    <div className="truncate text-[10px] text-slate-400">
-                      {a.company} · {a.appliedOn}
-                    </div>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${STATUS_STYLE[a.status]}`}
-                  >
-                    {a.status}
-                  </span>
                 </li>
               ))}
             </ul>
           )}
         </Panel>
-      </div>
 
-      {toast && (
-        <div
-          key={toast.id}
-          role="status"
-          aria-live="polite"
-          className="toast-in fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-xl bg-slate-800 px-3.5 py-2 text-[12px] font-medium text-white shadow-xl"
+        {/* Profile completion */}
+        <Panel
+          title="My profile"
+          subtitle="Complete it to get better matches"
+          icon={UserRound}
         >
-          <CircleAlert size={14} className="text-emerald-300" />
-          {toast.msg}
-        </div>
-      )}
+          <ProfileOverviewCard
+            profile={profile}
+            loading={profileLoading}
+            onOpenProfile={() => navigate("/jobseeker/profile")}
+          />
+        </Panel>
+      </div>
     </div>
   );
 };

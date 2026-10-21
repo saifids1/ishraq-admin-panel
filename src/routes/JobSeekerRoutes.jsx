@@ -23,7 +23,7 @@ const JobSeekerRoutes = (
       <Route index element={<Navigate to="/jobseeker/dashboard" replace />} />
 
       <Route path="dashboard" element={<JobSeekerDashboard />} />
-      <Route path="profile/:id" element={<JobseekerOverview />} />
+      <Route path="profile" element={<JobseekerOverview />} />
       <Route path="profile/:id/edit" element={<JobseekerEdit />} />
       <Route path="applied-jobs" element={<JobseekerAppliedJobs />} />
       <Route
