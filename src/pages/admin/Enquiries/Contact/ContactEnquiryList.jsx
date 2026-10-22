@@ -429,7 +429,7 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
             />
           </div>
 
-          <div className="relative min-w-[200px] flex-1 xl:flex-none">
+          {/* <div className="relative min-w-[200px] flex-1 xl:flex-none">
             <select
               aria-label="Status"
               value={query.status}
@@ -444,9 +444,9 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
               size={15}
               className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
             />
-          </div>
+          </div> */}
 
-          {cfg.categoryField && (
+          {/* {cfg.categoryField && (
             <div className="relative min-w-[200px] flex-1 xl:flex-none">
               <select
                 aria-label={cfg.categoryLabel || "Category"}
@@ -468,7 +468,7 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
                 className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
               />
             </div>
-          )}
+          )} */}
 
           {/* Refresh — silent, only reloads table */}
           <button

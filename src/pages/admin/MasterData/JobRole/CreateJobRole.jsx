@@ -13,6 +13,24 @@ const selectClass =
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
+/* ---------- field row: label : input ---------- */
+const FIELD_LABEL = "text-[14px] font-semibold text-black leading-tight";
+
+const FieldRow = ({ label, required, children, fullWidth }) => (
+  <div
+    className={`grid grid-cols-[130px_1fr] items-start gap-3 ${
+      fullWidth ? "md:col-span-2" : ""
+    }`}
+  >
+    <label className={`${FIELD_LABEL} pt-2`}>
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <div className="min-w-0">{children}</div>
+  </div>
+);
+
+/* ----------------------------- CONFIG ----------------------------- */
+
 const config = {
   singular: "Job Role",
   api: jobRoleApi,
@@ -21,14 +39,23 @@ const config = {
   activeField: "jR_is_active",
   createdAtField: "jR_created_at",
   updatedAtField: "jR_updated_at",
+
+  // ── Audit ID fields sent to the API (payload keys) ──
+  createdByIdField: "jR_created_by",
+  updatedByIdField: "jR_updated_by",
+
+  // ── Audit display fields read from the API response ──
   createdByField: "jR_created_by",
   updatedByField: "jR_updated_by",
-  createdByNameField: "jR_created_by_name",
-  updatedByNameField: "jR_updated_by_name",
+  createdByNameField: "createdByName", // ✅ API returns this
+  updatedByNameField: "updatedByName", // ✅ API returns this
+
   jobCategoryField: "jR_job_category_id",
 };
 
 const listPath = "/admin/settings/master/jobRole";
+
+/* --------------------------- DATE HELPERS ------------------------- */
 
 const formatDate = (value) => {
   if (value === null || value === undefined || value === "") return "";
@@ -104,6 +131,9 @@ const getSuccessMessage = (response, fallback) =>
   response?.data?.data?.Message ||
   fallback;
 
+/**
+ * Prefer the display name if present, otherwise fall back to the raw id.
+ */
 const pickUserDisplay = (item, nameKey, idKey) => {
   const name = item?.[nameKey];
   if (name !== undefined && name !== null && String(name).trim() !== "") {
@@ -116,12 +146,76 @@ const pickUserDisplay = (item, nameKey, idKey) => {
   return String(id);
 };
 
+/* ─────────────────────────────────────────────────────────────────
+   Resolve current logged-in user ID from login response
+   (falls back to JWT decode if the user object isn't present).
+   Login response shape: { token, userId, email, fullName, roles }
+   ───────────────────────────────────────────────────────────────── */
+const AUTH_USER_KEY = "user"; // localStorage key holding login response
+const AUTH_TOKEN_KEY = "token"; // localStorage key holding JWT
+
+const getUserIdFromStorage = () => {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const id = parsed?.userId ?? parsed?.user?.userId ?? parsed?.id ?? null;
+    return id === null || id === undefined ? null : Number(id) || null;
+  } catch {
+    return null;
+  }
+};
+
+const getUserIdFromToken = () => {
+  try {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) return null;
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return null;
+    const json = JSON.parse(
+      decodeURIComponent(
+        atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/"))
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join(""),
+      ),
+    );
+    const raw =
+      json["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] ??
+      json.nameid ??
+      json.userId ??
+      json.sub;
+    return raw === null || raw === undefined ? null : Number(raw) || null;
+  } catch {
+    return null;
+  }
+};
+
+const getCurrentUserId = () => {
+  // 1. Try storage "user" object from login response
+  const fromStorage = getUserIdFromStorage();
+  if (fromStorage) return fromStorage;
+
+  // 2. Fallback: decode JWT
+  const fromToken = getUserIdFromToken();
+  if (fromToken) return fromToken;
+
+  // 3. Legacy keys (kept for backward compat)
+  const raw =
+    localStorage.getItem("userId") ??
+    localStorage.getItem("user_id") ??
+    localStorage.getItem("id");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
 const CreateJobRole = ({ mode }) => {
   const navigate = useNavigate();
   const { id } = useParams();
 
   const isCreate = mode === "create";
 
+  // Driven by state so the Edit button can flip view → edit in place.
   const [isView, setIsView] = useState(mode === "view");
   const [isEdit, setIsEdit] = useState(mode === "edit");
 
@@ -169,6 +263,33 @@ const CreateJobRole = ({ mode }) => {
     });
   };
 
+  const openConfirm = ({
+    title,
+    message,
+    confirmText,
+    cancelText,
+    onConfirm,
+    onCancel,
+  }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: cancelText || "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        onCancel?.();
+      },
+    });
+  };
+
+  /* ---- Load institute types (create only) ---- */
   useEffect(() => {
     if (!needsInstituteType) {
       setInstituteTypes([]);
@@ -198,6 +319,7 @@ const CreateJobRole = ({ mode }) => {
     };
   }, [needsInstituteType]);
 
+  /* ---- Reset (create) or load record (view/edit) ---- */
   useEffect(() => {
     let cancelled = false;
 
@@ -292,18 +414,20 @@ const CreateJobRole = ({ mode }) => {
           setInstituteTypeName(relatedInstituteTypeName);
         }
 
+        // ✅ Prefer createdByName / updatedByName from the API.
+        //    Falls back to the numeric id only if the name is missing.
         setAudit({
           createdAt: formatDate(item[config.createdAtField]),
           createdBy: pickUserDisplay(
             item,
-            config.createdByNameField,
-            config.createdByField,
+            config.createdByNameField, // "createdByName"
+            config.createdByField, // "jR_created_by"
           ),
           updatedAt: formatDate(item[config.updatedAtField]),
           updatedBy: pickUserDisplay(
             item,
-            config.updatedByNameField,
-            config.updatedByField,
+            config.updatedByNameField, // "updatedByName"
+            config.updatedByField, // "jR_updated_by"
           ),
         });
       } catch (err) {
@@ -322,6 +446,7 @@ const CreateJobRole = ({ mode }) => {
     };
   }, [id, isCreate]);
 
+  /* ---- Load job categories when institute type changes (create only) ---- */
   useEffect(() => {
     let cancelled = false;
     setJobCategories([]);
@@ -360,55 +485,30 @@ const CreateJobRole = ({ mode }) => {
     setJobCategories([]);
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const title = config.singular;
+  const disabled = isView || loading || saving;
 
-    if (saving) return;
-
+  // ───────────────────────────────────────────────────────────────────
+  // Core save (shared by create + update)
+  // ───────────────────────────────────────────────────────────────────
+  const runSave = async () => {
     const trimmedName = name.trim();
-
-    if (!trimmedName) {
-      const message = "Value is required.";
-      setError(message);
-      if (isCreate) openStatus("warning", message);
-      return;
-    }
-
-    if (needsInstituteType && !instituteTypeId) {
-      const message = "Institute Type is required.";
-      setError(message);
-      if (isCreate) openStatus("warning", message);
-      return;
-    }
-    if (!jobCategoryId) {
-      const message = "Job Category is required.";
-      setError(message);
-      if (isCreate) openStatus("warning", message);
-      return;
-    }
-    if (
-      needsInstituteType &&
-      !jobCategories.some(
-        (category) =>
-          String(category.jC_job_category_id) === String(jobCategoryId),
-      )
-    ) {
-      const message = "Select a Job Category for the selected Institute Type.";
-      setError(message);
-      if (isCreate) openStatus("warning", message);
-      return;
-    }
+    // Current logged-in user id — used for jR_created_by (create) and jR_updated_by (edit)
+    const currentUserId = getCurrentUserId();
 
     setSaving(true);
     setError("");
 
     try {
       if (isCreate) {
-        // POST /JobRole
+        // POST /JobRole — include jR_created_by when we have a valid user id
         const payload = {
           [config.activeField]: status === "Active",
           [config.nameField]: trimmedName,
           [config.jobCategoryField]: Number(jobCategoryId),
+          ...(currentUserId > 0
+            ? { [config.createdByIdField]: currentUserId }
+            : {}),
         };
 
         const response = await config.api.create(payload);
@@ -426,39 +526,109 @@ const CreateJobRole = ({ mode }) => {
         );
       } else {
         // PUT /JobRole — id inside the body.
+        // Include jR_updated_by when we have a valid user id.
         const payload = {
           [config.activeField]: status === "Active",
           [config.nameField]: trimmedName,
           [config.idField]: Number(id),
+          ...(jobCategoryId
+            ? { [config.jobCategoryField]: Number(jobCategoryId) }
+            : {}),
+          ...(currentUserId > 0
+            ? { [config.updatedByIdField]: currentUserId }
+            : {}),
         };
-        if (jobCategoryId) {
-          payload[config.jobCategoryField] = Number(jobCategoryId);
-        }
 
-        await config.api.update(payload);
+        const response = await config.api.update(payload);
+
+        openStatus(
+          "update",
+          getSuccessMessage(
+            response,
+            `${config.singular} "${trimmedName}" updated successfully.`,
+          ),
+          {
+            title: "Updated",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
       }
-
-      if (!isCreate) navigate(listPath);
     } catch (err) {
       const message = getErrorMessage(
         err,
         `Failed to ${isCreate ? "create" : "update"} job role.`,
       );
       setError(message);
-      if (isCreate) openStatus("error", message);
+      openStatus("error", message);
     } finally {
       setSaving(false);
     }
   };
 
+  // ───────────────────────────────────────────────────────────────────
+  // Submit — validate, then either save (create) or confirm then save (update)
+  // ───────────────────────────────────────────────────────────────────
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (saving) return;
+
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      const message = "Value is required.";
+      setError(message);
+      openStatus("warning", message);
+      return;
+    }
+
+    if (needsInstituteType && !instituteTypeId) {
+      const message = "Institute Type is required.";
+      setError(message);
+      openStatus("warning", message);
+      return;
+    }
+    if (!jobCategoryId) {
+      const message = "Job Category is required.";
+      setError(message);
+      openStatus("warning", message);
+      return;
+    }
+    if (
+      needsInstituteType &&
+      !jobCategories.some(
+        (category) =>
+          String(category.jC_job_category_id) === String(jobCategoryId),
+      )
+    ) {
+      const message = "Select a Job Category for the selected Institute Type.";
+      setError(message);
+      openStatus("warning", message);
+      return;
+    }
+
+    // Confirm before update — matches the other master screens.
+    if (!isCreate) {
+      openConfirm({
+        title: `Update ${config.singular}?`,
+        message: "Are you sure you want to save these changes?",
+        confirmText: "Update",
+        cancelText: "Cancel",
+        onConfirm: runSave,
+      });
+      return;
+    }
+
+    await runSave();
+  };
+
+  // Clicking Edit flips the view into edit mode (matches the siblings).
   const handleEditClick = () => {
     setIsView(false);
     setIsEdit(true);
     setError("");
   };
-
-  const title = config.singular;
-  const disabled = isView || loading || saving;
 
   const pageTitle = isCreate
     ? `Create ${title}`
@@ -493,14 +663,10 @@ const CreateJobRole = ({ mode }) => {
           )}
 
           <form onSubmit={handleSubmit} className="p-4">
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+              {/* Institute Type — editable (create only) */}
               {needsInstituteType && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Institute Type
-                    {!isView && <span className="ml-1 text-red-500">*</span>}
-                  </label>
-
+                <FieldRow label="Institute Type" required={!isView}>
                   <div className="relative">
                     <select
                       value={instituteTypeId}
@@ -527,22 +693,21 @@ const CreateJobRole = ({ mode }) => {
                       className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                     />
                   </div>
-                </div>
+                </FieldRow>
               )}
 
+              {/* Job Category — editable (create only) */}
               {needsInstituteType && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Job Category
-                    {!isView && <span className="ml-1 text-red-500">*</span>}
-                  </label>
+                <FieldRow label="Job Category" required={!isView}>
                   <div className="relative">
                     <select
                       value={jobCategoryId}
                       onChange={(event) =>
                         setJobCategoryId(event.target.value)
                       }
-                      disabled={disabled || loadingCategories || !instituteTypeId}
+                      disabled={
+                        disabled || loadingCategories || !instituteTypeId
+                      }
                       required={!isView}
                       className={selectClass}
                     >
@@ -567,15 +732,13 @@ const CreateJobRole = ({ mode }) => {
                       className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                     />
                   </div>
-                </div>
+                </FieldRow>
               )}
 
+              {/* Job Category + Institute Type — read-only (view/edit of existing record) */}
               {!needsInstituteType && (
                 <>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Job Category
-                    </label>
+                  <FieldRow label="Job Category">
                     <input
                       type="text"
                       value={jobCategoryName || "—"}
@@ -583,11 +746,8 @@ const CreateJobRole = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Institute Type
-                    </label>
+                  </FieldRow>
+                  <FieldRow label="Institute Type">
                     <input
                       type="text"
                       value={instituteTypeName || "—"}
@@ -595,16 +755,12 @@ const CreateJobRole = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
+                  </FieldRow>
                 </>
               )}
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Value
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
-
+              {/* Value */}
+              <FieldRow label="Value" required={!isView}>
                 <input
                   type="text"
                   value={name}
@@ -614,13 +770,10 @@ const CreateJobRole = ({ mode }) => {
                   placeholder={`Enter ${title}`}
                   className={inputClass}
                 />
-              </div>
+              </FieldRow>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Status
-                </label>
-
+              {/* Status */}
+              <FieldRow label="Status">
                 <div className="relative">
                   <select
                     value={status}
@@ -637,66 +790,51 @@ const CreateJobRole = ({ mode }) => {
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                   />
                 </div>
-              </div>
+              </FieldRow>
 
+              {/* Audit fields */}
               {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Created At
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.createdAt || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                <>
+                  <FieldRow label="Created At">
+                    <input
+                      type="text"
+                      value={audit.createdAt || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </FieldRow>
 
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Created By
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.createdBy || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                  <FieldRow label="Created By">
+                    <input
+                      type="text"
+                      value={audit.createdBy || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </FieldRow>
 
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Updated At
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.updatedAt || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                  <FieldRow label="Updated At">
+                    <input
+                      type="text"
+                      value={audit.updatedAt || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </FieldRow>
 
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Updated By
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.updatedBy || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
+                  <FieldRow label="Updated By">
+                    <input
+                      type="text"
+                      value={audit.updatedBy || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </FieldRow>
+                </>
               )}
             </div>
 
@@ -709,6 +847,7 @@ const CreateJobRole = ({ mode }) => {
                 {isView ? "Back" : "Cancel"}
               </button>
 
+              {/* Edit button — only in view mode */}
               {isView && (
                 <button
                   type="button"
@@ -719,6 +858,7 @@ const CreateJobRole = ({ mode }) => {
                 </button>
               )}
 
+              {/* Save button — only when NOT in view mode */}
               {!isView && (
                 <button
                   type="submit"

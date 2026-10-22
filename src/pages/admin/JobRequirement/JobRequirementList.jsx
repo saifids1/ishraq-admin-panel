@@ -639,21 +639,7 @@ const JobRequirementList = () => {
               className={btnFilter(showFilters)}
             >
               <SlidersHorizontal size={15} strokeWidth={2.2} />
-              <span className="hidden sm:inline">
-                Filter
-              </span>
-              {/* {activeFilterCount > 0 && (
-                <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#2c6b8a] px-1 text-[11px] font-bold text-white">
-                  {activeFilterCount}
-                </span>
-              )} */}
-              {/* <ChevronDown
-                size={14}
-                strokeWidth={2.4}
-                className={`transition-transform duration-200 ${
-                  showFilters ? "rotate-180" : ""
-                }`}
-              /> */}
+              <span className="hidden sm:inline">Filter</span>
             </button>
 
             {/* Refresh */}
@@ -815,7 +801,7 @@ const JobRequirementList = () => {
         )}
 
         {/* TABLE */}
-        <div className="mt-4 overflow-hidden rounded-lg border h-[370px] border-[#cbe1f4] ">
+        <div className="mt-4 overflow-hidden rounded-lg border h-[370px] border-[#cbe1f4]">
           <div
             ref={headerScrollRef}
             className="overflow-hidden"
@@ -983,15 +969,18 @@ const JobRequirementList = () => {
                         </strong>
                       </td>
 
-                      <td
-                        className={`${td} whitespace-nowrap text-center tabular-nums`}
-                      >
-                        <Link
-                          to={`/admin/job-applicant/${row.id}`}
-                          className="font-semibold text-sky-700 hover:underline"
+                      {/* ---------- APPLICANTS: Same styling as status ---------- */}
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/admin/job-applicant/${row.id}`)}
+                          title={`View applicants for ${row.position || "this job"}`}
+                          aria-label={`View applicants for ${row.position || "this job"}`}
+                          className={`${BADGE_BASE} bg-sky-500 ring-sky-600 shadow-sky-500/20`}
                         >
+                          <Users size={13} strokeWidth={2.4} />
                           {Number(row.applicants || 0)}
-                        </Link>
+                        </button>
                       </td>
 
                       <td className={`${td} ${stickyActionsCell} text-center`}>

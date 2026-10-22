@@ -15,7 +15,7 @@ import {
   UserRoundCheck,
   UserRoundX,
   ChevronsRight,
-  RefreshCw,
+  RefreshCw,Plus,
 } from "lucide-react";
 import employmentTypeApi from "../../../../api/Services/employmentTypeApi";
 import { getApiErrorMessage } from "../../../../api/utils/apiHelpers";
@@ -470,6 +470,22 @@ const EmploymentTypeList = () => {
               {refreshing ? "Refreshing..." : "Refresh"}
             </span>
           </button>
+          
+                    <button
+                      type="button"
+                      title="Add"
+                      onClick={() =>
+                        navigate("/admin/settings/master/employmentType/add")
+                      }
+                      className={btnPrimary}
+                    >
+                      <Plus
+                        size={15}
+                        strokeWidth={2.2}
+                        className="transition-transform group-hover:scale-110"
+                      />
+                      <span className="hidden sm:inline">Add</span>
+                    </button>
 
         
         </div>

@@ -232,7 +232,20 @@ export default function JobRequirementCreate({ mode = "create" }) {
             employers,
             ["EM_employer_id", "employerId", "id"],
             ["EM_organization_name", "EM_name", "organizationName", "name"],
-          ),
+          ).map((employer) => ({
+            ...employer,
+            // Capture the institute type associated with each employer
+            instituteTypeId: String(
+              first(
+                employer.raw,
+                "EM_institute_type_id",
+                "em_institute_type_id",
+                "Employer_institute_type_id",
+                "instituteTypeId",
+                "IT_institute_type_id",
+              ) || "",
+            ),
+          })),
           institutes: options(
             institutes,
             [
@@ -302,7 +315,12 @@ export default function JobRequirementCreate({ mode = "create" }) {
             ...current,
             categories: options(
               response,
-              ["jC_job_category_id", "JC_job_category_id", "jobCategoryId", "id"],
+              [
+                "jC_job_category_id",
+                "JC_job_category_id",
+                "jobCategoryId",
+                "id",
+              ],
               ["jC_name", "JC_name", "JC_job_category_name", "name"],
             ),
           }));
@@ -360,13 +378,47 @@ export default function JobRequirementCreate({ mode = "create" }) {
   }, [form.categoryId]);
 
   const set = (name, value) => {
-    setForm((current) => ({
+    setForm((current) => {
+      const next = { ...current, [name]: value };
+
+      // Auto-fill institute type when employer is selected
+      if (name === "employerId") {
+        const employer = sources.employers.find(
+          (item) => String(item.id) === String(value),
+        );
+        const autoInstituteTypeId = employer?.instituteTypeId || "";
+        next.instituteTypeId = autoInstituteTypeId;
+        // Reset dependent fields because institute type (and its category/role) changed
+        next.categoryId = "";
+        next.roleId = "";
+      }
+
+      if (name === "instituteTypeId") {
+        next.categoryId = "";
+        next.roleId = "";
+      }
+      if (name === "categoryId") {
+        next.roleId = "";
+      }
+
+      return next;
+    });
+
+    setErrors((current) => ({
       ...current,
-      [name]: value,
-      ...(name === "instituteTypeId" ? { categoryId: "", roleId: "" } : {}),
-      ...(name === "categoryId" ? { roleId: "" } : {}),
+      [name]: undefined,
+      ...(name === "employerId"
+        ? {
+            instituteTypeId: undefined,
+            categoryId: undefined,
+            roleId: undefined,
+          }
+        : {}),
+      ...(name === "instituteTypeId"
+        ? { categoryId: undefined, roleId: undefined }
+        : {}),
+      ...(name === "categoryId" ? { roleId: undefined } : {}),
     }));
-    setErrors((current) => ({ ...current, [name]: undefined }));
   };
 
   const submit = async (event) => {
@@ -396,9 +448,7 @@ export default function JobRequirementCreate({ mode = "create" }) {
       !sources.categories.some(
         (category) => String(category.id) === String(form.categoryId),
       ) ||
-      !sources.roles.some(
-        (role) => String(role.id) === String(form.roleId),
-      )
+      !sources.roles.some((role) => String(role.id) === String(form.roleId))
     ) {
       setErrors({
         categoryId: sources.categories.some(
@@ -452,8 +502,13 @@ export default function JobRequirementCreate({ mode = "create" }) {
       }
       navigate("/admin/job-requirement-list");
     } catch (err) {
-      showStatus("error", getApiErrorMessage(err) || "Unable to create job requirement.");
-      setError(getApiErrorMessage(err) || "Unable to create job requirement.");
+      showStatus(
+        "error",
+        getApiErrorMessage(err) || "Unable to create job requirement.",
+      );
+      setError(
+        getApiErrorMessage(err) || "Unable to create job requirement.",
+      );
     } finally {
       setSaving(false);
     }
@@ -461,12 +516,7 @@ export default function JobRequirementCreate({ mode = "create" }) {
 
   const star = <span className="ml-1 text-red-500">*</span>;
 
-  const field = (
-    name,
-    label,
-    children,
-    { full = false, required = false } = {},
-  ) => (
+  const field = (name, label, children, { full = false, required = false } = {}) => (
     <div className={full ? "md:col-span-2" : ""} key={name}>
       <label className="mb-1.5 block text-sm font-medium text-slate-700">
         {label}
@@ -479,7 +529,7 @@ export default function JobRequirementCreate({ mode = "create" }) {
     </div>
   );
 
-  const select = (name, items, placeholder) => (
+  const select = (name, items, placeholder, { lock = false } = {}) => (
     <div className="relative">
       <select
         value={form[name]}
@@ -491,7 +541,8 @@ export default function JobRequirementCreate({ mode = "create" }) {
           loadingRoles ||
           loadingCategories ||
           saving ||
-          isView
+          isView ||
+          lock
         }
       >
         <option value="">
@@ -524,6 +575,9 @@ export default function JobRequirementCreate({ mode = "create" }) {
     />
   );
 
+  // Auto-filled institute type is locked while an employer is selected
+  const instituteTypeLocked = Boolean(form.employerId);
+
   return (
     <div className="min-h-full bg-[#f4f8fb]">
       <div className="mx-auto max-w-[1300px]">
@@ -540,7 +594,7 @@ export default function JobRequirementCreate({ mode = "create" }) {
               >
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
-              
+
               <h2 className="font-semibold text-slate-800">
                 {isCreate
                   ? "Add Job Requirement"
@@ -567,11 +621,14 @@ export default function JobRequirementCreate({ mode = "create" }) {
               )}
               {field(
                 "instituteTypeId",
-                "Institute Type",
+                "Organization Type",
                 select(
                   "instituteTypeId",
                   sources.institutes,
-                  "Select institute type",
+                  form.employerId
+                    ? "Auto-filled from employer"
+                    : "organization type will selected as per employer",
+                  { lock: instituteTypeLocked },
                 ),
                 { required: true },
               )}
@@ -651,16 +708,16 @@ export default function JobRequirementCreate({ mode = "create" }) {
                 "Duty Hours",
                 text("dutyHours", "text", "e.g. 8 hrs / shift"),
               )}
-              {field(
+              {/* {field(
                 "expectedJoiningDate",
                 "Expected Joining Date",
                 text("expectedJoiningDate", "date"),
-              )}
-              {field(
+              )} */}
+              {/* {field(
                 "postExpireDedline",
                 "Post Expiry Date",
                 text("postExpireDedline", "date"),
-              )}
+              )} */}
               {/* {field(
                 "assignedTo",
                 "Assign To (optional)",
@@ -712,7 +769,7 @@ export default function JobRequirementCreate({ mode = "create" }) {
               )}
 
               {/* Attachment */}
-              <div className="md:col-span-2">
+              {/* <div className="md:col-span-2">
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Job Description Attachment
                 </label>
@@ -750,7 +807,7 @@ export default function JobRequirementCreate({ mode = "create" }) {
                 <span className="mt-1 block text-xs text-slate-500">
                   PDF, DOC or DOCX only
                 </span>
-              </div>
+              </div> */}
             </div>
 
             {/* FOOTER */}

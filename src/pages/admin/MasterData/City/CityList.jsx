@@ -387,7 +387,7 @@ const CityList = () => {
           <button
             type="button"
             title="Add"
-            onClick={() => navigate("/admin/settings/master/city/add")}
+            onClick={() => navigate("/admin/settings/master/cityMaster/add")}
             className={btnPrimary}
           >
             <Plus

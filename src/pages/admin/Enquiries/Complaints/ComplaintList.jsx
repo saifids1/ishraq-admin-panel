@@ -154,15 +154,15 @@ const requestStatusOf = (item) => {
 const TABLE_COLUMNS = [
   { key: "srNo", label: "Sr.No", width: "60px" },
   { key: "requestId", label: "Request ID", width: "170px" },
-  { key: "name", label: "Name", width: "200px" },
-  { key: "email", label: "Email", width: "220px" },
-  { key: "mobile", label: "Mobile", width: "130px" },
+  { key: "name", label: "Name", width: "180px" },
+  { key: "email", label: "Email", width: "200px" },
+  { key: "mobile", label: "Mobile", width: "120px" },
   { key: "statusName", label: "Request Status", width: "150px" },
-  { key: "status", label: "Status", width: "140px" },
-  { key: "category", label: "Category", width: "150px" },
+  // { key: "status", label: "Status", width: "140px" },
+  { key: "category", label: "Category", width: "170px" },
   { key: "userType", label: "User Type", width: "130px" },
   { key: "submittedAt", label: "Submitted", width: "130px" },
-  { key: "actions", label: "Actions", width: "130px" },
+  { key: "actions", label: "Actions", width: "100px" },
 ];
 
 const TABLE_COL_COUNT = TABLE_COLUMNS.length;
@@ -469,11 +469,18 @@ const ComplaintList = ({ formType = "complaint" }) => {
         </div>
       )}
 
-      {/* TABLE */}
+      {/* TABLE — fixed layout with jiggle-free horizontal scroll */}
       <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="flex h-full flex-col">
-          {/* Header strip */}
-          <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
+          {/* Header strip — FIX: added scrollbarGutter: "stable" so the
+              header reserves the same horizontal scroll gutter as the body.
+              Without this, the header content-box shrinks by ~15px when the
+              body's horizontal scrollbar appears, causing columns to jump. */}
+          <div
+            ref={headerScrollRef}
+            className="shrink-0 overflow-hidden"
+            style={{ scrollbarGutter: "stable" }}
+          >
             <table
               className="w-full table-fixed border-collapse text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
@@ -594,7 +601,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
                             </span>
                           </div>
                         </td>
-
+{/* 
                         <td className={`${td} whitespace-nowrap text-center`}>
                           <div className="w-full min-w-0 truncate">
                             <span
@@ -605,7 +612,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
                               {row.status || "-"}
                             </span>
                           </div>
-                        </td>
+                        </td> */}
 
                         <td className={`${td} whitespace-nowrap`}>
                           <div className="w-full min-w-0 truncate">
@@ -645,7 +652,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
                               <ChevronsRight size={14} strokeWidth={2.2} />
                             </button>
 
-                            <button
+                            {/* <button
                               type="button"
                               role="switch"
                               aria-checked={row.status === "Active"}
@@ -691,7 +698,7 @@ const ComplaintList = ({ formType = "complaint" }) => {
                                   />
                                 )}
                               </span>
-                            </button>
+                            </button> */}
                           </div>
                         </td>
                       </tr>

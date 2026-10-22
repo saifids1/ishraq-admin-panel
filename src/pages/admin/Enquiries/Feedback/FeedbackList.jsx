@@ -160,7 +160,7 @@ const TABLE_COLUMNS = [
   { key: "contact", label: "Contact", width: "180px" },
   { key: "userType", label: "User Type", width: "140px" },
   { key: "statusName", label: "Request Status", width: "150px" },
-  { key: "status", label: "Status", width: "140px" },
+  // { key: "status", label: "Status", width: "140px" },
   { key: "rating", label: "Rating", width: "110px" },
   { key: "submittedAt", label: "Submitted", width: "130px" },
   { key: "actions", label: "Actions", width: "130px" },
@@ -597,7 +597,7 @@ const FeedbackList = ({ formType = "feedback" }) => {
                           </div>
                         </td>
 
-                        <td className={`${td} whitespace-nowrap text-center`}>
+                        {/* <td className={`${td} whitespace-nowrap text-center`}>
                           <div className="w-full min-w-0 truncate">
                             <span
                               className={`${BADGE_BASE} ${
@@ -607,7 +607,7 @@ const FeedbackList = ({ formType = "feedback" }) => {
                               {row.status || "-"}
                             </span>
                           </div>
-                        </td>
+                        </td> */}
 
                         <td
                           className={`${td} ${stickyActionsCell} text-center`}
