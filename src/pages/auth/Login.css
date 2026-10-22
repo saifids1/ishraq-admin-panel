@@ -860,3 +860,32 @@
     display: none;
   }
 }
+
+
+.ish-login-footer {
+  width: 100%;
+  padding: 18px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #64748b;
+  letter-spacing: 0.2px;
+}
+
+.ish-login-footer a {
+  color: #2f6b8a;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.ish-login-footer a:hover {
+  color: #1e4d68;
+  text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+  .ish-login-footer {
+    padding: 14px 12px;
+    font-size: 11px;
+  }
+}

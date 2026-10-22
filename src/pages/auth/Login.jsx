@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { loginApi } from "../../api/authApi";
 import "./Login.css";
 import toast from "react-hot-toast";
+import StatusModal from "../../components/common/StatusModal";
 
 /* ------------------------------------------------------------------ */
 /* Role configuration                                                  */
@@ -198,6 +199,12 @@ const Login = () => {
   const [error, setError] = useState("");
   const [shake, setShake] = useState(false);
   const [status, setStatus] = useState("idle");
+  const [statusModal, setStatusModal] = useState({
+    isOpen: false,
+    type: "error",
+    title: "Account Inactive",
+    message: "",
+  });
 
   const roleIndex = visibleRoles.findIndex((r) => r.key === roleKey);
 
@@ -282,7 +289,7 @@ const Login = () => {
         role: actualRole,
         roles: data.roles,
         token: data.token,
-        profileId: data.profileId
+        profileId: data.profileId,
       };
 
       // Keep this signature consistent with your AuthContext.
@@ -301,9 +308,22 @@ const Login = () => {
         err.message ||
         "Login failed. Please try again.";
 
-      toast.error(message);
       setStatus("idle");
       setShake(true);
+
+      if (message.trim().toLowerCase() === "user account is inactive.") {
+        setStatusModal({
+          isOpen: true,
+          type: "warning",
+          title: "Account Inactive",
+          message:
+            "Your account is currently inactive.\n\nPlease contact the administrator to activate your account before signing in.",
+        });
+
+        return;
+      }
+
+      toast.error(message);
     }
   };
 
@@ -399,7 +419,6 @@ const Login = () => {
                   setUsername(e.target.value);
                   setError("");
                 }}
-               
               />
 
               <span className="ish-field-label">Email</span>
@@ -492,6 +511,35 @@ const Login = () => {
           </form>
         </section>
       </main>
+      <StatusModal
+        isOpen={statusModal.isOpen}
+        type={statusModal.type}
+        title={statusModal.title}
+        message={statusModal.message}
+        confirmText="OK"
+        onConfirm={() =>
+          setStatusModal((prev) => ({
+            ...prev,
+            isOpen: false,
+          }))
+        }
+        onCancel={() =>
+          setStatusModal((prev) => ({
+            ...prev,
+            isOpen: false,
+          }))
+        }
+      />
+      <footer className="ish-login-footer">
+  Designed & Developed by{" "}
+  <a
+    href="https://i-diligence.com/"
+    target="_blank"
+    rel="noopener noreferrer"
+  >
+    I-Diligence Solutions Pvt. Ltd.
+  </a>
+</footer>
     </div>
   );
 };

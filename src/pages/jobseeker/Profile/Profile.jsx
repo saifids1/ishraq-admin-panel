@@ -2,13 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FileText as FileIcon,
-  MapPin,
-  Download,
   Eye,
   Briefcase,
   Inbox,
   UserRound,
-  ExternalLink,
+  Building2,
+  SlidersHorizontal,
 } from "lucide-react";
 import { getCurrentUserId } from "../../../utils/authUtils";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
@@ -17,16 +16,19 @@ import jobseekerApi from "../../../api/Services/adjobseekerApi";
 const T = {
   radius: "rounded-lg",
   border: "border-[#e3e8ee]",
+  borderSoft: "border-[#eef1f5]",
   bg: "bg-[#f4f8fb]",
   surface: "bg-white",
   text: "text-[#1a2b3c]",
   textMuted: "text-[#5b6b7c]",
-  textFaint: "text-[#8895a4]",
+  textFaint: "text-black",
+  accent: "text-[#1e5a7a]",
+  hover: "hover:bg-[#f3f6f9]",
 };
 
-const FIELD_LABEL = `text-[11.5px] font-semibold uppercase tracking-wide ${T.textFaint}`;
+const FIELD_LABEL = `text-[13px] font-semibold tracking-wide ${T.textFaint}`;
 const FIELD_BOX = (mono) =>
-  `flex h-9 items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
+  `flex h-9 w-full items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
     mono ? "font-mono text-[12.5px]" : ""
   }`;
 
@@ -37,7 +39,8 @@ const CARD_SHADOW = "shadow-[0_1px_2px_rgba(16,24,40,0.04)]";
 
 const NAV = [
   { id: "overview", label: "Overview", icon: UserRound },
-  { id: "preferences", label: "Location & Preferences", icon: MapPin },
+  { id: "employment", label: "Current Employment", icon: Building2 },
+  { id: "preferences", label: "Job Preferences", icon: SlidersHorizontal },
   { id: "resume", label: "Documents", icon: FileIcon },
   // { id: "jobs", label: "Applied Jobs", icon: Briefcase },
 ];
@@ -47,8 +50,9 @@ const isBlank = (v) => v === null || v === undefined || String(v).trim() === "";
 
 const val = (v) => (isBlank(v) ? "—" : String(v).trim());
 
+// "22-10-2026"
 const formatDate = (iso) => {
-  if (!iso) return "—";
+  if (isBlank(iso)) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   const dd = String(d.getDate()).padStart(2, "0");
@@ -56,17 +60,27 @@ const formatDate = (iso) => {
   return `${dd}-${mm}-${d.getFullYear()}`;
 };
 
+// "22-10-2026 11:08 AM"
+const formatDateTime = (iso) => {
+  if (isBlank(iso)) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const time = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  return `${dd}-${mm}-${d.getFullYear()} ${time}`;
+};
+
 const formatYears = (v) => (isBlank(v) ? "—" : `${Number(v)} yrs`);
 
 const formatMoney = (v) =>
-  isBlank(v) || Number.isNaN(Number(v))
-    ? "—"
-    : `₹ ${Number(v).toLocaleString("en-IN")}`;
+  isBlank(v) || Number.isNaN(Number(v)) ? "—" : `₹ ${Number(v).toLocaleString("en-IN")}`;
 
 const yesNo = (v) => (v === true ? "Yes" : v === false ? "No" : "—");
 
-// Joins the stored file path with the API base URL.
+/* ---------------- File URL helper ---------------- */
 const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || "").replace(/\/+$/, "");
+
 const buildFileUrl = (path) => {
   if (isBlank(path)) return "";
   const value = String(path).trim();
@@ -101,19 +115,18 @@ const getErrorMessage = (error) =>
   "Unable to load jobseeker details. Please try again.";
 
 /* ---------------- Shared pieces ---------------- */
-const Field = ({ label, value, mono, href, span = "" }) => {
-  const text = val(value);
+
+/* Same row layout as JobSeekerDetails: label : box */
+const FieldRow = ({ label, value, mono = false, href, children }) => {
+  const text = children ?? val(value);
   return (
-    <div className={`flex flex-col gap-1.5 ${span}`}>
-      <label className={FIELD_LABEL}>{label}</label>
+    <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+      <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
       <div className={FIELD_BOX(mono)}>
         <span className="min-w-0 flex-1 truncate">
-          {href && text !== "—" ? (
-            <a
-              href={href}
-              className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
-            >
-              {text} <ExternalLink size={11} />
+          {href && !children && text !== "—" ? (
+            <a href={href} className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline">
+              {text}
             </a>
           ) : (
             text
@@ -123,6 +136,21 @@ const Field = ({ label, value, mono, href, span = "" }) => {
     </div>
   );
 };
+
+const SectionTitle = ({ children }) => (
+  <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+    {children}
+  </h3>
+);
+
+const Section = ({ title, children }) => (
+  <section className={`${T.surface} ${T.radius} border ${T.border} ${CARD_SHADOW}`}>
+    <div className="p-4">
+      <SectionTitle>{title}</SectionTitle>
+      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">{children}</div>
+    </div>
+  </section>
+);
 
 const DocumentBox = ({ doc }) => {
   if (!doc) {
@@ -151,13 +179,6 @@ const DocumentBox = ({ doc }) => {
         <div className="mt-2.5 flex gap-2">
           <a
             href={doc.url}
-            download={doc.name}
-            className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#2f6b8a] text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
-          >
-            <Download size={13} /> Download
-          </a>
-          <a
-            href={doc.url}
             target="_blank"
             rel="noreferrer"
             className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50"
@@ -173,16 +194,6 @@ const DocumentBox = ({ doc }) => {
     </div>
   );
 };
-
-const Panel = ({ children }) => (
-  <section className={`${T.surface} ${T.radius} border ${T.border} ${CARD_SHADOW}`}>
-    <div className="p-4">{children}</div>
-  </section>
-);
-
-const Grid = ({ children }) => (
-  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">{children}</div>
-);
 
 const StateCard = ({ icon, title, subtitle, action }) => (
   <div className={`min-h-full ${T.bg} p-6`}>
@@ -246,15 +257,13 @@ const JobseekerOverview = () => {
   if (loading) {
     return (
       <StateCard
-        icon={
-          <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#2f6b8a] border-t-transparent" />
-        }
+        icon={<div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#2f6b8a] border-t-transparent" />}
         title="Loading jobseeker…"
       />
     );
   }
 
-  /* ---------- Error ---------- */
+  /* ---------- Error / Not found ---------- */
   if (error || !jobseeker) {
     return (
       <StateCard
@@ -278,8 +287,13 @@ const JobseekerOverview = () => {
   const cvUrl = buildFileUrl(jobseeker.jB_cv_file_path);
   const cvName = isBlank(jobseeker.jB_cv_file_path)
     ? ""
-    : jobseeker.jB_cv_file_path.split(/[\\/]/).pop();
+    : String(jobseeker.jB_cv_file_path).split(/[\\/]/).pop();
   const cvDoc = cvUrl ? { name: cvName, url: cvUrl } : null;
+
+  const currentLocation =
+    [jobseeker.cityName, jobseeker.stateName, jobseeker.countryName]
+      .filter((v) => !isBlank(v))
+      .join(", ") || "—";
 
   return (
     <div className={`min-h-full ${T.bg}`}>
@@ -291,18 +305,20 @@ const JobseekerOverview = () => {
               {jobseeker.fullName || "My Profile Details"}
             </h2>
 
-            <button
-              type="button"
-              onClick={() => navigate(`/jobseeker/profile/${jobseeker.jB_jobseeker_id}/edit`)}
-              className={BTN_PRIMARY}
-            >
-              Edit
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(`/jobseeker/profile/${jobseeker.jB_jobseeker_id}/edit`)}
+                className={BTN_PRIMARY}
+              >
+                Edit
+              </button>
+            </div>
           </div>
 
           {/* BODY */}
           <div className="p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[170px_1fr]">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
               {/* LEFT: vertical nav */}
               <aside className="md:sticky md:top-4 md:h-fit w-[11rem]">
                 <nav
@@ -327,11 +343,7 @@ const JobseekerOverview = () => {
                         <span className="flex items-center gap-2.5">
                           <Icon
                             size={15}
-                            className={
-                              on
-                                ? "text-[#1e5a7a]"
-                                : "text-[#8895a4] group-hover:text-[#5b6b7c]"
-                            }
+                            className={on ? "text-[#1e5a7a]" : "text-[#8895a4] group-hover:text-[#5b6b7c]"}
                           />
                           {n.label}
                         </span>
@@ -345,73 +357,82 @@ const JobseekerOverview = () => {
               <main className="min-w-0">
                 {/* -------- Overview -------- */}
                 {tab === "overview" && (
-                  <Panel>
-                    <Grid>
-                      <Field label="Full Name" value={jobseeker.fullName} />
-                      <Field label="Mobile Number" value={jobseeker.mobile} mono />
-                      <Field label="WhatsApp Number" value={jobseeker.jB_whatsapp} mono />
-                      <Field
+                  <div className="space-y-6">
+                    <Section title="Personal & Professional Details">
+                      <FieldRow label="Full Name" value={jobseeker.fullName} />
+                      <FieldRow label="Mobile Number" value={jobseeker.mobile} mono />
+                      <FieldRow label="WhatsApp Number" value={jobseeker.jB_whatsapp} mono />
+                      <FieldRow
                         label="Email Address"
                         value={jobseeker.email}
                         href={jobseeker.email ? `mailto:${jobseeker.email}` : undefined}
                       />
-                      <Field label="Profession / Job Category" value={jobseeker.jobCategoryName} />
-                      <Field label="Job Role" value={jobseeker.jobRoleName} />
-                      <Field label="Highest Qualification" value={jobseeker.jB_highest_qualification} />
-                      <Field label="Speciality / Department" value={jobseeker.jB_speciality} />
-                      <Field
-                        label="Professional Registration Number"
-                        value={jobseeker.jB_registration_number}
-                        mono
-                      />
-                      <Field label="Total Experience" value={formatYears(jobseeker.jB_total_experience)} />
-                      <Field label="Current Designation" value={jobseeker.jB_current_designation} />
-                      <Field label="Current Employer" value={jobseeker.jB_current_employer} />
-                      <Field label="Current Salary" value={formatMoney(jobseeker.jB_current_salary)} />
-                      <Field label="Institute Type" value={jobseeker.instituteTypeName} />
-                      <Field label="Created At" value={formatDate(jobseeker.jB_created_at)} />
-                      <Field label="Updated At" value={formatDate(jobseeker.jB_updated_at)} />
-                      <Field label="Status" value={active ? "Active" : "Inactive"} />
-                    </Grid>
-                  </Panel>
+                      <FieldRow label="Institute Type" value={jobseeker.instituteTypeName} />
+                      <FieldRow label="Job Category" value={jobseeker.jobCategoryName} />
+                      <FieldRow label="Role" value={jobseeker.jobRoleName} />
+                      <FieldRow label="Highest Qualification" value={jobseeker.jB_highest_qualification} />
+                      <FieldRow label="Speciality / Department" value={jobseeker.jB_speciality} />
+                      <FieldRow label="Professional Reg. No." value={jobseeker.jB_registration_number} mono />
+                      <FieldRow label="Total Experience" value={formatYears(jobseeker.jB_total_experience)} />
+                      <FieldRow label="Current Designation" value={jobseeker.jB_current_designation} />
+                      <FieldRow label="Status" value={active ? "Active" : "Inactive"} />
+                    </Section>
+
+                    <Section title="Current Location">
+                      <FieldRow label="Country" value={jobseeker.countryName} />
+                      <FieldRow label="State" value={jobseeker.stateName} />
+                      <FieldRow label="City" value={jobseeker.cityName} />
+                      {/* <FieldRow label="Full Location" value={currentLocation} /> */}
+                    </Section>
+
+                   
+                  </div>
                 )}
 
-                {/* -------- Location & Preferences -------- */}
+                {/* -------- Current Employment -------- */}
+                {tab === "employment" && (
+                  <Section title="Current Employment">
+                    <FieldRow label="Current Employer" value={jobseeker.jB_current_employer} />
+                    <FieldRow label="Current Designation" value={jobseeker.jB_current_designation} />
+                    <FieldRow label="Current Salary" value={formatMoney(jobseeker.jB_current_salary)} />
+                    <FieldRow label="Total Experience" value={formatYears(jobseeker.jB_total_experience)} />
+                    <FieldRow label="Institute Type" value={jobseeker.instituteTypeName} />
+                  </Section>
+                )}
+
+                {/* -------- Job Preferences -------- */}
                 {tab === "preferences" && (
-                  <Panel>
-                    <Grid>
-                      <Field label="Country" value={jobseeker.countryName} />
-                      <Field label="State" value={jobseeker.stateName} />
-                      <Field label="City" value={jobseeker.cityName} />
-                      <Field
-                        label="Preferred Job Location"
-                        value={jobseeker.jB_preferredLocationName ?? jobseeker.jB_preferred_locationName}
-                      />
-                      <Field label="Expected Salary" value={formatMoney(jobseeker.jB_expected_salary)} />
-                      <Field label="Willing to Relocate?" value={yesNo(jobseeker.jB_willing_to_relocate)} />
-                      <Field
-                        label="Availability to Join"
-                        value={formatDate(jobseeker.jB_availability_to_join)}
-                      />
-                      <Field label="Consent Given" value={yesNo(jobseeker.jB_consent_given)} />
-                      <Field label="Consent At" value={formatDate(jobseeker.jB_consent_at)} />
-                    </Grid>
-                  </Panel>
+                  <Section title="Job Preferences">
+                    <FieldRow
+                      label="Preferred Location"
+                      value={jobseeker.jB_preferredLocationName ?? jobseeker.jB_preferred_locationName}
+                    />
+                    <FieldRow label="Expected Salary" value={formatMoney(jobseeker.jB_expected_salary)} />
+                    <FieldRow label="Willing to Relocate?" value={yesNo(jobseeker.jB_willing_to_relocate)} />
+                    <FieldRow label="Availability to Join" value={formatDate(jobseeker.jB_availability_to_join)} />
+                    <FieldRow label="Job Category" value={jobseeker.jobCategoryName} />
+                  </Section>
                 )}
 
-                {/* -------- Documents (Resume/CV only) -------- */}
+                {/* -------- Documents -------- */}
                 {tab === "resume" && (
-                  <Panel>
-                    <Grid>
-                      <div className="flex flex-col gap-1.5">
-                        <label className={FIELD_LABEL}>Resume / CV</label>
-                        <DocumentBox doc={cvDoc} />
+                  <section className={`${T.surface} ${T.radius} border ${T.border} ${CARD_SHADOW}`}>
+                    <div className="p-4">
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        <div className="grid grid-cols-[160px_1fr] items-start gap-3">
+                          <label className={`${FIELD_LABEL} pt-2 text-right sm:text-left`}>
+                            Resume / CV
+                          </label>
+                          <DocumentBox doc={cvDoc} />
+                        </div>
                       </div>
-                    </Grid>
-                  </Panel>
+                    </div>
+                  </section>
                 )}
 
-               
+                {/* -------- Applied Jobs (disabled, matching original) --------
+                {tab === "jobs" && (...)}
+                */}
               </main>
             </div>
           </div>
