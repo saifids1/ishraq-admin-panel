@@ -132,18 +132,19 @@ export const AdminSidebar = () => {
       link: "/admin/career",
       tile: "from-cyan-400 to-sky-500",
     },
+     {
+      text: "Complaints",
+      icon: ShieldAlert,
+      link: "/admin/complaints",
+      tile: "from-rose-400 to-red-500",
+    },
     {
       text: "Contact Us Enquiry",
       icon: MessageCircleQuestion,
       link: "/admin/contact",
       tile: "from-fuchsia-400 to-purple-500",
     },
-    {
-      text: "Complaints",
-      icon: ShieldAlert,
-      link: "/admin/complaints",
-      tile: "from-rose-400 to-red-500",
-    },
+   
     {
       text: "Feedback",
       icon: MessagesSquare,

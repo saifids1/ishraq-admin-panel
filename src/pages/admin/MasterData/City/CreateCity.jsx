@@ -12,6 +12,23 @@ const selectClass =
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
+/* ---------- field row: label : input ---------- */
+const FIELD_LABEL =
+  "text-[14px] font-semibold text-black leading-tight";
+
+const FieldRow = ({ label, required, children, fullWidth }) => (
+  <div
+    className={`grid grid-cols-[130px_1fr] items-start gap-3 ${
+      fullWidth ? "md:col-span-2" : ""
+    }`}
+  >
+    <label className={`${FIELD_LABEL} pt-2`}>
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <div className="min-w-0">{children}</div>
+  </div>
+);
+
 const config = {
   singular: "City",
   api: cityMasterApi,
@@ -94,7 +111,62 @@ const pickUserDisplay = (item, nameKey, idKey) => {
   return String(id);
 };
 
+/* ─────────────────────────────────────────────────────────────────
+   Resolve current logged-in user ID from login response
+   (falls back to JWT decode if the user object isn't present).
+   Login response shape: { token, userId, email, fullName, roles }
+   ───────────────────────────────────────────────────────────────── */
+const AUTH_USER_KEY = "user"; // localStorage key holding login response
+const AUTH_TOKEN_KEY = "token"; // localStorage key holding JWT
+
+const getUserIdFromStorage = () => {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const id = parsed?.userId ?? parsed?.user?.userId ?? parsed?.id ?? null;
+    return id === null || id === undefined ? null : Number(id) || null;
+  } catch {
+    return null;
+  }
+};
+
+const getUserIdFromToken = () => {
+  try {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) return null;
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return null;
+    const json = JSON.parse(
+      decodeURIComponent(
+        atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/"))
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join(""),
+      ),
+    );
+    // Claim used in the token: nameidentifier
+    const raw =
+      json["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] ??
+      json.nameid ??
+      json.userId ??
+      json.sub;
+    return raw === null || raw === undefined ? null : Number(raw) || null;
+  } catch {
+    return null;
+  }
+};
+
 const getCurrentUserId = () => {
+  // 1. Try storage "user" object from login response
+  const fromStorage = getUserIdFromStorage();
+  if (fromStorage) return fromStorage;
+
+  // 2. Fallback: decode JWT
+  const fromToken = getUserIdFromToken();
+  if (fromToken) return fromToken;
+
+  // 3. Legacy keys (kept for backward compat)
   const raw =
     localStorage.getItem("userId") ??
     localStorage.getItem("user_id") ??
@@ -329,6 +401,8 @@ const CreateCity = ({ mode }) => {
     setError("");
 
     const trimmedName = name.trim();
+    // Current logged-in user id — used for both CreatedBy (create) and UpdatedBy (edit)
+    const currentUserId = getCurrentUserId();
 
     try {
       if (isCreate) {
@@ -337,7 +411,10 @@ const CreateCity = ({ mode }) => {
           [config.stateField]: Number(stateId),
           [config.postalCodeField]: postalCode.trim() || "",
           [config.activeField]: status === "Active",
-          [config.createdByField]: getCurrentUserId(),
+          // Only include CreatedBy when we have a valid user id
+          ...(currentUserId > 0
+            ? { [config.createdByField]: currentUserId }
+            : {}),
         };
 
         await config.api.create(payload);
@@ -358,7 +435,10 @@ const CreateCity = ({ mode }) => {
           [config.stateField]: Number(stateId),
           [config.postalCodeField]: postalCode.trim() || "",
           [config.activeField]: status === "Active",
-          [config.updatedByField]: getCurrentUserId(),
+          // Only include UpdatedBy when we have a valid user id
+          ...(currentUserId > 0
+            ? { [config.updatedByField]: currentUserId }
+            : {}),
         };
 
         await config.api.update(payload);
@@ -467,12 +547,9 @@ const CreateCity = ({ mode }) => {
           )}
 
           <form onSubmit={handleSubmit} className="p-4">
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Country
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+            <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+              {/* Country */}
+              <FieldRow label="Country" required={!isView}>
                 <div className="relative">
                   <select
                     value={countryId}
@@ -501,13 +578,10 @@ const CreateCity = ({ mode }) => {
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                   />
                 </div>
-              </div>
+              </FieldRow>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  State
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+              {/* State */}
+              <FieldRow label="State" required={!isView}>
                 <div className="relative">
                   <select
                     value={stateId}
@@ -539,13 +613,10 @@ const CreateCity = ({ mode }) => {
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                   />
                 </div>
-              </div>
+              </FieldRow>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  City Name
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+              {/* City Name */}
+              <FieldRow label="City Name" required={!isView}>
                 <input
                   type="text"
                   value={name}
@@ -555,12 +626,10 @@ const CreateCity = ({ mode }) => {
                   placeholder={`Enter ${title}`}
                   className={inputClass}
                 />
-              </div>
+              </FieldRow>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Postal Code
-                </label>
+              {/* Postal Code */}
+              <FieldRow label="Postal Code">
                 <input
                   type="text"
                   value={postalCode}
@@ -569,12 +638,10 @@ const CreateCity = ({ mode }) => {
                   placeholder="Enter postal code"
                   className={inputClass}
                 />
-              </div>
+              </FieldRow>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Status
-                </label>
+              {/* Status */}
+              <FieldRow label="Status">
                 <div className="relative">
                   <select
                     value={status}
@@ -590,14 +657,12 @@ const CreateCity = ({ mode }) => {
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                   />
                 </div>
-              </div>
+              </FieldRow>
 
+              {/* Audit fields */}
               {!isCreate && (
                 <>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Created At
-                    </label>
+                  <FieldRow label="Created At">
                     <input
                       type="text"
                       value={audit.createdAt || "—"}
@@ -605,11 +670,8 @@ const CreateCity = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Created By
-                    </label>
+                  </FieldRow>
+                  <FieldRow label="Created By">
                     <input
                       type="text"
                       value={audit.createdBy || "—"}
@@ -617,11 +679,8 @@ const CreateCity = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Updated At
-                    </label>
+                  </FieldRow>
+                  <FieldRow label="Updated At">
                     <input
                       type="text"
                       value={audit.updatedAt || "—"}
@@ -629,11 +688,8 @@ const CreateCity = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Updated By
-                    </label>
+                  </FieldRow>
+                  <FieldRow label="Updated By">
                     <input
                       type="text"
                       value={audit.updatedBy || "—"}
@@ -641,7 +697,7 @@ const CreateCity = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
+                  </FieldRow>
                 </>
               )}
             </div>

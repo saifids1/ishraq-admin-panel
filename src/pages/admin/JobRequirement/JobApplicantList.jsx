@@ -6,6 +6,7 @@ import {
   ChevronsRight,
   Inbox,
   Search as SearchIcon,
+  RefreshCw,
 } from "lucide-react";
 import * as jobRequirementApi from "../../../api/jobRequirementApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
@@ -49,7 +50,7 @@ const TABLE_COLUMNS = [
   { key: "currentDesignation", label: "Current Designation", width: "170px" },
   { key: "currentEmployer", label: "Current Employer", width: "170px" },
   { key: "preferredLocation", label: "Preferred Location", width: "170px" },
-  { key: "actions", label: "Action", width: "100px" },
+  // { key: "actions", label: "Action", width: "100px" },
 ];
 
 const TABLE_COL_COUNT = TABLE_COLUMNS.length;
@@ -62,6 +63,7 @@ const JobApplicantList = () => {
 
   const [applicants, setApplicants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   const [page, setPage] = useState(1);
@@ -149,6 +151,18 @@ const JobApplicantList = () => {
     load();
   }, [load]);
 
+  /* --------------------------- REFRESH (silent) --------------------------- */
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, refreshing]);
+
   /* --------------------------- FILTERED ROWS --------------------------- */
 
   const filteredRows = useMemo(() => {
@@ -222,6 +236,9 @@ const JobApplicantList = () => {
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
+  const btnRefresh =
+    "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+
   /* --------------------------- RENDER --------------------------- */
 
   return (
@@ -258,6 +275,27 @@ const JobApplicantList = () => {
               className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
             />
           </div>
+
+          {/* Refresh */}
+          <button
+            type="button"
+            title="Refresh table"
+            aria-label="Refresh table"
+            onClick={handleRefresh}
+            disabled={refreshing || loading}
+            className={btnRefresh}
+          >
+            <RefreshCw
+              size={15}
+              strokeWidth={2.2}
+              className={`transition-transform duration-500 ${
+                refreshing ? "animate-spin" : "group-hover:rotate-90"
+              }`}
+            />
+            <span className="hidden sm:inline">
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </span>
+          </button>
 
           {/* <button
             type="button"
@@ -436,7 +474,7 @@ const JobApplicantList = () => {
                       </div>
                     </td>
 
-                    <td
+                    {/* <td
                       className={`${td} sticky right-0 z-20 justify-center bg-white text-center group-hover:bg-[#e8f1f6]`}
                     >
                       <div className="flex items-center justify-center gap-2">
@@ -452,7 +490,7 @@ const JobApplicantList = () => {
                           <ChevronsRight size={14} strokeWidth={2.2} />
                         </button>
                       </div>
-                    </td>
+                    </td> */}
                   </tr>
                 ))
               )}

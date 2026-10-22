@@ -11,6 +11,22 @@ const selectClass =
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
+/* ---------- field row: label : input ---------- */
+const FIELD_LABEL = "text-[14px] font-semibold text-black leading-tight";
+
+const FieldRow = ({ label, required, children, fullWidth }) => (
+  <div
+    className={`grid grid-cols-[130px_1fr] items-start gap-3 ${
+      fullWidth ? "md:col-span-2" : ""
+    }`}
+  >
+    <label className={`${FIELD_LABEL} pt-2`}>
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <div className="min-w-0">{children}</div>
+  </div>
+);
+
 /* ----------------------------- CONFIG ----------------------------- */
 
 const config = {
@@ -95,6 +111,69 @@ const pickUserDisplay = (item, nameKey, idKey) => {
   if (id === undefined || id === null || id === "") return "";
 
   return String(id);
+};
+
+/* ─────────────────────────────────────────────────────────────────
+   Resolve current logged-in user ID from login response
+   (falls back to JWT decode if the user object isn't present).
+   Login response shape: { token, userId, email, fullName, roles }
+   ───────────────────────────────────────────────────────────────── */
+const AUTH_USER_KEY = "user"; // localStorage key holding login response
+const AUTH_TOKEN_KEY = "token"; // localStorage key holding JWT
+
+const getUserIdFromStorage = () => {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const id = parsed?.userId ?? parsed?.user?.userId ?? parsed?.id ?? null;
+    return id === null || id === undefined ? null : Number(id) || null;
+  } catch {
+    return null;
+  }
+};
+
+const getUserIdFromToken = () => {
+  try {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) return null;
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return null;
+    const json = JSON.parse(
+      decodeURIComponent(
+        atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/"))
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join(""),
+      ),
+    );
+    const raw =
+      json["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] ??
+      json.nameid ??
+      json.userId ??
+      json.sub;
+    return raw === null || raw === undefined ? null : Number(raw) || null;
+  } catch {
+    return null;
+  }
+};
+
+const getCurrentUserId = () => {
+  // 1. Try storage "user" object from login response
+  const fromStorage = getUserIdFromStorage();
+  if (fromStorage) return fromStorage;
+
+  // 2. Fallback: decode JWT
+  const fromToken = getUserIdFromToken();
+  if (fromToken) return fromToken;
+
+  // 3. Legacy keys (kept for backward compat)
+  const raw =
+    localStorage.getItem("userId") ??
+    localStorage.getItem("user_id") ??
+    localStorage.getItem("id");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
 
 const CreateComplaintCategory = ({ mode }) => {
@@ -259,12 +338,18 @@ const CreateComplaintCategory = ({ mode }) => {
     setError("");
 
     const trimmed = name.trim();
+    // Current logged-in user id — used for both CreatedBy (create) and UpdatedBy (edit)
+    const currentUserId = getCurrentUserId();
 
     try {
       if (isCreate) {
         const payload = {
           [config.nameField]: trimmed,
           [config.activeField]: status === "Active",
+          // Only include CreatedBy when we have a valid user id
+          ...(currentUserId > 0
+            ? { [config.createdByField]: currentUserId }
+            : {}),
         };
 
         const response = await config.api.create(payload);
@@ -286,6 +371,10 @@ const CreateComplaintCategory = ({ mode }) => {
           [config.nameField]: trimmed,
           [config.activeField]: status === "Active",
           [config.idField]: Number(id),
+          // Only include UpdatedBy when we have a valid user id
+          ...(currentUserId > 0
+            ? { [config.updatedByField]: currentUserId }
+            : {}),
         };
 
         await config.api.update(payload);
@@ -378,14 +467,9 @@ const CreateComplaintCategory = ({ mode }) => {
           )}
 
           <form onSubmit={handleSubmit} className="p-4">
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              {/* Value */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Category Name
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
-
+            <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+              {/* Category Name */}
+              <FieldRow label="Category Name" required={!isView}>
                 <input
                   type="text"
                   value={name}
@@ -395,14 +479,10 @@ const CreateComplaintCategory = ({ mode }) => {
                   placeholder={`Enter ${title}`}
                   className={inputClass}
                 />
-              </div>
+              </FieldRow>
 
               {/* Status */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Status
-                </label>
-
+              <FieldRow label="Status">
                 <div className="relative">
                   <select
                     value={status}
@@ -419,14 +499,12 @@ const CreateComplaintCategory = ({ mode }) => {
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                   />
                 </div>
-              </div>
+              </FieldRow>
 
+              {/* Audit fields */}
               {!isCreate && (
                 <>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Created At
-                    </label>
+                  <FieldRow label="Created At">
                     <input
                       type="text"
                       value={audit.createdAt || "—"}
@@ -434,12 +512,9 @@ const CreateComplaintCategory = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
+                  </FieldRow>
 
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Created By
-                    </label>
+                  <FieldRow label="Created By">
                     <input
                       type="text"
                       value={audit.createdBy || "—"}
@@ -447,12 +522,9 @@ const CreateComplaintCategory = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
+                  </FieldRow>
 
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Updated At
-                    </label>
+                  <FieldRow label="Updated At">
                     <input
                       type="text"
                       value={audit.updatedAt || "—"}
@@ -460,12 +532,9 @@ const CreateComplaintCategory = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
+                  </FieldRow>
 
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Updated By
-                    </label>
+                  <FieldRow label="Updated By">
                     <input
                       type="text"
                       value={audit.updatedBy || "—"}
@@ -473,7 +542,7 @@ const CreateComplaintCategory = ({ mode }) => {
                       disabled
                       className={inputClass}
                     />
-                  </div>
+                  </FieldRow>
                 </>
               )}
             </div>

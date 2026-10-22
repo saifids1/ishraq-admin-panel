@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronDown, ChevronsLeft, FileText } from "lucide-react";
+import { ChevronDown, ChevronsLeft, FileText, Eye } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
 import { getCurrentUserId } from "../../../../utils/authUtils";
 
@@ -22,6 +22,29 @@ const formatDate = (value) => {
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   return `${dd}-${mm}-${d.getFullYear()}`;
+};
+
+/* ---------- DOCUMENT URL Configuration (same as JobSeekerDetails) ---------- */
+const DOCUMENT_BASE_URL = (process.env.REACT_APP_DOCUMENT_BASE_URL || "").trim();
+
+const toAbsoluteUrl = (url) => {
+  if (!url) return url;
+
+  const raw = String(url).trim();
+
+  // Already absolute (http/https) — return as-is
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  // Normalize the path
+  let clean = raw.replace(/\\/g, "/").replace(/^\/+/, "");
+  clean = clean.replace(/^wwwroot\//i, "");  // strip "wwwroot/"
+  clean = clean.replace(/^api\//i, "");      // strip accidental "api/"
+  clean = clean.replace(/^\/+/, "");
+
+  // No base configured → fall back to root-relative path (works same-origin)
+  if (!DOCUMENT_BASE_URL) return `/${clean}`;
+
+  return `${DOCUMENT_BASE_URL.replace(/\/+$/, "")}/${clean}`;
 };
 
 /* ---------- REQUEST STATUS (same palette as Contact/Career list) ---------- */
@@ -91,7 +114,7 @@ const cfg = {
     { key: "CP_full_name", label: "Full Name" },
     { key: "CP_mobile", label: "Mobile" },
     { key: "CP_email", label: "Email" },
-    { key: "UserTypeName", label: "You are" },
+    { key: "UserTypeName", label: "User Type" },
     { key: "ComplaintCategoryName", label: "Category" },
     { key: "CP_details", label: "Complaint Details", type: "multiline" },
     { key: "CP_file_path", label: "Supporting Document", type: "file" },
@@ -106,6 +129,10 @@ const inputClass =
 
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+
+/* Read-only display input — looks like a normal input but not editable */
+const displayInputClass =
+  "w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition cursor-default";
 
 const statusIdFromName = (value, options) => {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -228,36 +255,93 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
     }
   };
 
-  const renderValue = (field, value) => {
-    if (value === null || value === undefined || value === "") {
-      return <span className="text-slate-400">—</span>;
-    }
+  /* ---------- Resolve the document URL from the raw path ---------- */
+  const resolveDocumentUrl = () => {
+    const path =
+      record?.CP_file_path ??
+      record?.cP_file_path ??
+      record?.filePath ??
+      record?.FilePath ??
+      "";
+    return path ? toAbsoluteUrl(path) : "";
+  };
+
+  /* ---------- Render the raw display string for a field ---------- */
+  const fieldDisplayValue = (field, value) => {
+    if (value === null || value === undefined || value === "") return "";
 
     switch (field.type) {
       case "date":
         return formatDate(value);
+      default:
+        return String(value);
+    }
+  };
 
-      case "rating":
-        return <Stars value={value} />;
+  /* ---------- Render the field's value block ---------- */
+  const renderFieldInput = (field, value) => {
+    /* Rating → styled stars inside a display box */
+    if (field.type === "rating") {
+      return (
+        <div className={displayInputClass}>
+          {value ? <Stars value={value} /> : <span>—</span>}
+        </div>
+      );
+    }
 
-      case "multiline":
-        return <span className="whitespace-pre-wrap break-words">{value}</span>;
+    /* File → plain "View Document" link (NO input box) */
+    if (field.type === "file") {
+      const url = value ? toAbsoluteUrl(value) : resolveDocumentUrl();
 
-      case "file":
+      // When we have a raw file path → build a clickable link (JobSeekerDetails pattern)
+      if (url) {
         return (
-          <button
-            type="button"
-            onClick={openFile}
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
             className="inline-flex items-center gap-2 text-[#2f6b8a] hover:underline"
           >
-            <FileText size={16} />
+            <Eye size={16} />
             View Document
-          </button>
+          </a>
         );
+      }
 
-      default:
-        return <span className="break-words">{String(value)}</span>;
+      // Fallback to the API-based openFile() when no path is present
+      return (
+        <button
+          type="button"
+          onClick={openFile}
+          className="inline-flex items-center gap-2 text-[#2f6b8a] hover:underline"
+        >
+          <FileText size={16} />
+          View Document
+        </button>
+      );
     }
+
+    /* Multiline → textarea-style display */
+    if (field.type === "multiline") {
+      return (
+        <textarea
+          readOnly
+          value={fieldDisplayValue(field, value)}
+          rows={3}
+          className={`${displayInputClass} resize-none`}
+        />
+      );
+    }
+
+    /* Default → single-line read-only input */
+    return (
+      <input
+        type="text"
+        readOnly
+        value={fieldDisplayValue(field, value)}
+        className={displayInputClass}
+      />
+    );
   };
 
   // ---- Submit response ----
@@ -400,17 +484,30 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
               Loading details...
             </div>
           ) : record ? (
-            <div className="p-4">
+            /* ── Scrollable content wrapper — `common-scrollbar` styles the
+               vertical scrollbar when the content exceeds 65vh ── */
+            <div
+              className="common-scrollbar  overflow-y-auto p-4"
+              style={{ scrollbarGutter: "stable" }}
+            >
               {/* Details list */}
               <div className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
                   {cfg.detailFields.map((field) => (
-                    <div key={field.key} className="flex gap-10">
-                      <div className="text-[14px] uppercase tracking-wide mt-1 w-28">
-                        {field.label} :
-                      </div>
-                      <div className="text-[15px] font-medium mt-0">
-                        {renderValue(field, record[field.key])}
+                    <div
+                      key={field.key}
+                      className={`grid grid-cols-[130px_1fr] items-center gap-3 ${
+                        field.type === "multiline" ? "md:col-span-2" : ""
+                      }`}
+                    >
+                      <label
+                        htmlFor={`field-${field.key}`}
+                        className="text-[14px] font-semibold text-black"
+                      >
+                        {field.label}
+                      </label>
+                      <div className="min-w-0">
+                        {renderFieldInput(field, record[field.key])}
                       </div>
                     </div>
                   ))}

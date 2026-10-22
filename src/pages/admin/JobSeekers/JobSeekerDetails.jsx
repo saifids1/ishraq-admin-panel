@@ -14,6 +14,8 @@ import {
   UserRound,
   Navigation,
   ExternalLink,
+  Building2,
+  SlidersHorizontal,
 } from "lucide-react";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import applicationApi from "../../../api/applicationApi";
@@ -27,16 +29,16 @@ const T = {
   surface: "bg-white",
   text: "text-[#1a2b3c]",
   textMuted: "text-[#5b6b7c]",
-  textFaint: "text-[#8895a4]",
+  textFaint: "text-black",
   accent: "text-[#1e5a7a]",
   hover: "hover:bg-[#f3f6f9]",
 };
 
 const val = (v) => (v && String(v).trim() ? v : "—");
 
-const FIELD_LABEL = `text-[11.5px] font-semibold uppercase tracking-wide ${T.textFaint}`;
+const FIELD_LABEL = `text-[13px] font-semibold tracking-wide ${T.textFaint}`;
 const FIELD_BOX = (mono) =>
-  `flex h-9 items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
+  `flex h-9 w-full items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
     mono ? "font-mono text-[12.5px]" : ""
   }`;
 
@@ -45,37 +47,44 @@ const BTN_PRIMARY =
 
 const NAV = [
   { id: "overview", label: "Overview", icon: UserRound },
-  { id: "preferences", label: "Location & Preferences", icon: MapPin },
+  { id: "employment", label: "Current Employment", icon: Building2 },
+  { id: "preferences", label: "Job Preferences", icon: SlidersHorizontal },
   { id: "resume", label: "Documents", icon: FileIcon },
   { id: "jobs", label: "Applied Jobs", icon: Briefcase },
 ];
 
+/* ---------------- Reusable row: label : input ---------------- */
+const FieldRow = ({ label, value, mono = false, children }) => (
+  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+    <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
+    <div className={FIELD_BOX(mono)}>
+      <span className="min-w-0 flex-1 truncate">{children ?? val(value)}</span>
+    </div>
+  </div>
+);
+
 /* ---------------- API URL Configuration ---------------- */
 
 const DOCUMENT_BASE_URL = (process.env.REACT_APP_DOCUMENT_BASE_URL || "").trim();
-
 
 const toAbsoluteUrl = (url) => {
   if (!url) return url;
 
   const raw = String(url).trim();
 
-  // Already absolute (http/https) — trust it as-is
   if (/^https?:\/\//i.test(raw)) return raw;
 
-  // Normalize the path
   let clean = raw.replace(/\\/g, "/").replace(/^\/+/, "");
-  clean = clean.replace(/^wwwroot\//i, ""); // strip "wwwroot/"
-  clean = clean.replace(/^api\//i, "");     // strip accidental "api/"
+  clean = clean.replace(/^wwwroot\//i, "");
+  clean = clean.replace(/^api\//i, "");
   clean = clean.replace(/^\/+/, "");
 
-  // No base configured → fall back to root-relative path (works same-origin)
   if (!DOCUMENT_BASE_URL) return `/${clean}`;
 
   return `${DOCUMENT_BASE_URL.replace(/\/+$/, "")}/${clean}`;
 };
 
-/* ---------------- Data helpers (unchanged logic) ---------------- */
+/* ---------------- Data helpers ---------------- */
 const STORAGE_KEY = "ishraq_jobseekers";
 
 const EMPTY_FORM = {
@@ -83,26 +92,39 @@ const EMPTY_FORM = {
   mobile: "",
   whatsapp: "",
   email: "",
+  jobType: "",
   jobCategory: "",
+  jobRole: "",
   highestQualification: "",
   speciality: "",
   professionalRegistrationNumber: "",
   totalExperience: "",
   currentDesignation: "",
   address: "",
+  currentCountry: "",
+  currentState: "",
   currentCity: "",
-  state: "",
   expectedSalary: "",
-  currentEmployer: "",
+  currentEmployment: "",
+  isCurrentlyEmployed: "",
   currentSalary: "",
+  preferredCountry: "",
+  preferredState: "",
+  preferredCity: "",
   preferredJobLocation: "",
   willingToRelocate: "",
   employmentPreference: "",
   availabilityToJoin: "",
   resume: null,
-  qualificationCertificate: null,
-  professionalCertificate: null,
-  experienceCertificate: null,
+  // ---------- AUDIT ----------
+  jobseekerNo: "",
+  createdAt: "",
+  createdBy: "",
+  updatedAt: "",
+  updatedBy: "",
+  activatedAt: "",
+  activatedBy: "",
+  consentAt: "",
 };
 
 const firstValue = (item, ...keys) =>
@@ -118,120 +140,67 @@ const extractRecord = (response) => {
     : null;
 };
 
+/**
+ * Map the GET /jobseeker/:id response (jB_* fields) into the view model.
+ * Only real API fields are used — no duplicated guessed keys.
+ */
 const toJobseekerView = (item, id) => {
-  const activeValue = firstValue(
-    item,
-    "jS_is_active",
-    "JS_is_active",
-    "isActive",
-    "active",
-  );
-  const documentPath = firstValue(
-    item,
-    "jB_cv_file_path",
-    "CVFilePath",
-    "cvFilePath",
-    "resumeUrl",
-  );
-  const documentUrl =
-    firstValue(item, "CVFileUrl", "cvFileUrl", "resumeUrl") || documentPath;
+  const active = item?.jB_is_active === true || item?.jB_is_active === 1;
 
   return {
-    id: firstValue(item, "jS_jobseeker_id", "JS_jobseeker_id", "id") || id,
-    status: [true, 1, "1", "true", "True"].includes(activeValue)
-      ? "Active"
-      : "Inactive",
+    id: item?.jB_jobseeker_id ?? id,
+    status: active ? "Active" : "Inactive",
     ...EMPTY_FORM,
-    fullName: firstValue(
-      item,
-      "fullName",
-      "JB_full_name",
-      "jS_full_name",
-      "name",
-    ),
-    mobile: firstValue(item, "mobile", "JB_mobile", "jS_mobile"),
-    whatsapp: firstValue(
-      item,
-      "jB_whatsapp",
-      "JB_whatsapp",
-      "jS_whatsapp",
-      "whatsapp",
-    ),
-    email: firstValue(item, "email", "Email", "jS_email"),
-    jobCategory: firstValue(
-      item,
-      "jobCategoryName",
-      "jC_name",
-      "jobCategory",
-      "jS_job_category_id",
-    ),
-    highestQualification: firstValue(
-      item,
-      "highestQualification",
-      "qualification",
-      "jS_qualification",
-    ),
-    speciality: firstValue(
-      item,
-      "speciality",
-      "specialization",
-      "jS_speciality",
-    ),
-    professionalRegistrationNumber: firstValue(
-      item,
-      "professionalRegistrationNumber",
-      "registrationNumber",
-    ),
-    totalExperience: firstValue(
-      item,
-      "totalExperience",
-      "experience",
-      "jS_total_experience",
-    ),
-    currentDesignation: firstValue(
-      item,
-      "currentDesignation",
-      "designation",
-      "jS_current_designation",
-    ),
-    address: firstValue(item, "address", "Address", "JB_address", "jB_address"),
-    currentCity: firstValue(item, "currentCity", "cityName", "jS_city_name"),
-    state: firstValue(item, "state", "stateName", "jS_state_name"),
-    expectedSalary: firstValue(item, "expectedSalary", "jS_expected_salary"),
-    currentEmployer: firstValue(item, "currentEmployer", "jS_current_employer"),
-    currentSalary: firstValue(item, "currentSalary", "jS_current_salary"),
-    preferredJobLocation: firstValue(
-      item,
-      "preferredJobLocation",
-      "preferredLocationName",
-      "jB_preferredLocationName",
-    ),
-    willingToRelocate: firstValue(
-      item,
-      "willingToRelocate",
-      "jS_willing_to_relocate",
-    ),
-    employmentPreference: firstValue(
-      item,
-      "employmentPreference",
-      "jS_employment_preference",
-    ),
-    availabilityToJoin: firstValue(
-      item,
-      "availabilityToJoin",
-      "jS_availability_to_join",
-    ),
-    resume:
-      documentPath || documentUrl
-        ? {
-            name:
-              firstValue(item, "CVFileName", "cvFileName", "resumeName") ||
-              String(documentPath || "Resume / CV")
-                .split(/[\\/]/)
-                .pop(),
-            url: toAbsoluteUrl(documentUrl || documentPath), // <-- Applied here
-          }
-        : null,
+
+    fullName: item?.fullName ?? "",
+    mobile: item?.mobile ?? "",
+    whatsapp: item?.jB_whatsapp ?? "",
+    email: item?.email ?? "",
+
+    jobType: item?.instituteTypeName ?? "",
+    jobCategory: item?.jobCategoryName ?? "",
+    jobRole: item?.jobRoleName ?? "",
+
+    highestQualification: item?.jB_highest_qualification ?? "-",
+    speciality: item?.jB_speciality ?? "",
+    professionalRegistrationNumber: item?.jB_registration_number ?? "",
+    totalExperience: item?.jB_total_experience ?? "",
+    currentDesignation: item?.jB_current_designation ?? "",
+
+    currentCountry: item?.countryName ?? "",
+    currentState: item?.stateName ?? "",
+    currentCity: item?.cityName ?? "",
+    address: "", // not returned by this API
+
+    currentEmployment: item?.jB_current_employer ?? "",
+    isCurrentlyEmployed: "", // not returned by this API
+    currentSalary: item?.jB_current_salary ?? "",
+
+    expectedSalary: item?.jB_expected_salary ?? "",
+    preferredCountry: "", // not returned by this API
+    preferredState: "", // not returned by this API
+    preferredCity: item?.jB_preferred_locationName ?? "",
+    preferredJobLocation: item?.jB_preferred_locationName ?? "",
+    willingToRelocate: item?.jB_willing_to_relocate === true ? "Yes" : "No",
+    employmentPreference: "", // not returned by this API
+    availabilityToJoin: item?.jB_availability_to_join ?? "",
+
+    // ---------- AUDIT ----------
+    jobseekerNo: item?.jB_jobseeker_no ?? "",
+    createdAt: item?.jB_created_at ?? "",
+    createdBy: item?.jB_created_by ?? "",
+    updatedAt: item?.jB_updated_at ?? "",
+    updatedBy: item?.jB_updated_by ?? "",
+    activatedAt: item?.jB_activated_at ?? "",
+    activatedBy: item?.jB_activated_by ?? "",
+    consentAt: item?.jB_consent_at ?? "",
+
+    resume: item?.jB_cv_file_path
+      ? {
+          name: String(item.jB_cv_file_path).split(/[\\/]/).pop(),
+          url: toAbsoluteUrl(item.jB_cv_file_path),
+        }
+      : null,
   };
 };
 
@@ -261,9 +230,7 @@ const unwrapPage = (response) => {
         : [],
     pageNo: Number(result?.pageNo ?? result?.PageNo ?? 1),
     pageSize: Number(result?.pageSize ?? result?.PageSize ?? 10),
-    totalRecords: Number(
-      result?.totalRecords ?? result?.TotalRecords ?? 0,
-    ),
+    totalRecords: Number(result?.totalRecords ?? result?.TotalRecords ?? 0),
     totalPages: Number(result?.totalPages ?? result?.TotalPages ?? 0),
   };
 };
@@ -292,9 +259,7 @@ const normalizeApplication = (raw) => {
     department: job.jq_department_speciality,
 
     location:
-      jobLocation.ctm_cityname ??
-      job.joblocationname ??
-      job.locationname,
+      jobLocation.ctm_cityname ?? job.joblocationname ?? job.locationname,
 
     employmentType:
       employmentType.name ??
@@ -312,16 +277,38 @@ const normalizeApplication = (raw) => {
   };
 };
 
+/* ---------- Date formatters (dd-mm-yyyy) ---------- */
+
+// "22-10-2026"
 const formatDate = (value) => {
   if (!hasValue(value)) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 };
+
+// "22-10-2026 11:08 AM"
+const formatDateTime = (value) => {
+  if (!hasValue(value)) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  const timePart = date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${dd}-${mm}-${yyyy} ${timePart}`;
+};
+
+const formatUser = (v) =>
+  v === null || v === undefined || String(v).trim() === ""
+    ? "—"
+    : String(v);
 
 /* ---------------- Documents tab helper ---------------- */
 const DocumentBox = ({ doc }) => {
@@ -349,13 +336,6 @@ const DocumentBox = ({ doc }) => {
 
       {doc.url ? (
         <div className="mt-2.5 flex gap-2">
-          {/* <a
-            href={doc.url}
-            download={doc.name}
-            className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#2f6b8a] text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
-          >
-            <Download size={13} /> Download
-          </a> */}
           <a
             href={doc.url}
             target="_blank"
@@ -494,10 +474,7 @@ const JobSeekerDetails = () => {
           <p className={`mt-1 text-[13px] ${T.textMuted}`}>
             The record you're looking for doesn't exist or was removed.
           </p>
-          <button
-            onClick={() => navigate(-1)}
-            className={`mt-4 ${BTN_PRIMARY}`}
-          >
+          <button onClick={() => navigate(-1)} className={`mt-4 ${BTN_PRIMARY}`}>
             Go back
           </button>
         </div>
@@ -506,6 +483,12 @@ const JobSeekerDetails = () => {
   }
 
   const active = user.status === "Active";
+
+  /* Compose current location display */
+  const currentLocationDisplay =
+    [form.currentCity, form.currentState, form.currentCountry]
+      .filter((v) => v && String(v).trim())
+      .join(", ") || "—";
 
   return (
     <div className={`min-h-full ${T.bg}`}>
@@ -540,7 +523,7 @@ const JobSeekerDetails = () => {
 
           {/* BODY */}
           <div className="p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[170px_1fr]">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
               {/* LEFT: vertical nav */}
               <aside className="md:sticky md:top-4 md:h-fit w-[11rem]">
                 <nav
@@ -581,243 +564,207 @@ const JobSeekerDetails = () => {
 
               {/* RIGHT: detail panel */}
               <main className="min-w-0">
-                {/* -------- Overview -------- */}
+                {/* -------- Overview (includes Current Location + Audit) -------- */}
                 {tab === "overview" && (
                   <section
                     className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
                   >
-                    <div className="p-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Full Name</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.fullName)}
-                            </span>
-                          </div>
-                        </div>
+                    <div className="space-y-6 p-4">
+                      {/* Personal / Professional details */}
+                      <div>
+                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                          Personal & Professional Details
+                        </h3>
+                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                          <FieldRow label="Full Name" value={form.fullName} />
+                          <FieldRow
+                            label="Mobile Number"
+                            value={form.mobile}
+                            mono
+                          />
+                          <FieldRow
+                            label="WhatsApp Number"
+                            value={form.whatsapp}
+                            mono
+                          />
 
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Mobile Number</label>
-                          <div className={FIELD_BOX(true)}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.mobile)}
-                            </span>
+                          <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                            <label
+                              className={`${FIELD_LABEL} text-right sm:text-left`}
+                            >
+                              Email Address
+                            </label>
+                            <div className={FIELD_BOX()}>
+                              <span className="min-w-0 flex-1 truncate">
+                                {form.email ? (
+                                  <a
+                                    href={`mailto:${form.email}`}
+                                    className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
+                                  >
+                                    {form.email}
+                                  </a>
+                                ) : (
+                                  "—"
+                                )}
+                              </span>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>WhatsApp Number</label>
-                          <div className={FIELD_BOX(true)}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.whatsapp)}
-                            </span>
-                          </div>
+                          <FieldRow label="Institute Type" value={form.jobType} />
+                          <FieldRow
+                            label="Job Category"
+                            value={form.jobCategory}
+                          />
+                          <FieldRow label="Role" value={form.jobRole} />
+                          <FieldRow
+                            label="Highest Qualification"
+                            value={form.highestQualification}
+                          />
+                          <FieldRow
+                            label="Speciality / Department"
+                            value={form.speciality}
+                          />
+                          <FieldRow
+                            label="Professional Reg. No."
+                            value={form.professionalRegistrationNumber}
+                            mono
+                          />
+                          <FieldRow
+                            label="Total Experience (Years)"
+                            value={form.totalExperience}
+                          />
+                          <FieldRow
+                            label="Current Designation"
+                            value={form.currentDesignation}
+                          />
+                          <FieldRow
+                            label="Status"
+                            value={active ? "Active" : "Inactive"}
+                          />
                         </div>
+                      </div>
 
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Email Address</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {form.email ? (
-                                <a
-                                  href={`mailto:${form.email}`}
-                                  className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
-                                >
-                                  {form.email} <ExternalLink size={11} />
-                                </a>
-                              ) : (
-                                "—"
-                              )}
-                            </span>
-                          </div>
+                      {/* Current Location */}
+                      <div>
+                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                          Current Location
+                        </h3>
+                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                          <FieldRow
+                            label="Country"
+                            value={form.currentCountry}
+                          />
+                          <FieldRow
+                            label="State"
+                            value={form.currentState}
+                          />
+                          <FieldRow label="City" value={form.currentCity} />
                         </div>
+                      </div>
 
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Profession / Job Category
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.jobCategory)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Highest Qualification
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.highestQualification)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Speciality / Department
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.speciality)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Professional Registration Number
-                          </label>
-                          <div className={FIELD_BOX(true)}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.professionalRegistrationNumber)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Total Experience (Years)
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.totalExperience)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Current Designation
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.currentDesignation)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Current Employer
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.currentEmployer)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Current Salary</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.currentSalary)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Status</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {active ? "Active" : "Inactive"}
-                            </span>
-                          </div>
+                      {/* ---------- Audit Trail ---------- */}
+                      <div>
+                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                          Audit Trail
+                        </h3>
+                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                          <FieldRow
+                            label="Jobseeker No"
+                            value={form.jobseekerNo}
+                          />
+                          <FieldRow
+                            label="Created At"
+                            value={formatDateTime(form.createdAt)}
+                          />
+                          {/* <FieldRow
+                            label="Created By"
+                            value={formatUser(form.createdBy)}
+                          /> */}
+                          <FieldRow
+                            label="Updated At"
+                            value={formatDateTime(form.updatedAt)}
+                          />
+                          {/* <FieldRow
+                            label="Updated By"
+                            value={formatUser(form.updatedBy)}
+                          /> */}
+                          <FieldRow
+                            label="Activated At"
+                            value={formatDateTime(form.activatedAt)}
+                          />
+                          {/* <FieldRow
+                            label="Activated By"
+                            value={formatUser(form.activatedBy)}
+                          /> */}
+                          <FieldRow
+                            label="Consent At"
+                            value={formatDateTime(form.consentAt)}
+                          />
                         </div>
                       </div>
                     </div>
                   </section>
                 )}
 
-                {/* -------- Location & Preferences -------- */}
+                {/* -------- Current Employment -------- */}
+                {tab === "employment" && (
+                  <section
+                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                  >
+                    <div className="p-4">
+                      <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                        Current Employment
+                      </h3>
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        <FieldRow
+                          label="Current Employer"
+                          value={form.currentEmployment}
+                        />
+                        <FieldRow
+                          label="Current Designation"
+                          value={form.currentDesignation}
+                        />
+                        <FieldRow
+                          label="Current Salary"
+                          value={form.currentSalary}
+                        />
+                        <FieldRow
+                          label="Total Experience (Years)"
+                          value={form.totalExperience}
+                        />
+                        <FieldRow label="Job Type" value={form.jobType} />
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* -------- Job Preferences -------- */}
                 {tab === "preferences" && (
                   <section
                     className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
                   >
                     <div className="p-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        <div className="flex flex-col gap-1.5 sm:col-span-2 xl:col-span-3">
-                          <label className={FIELD_LABEL}>Address</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.address)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Current City</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.currentCity)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>State</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.state)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Preferred Job Location
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.preferredJobLocation)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Expected Salary</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.expectedSalary)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Willing to Relocate?
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.willingToRelocate)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Employment Preference
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.employmentPreference)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>
-                            Availability to Join
-                          </label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {val(form.availabilityToJoin)}
-                            </span>
-                          </div>
-                        </div>
+                      <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                        Job Preferences
+                      </h3>
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        <FieldRow
+                          label="Preferred Location"
+                          value={form.preferredJobLocation}
+                        />
+                        <FieldRow
+                          label="Expected Salary"
+                          value={form.expectedSalary}
+                        />
+                        <FieldRow
+                          label="Willing to Relocate?"
+                          value={form.willingToRelocate}
+                        />
+                        <FieldRow
+                          label="Availability to Join"
+                          value={form.availabilityToJoin ? formatDate(form.availabilityToJoin) : form.availabilityToJoin}
+                        />
+                        <FieldRow label="Job Category" value={form.jobCategory} />
                       </div>
                     </div>
                   </section>
@@ -829,9 +776,13 @@ const JobSeekerDetails = () => {
                     className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
                   >
                     <div className="p-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Resume / CV</label>
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        <div className="grid grid-cols-[160px_1fr] items-start gap-3">
+                          <label
+                            className={`${FIELD_LABEL} pt-2 text-right sm:text-left`}
+                          >
+                            Resume / CV
+                          </label>
                           <DocumentBox doc={form.resume} />
                         </div>
                       </div>
