@@ -304,6 +304,7 @@ const JobseekerOverview = () => {
             <h2 className="font-semibold text-slate-800">
               {jobseeker.fullName || "My Profile Details"}
             </h2>
+            <p className="font-semibold text-slate-800">{jobseeker.jB_jobseeker_no}</p>
 
             <div className="flex items-center gap-3">
               <button

@@ -412,7 +412,7 @@ const ComplaintList = () => {
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#2c6b8a] px-3 text-sm font-semibold text-white hover:bg-[#245a75]"
             >
               <Plus size={16} />
-              Add Complaint
+              Raise Complaint
             </button>
           </div>
         </div>

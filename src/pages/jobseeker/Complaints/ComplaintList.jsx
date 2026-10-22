@@ -419,7 +419,7 @@ const ComplaintList = () => {
             className={btnAdd}
           >
             <Plus size={15} strokeWidth={2.2} />
-            <span>Add Complaint</span>
+            <span>Raise Complaint</span>
           </button>
         </div>
       </div>

@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 
 import jobseekerApi from "../../../api/Services/adjobseekerApi.js";
+import StatusModal from "../../../components/common/StatusModal.jsx";
 
 import {
   getComplaintCategories,
@@ -50,9 +50,7 @@ const getCategoryId = (category) =>
   category.CC_Id;
 
 const getCategoryName = (category) =>
-  category.cC_name ??
-  category.CC_Name ??
-  category.CC_ComplaintCategoryName;
+  category.cC_name ?? category.CC_Name ?? category.CC_ComplaintCategoryName;
 
 let complaintCategoriesPromise = null;
 let complaintCategoriesCache = null;
@@ -68,29 +66,24 @@ const loadComplaintCategoriesOnce = async () => {
 
   complaintCategoriesPromise = getComplaintCategories()
     .then((response) => {
-      if (
-        response?.success === false ||
-        response?.Success === false
-      ) {
+      if (response?.success === false || response?.Success === false) {
         throw new Error(
           response.message ||
             response.Message ||
-            "Unable to load complaint categories."
+            "Unable to load complaint categories.",
         );
       }
 
       const records = Array.isArray(response)
         ? response
-        : response?.data ?? response?.Data;
+        : (response?.data ?? response?.Data);
 
       if (!Array.isArray(records)) {
         throw new Error("Invalid complaint category response.");
       }
 
       const activeCategories = records.filter(
-        (item) =>
-          item.cC_is_active !== false &&
-          item.CC_IsActive !== false
+        (item) => item.cC_is_active !== false && item.CC_IsActive !== false,
       );
 
       complaintCategoriesCache = activeCategories;
@@ -107,6 +100,12 @@ const loadComplaintCategoriesOnce = async () => {
 const CreateComplaint = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const [statusModal, setStatusModal] = useState({
+    isOpen: false,
+    type: "info",
+    title: "",
+    message: "",
+  });
 
   const [form, setForm] = useState(initialForm);
   const [categories, setCategories] = useState([]);
@@ -122,8 +121,7 @@ const CreateComplaint = () => {
       setCategoriesLoading(true);
 
       try {
-        const activeCategories =
-          await loadComplaintCategoriesOnce();
+        const activeCategories = await loadComplaintCategoriesOnce();
 
         if (active) {
           setCategories(activeCategories);
@@ -134,10 +132,7 @@ const CreateComplaint = () => {
           }));
         }
       } catch (error) {
-        console.error(
-          "Failed to load complaint categories:",
-          error
-        );
+        console.error("Failed to load complaint categories:", error);
 
         if (active) {
           setErrors((prev) => ({
@@ -171,9 +166,7 @@ const CreateComplaint = () => {
         const userId = getCurrentUserId();
 
         if (userId == null || userId === "") {
-          console.error(
-            "Unable to identify the logged-in jobseeker."
-          );
+          console.error("Unable to identify the logged-in jobseeker.");
           return;
         }
 
@@ -189,14 +182,11 @@ const CreateComplaint = () => {
           email: record.email || record.userName || "",
         }));
 
-        localStorage.setItem(
-          "jobseekerNumber",
-          record.jB_jobseeker_no || ""
-        );
+        localStorage.setItem("jobseekerNumber", record.jB_jobseeker_no || "");
       } catch (error) {
         console.error(
           "Failed to load jobseeker details:",
-          error.response?.data || error.message
+          error.response?.data || error.message,
         );
       }
     };
@@ -266,16 +256,11 @@ const CreateComplaint = () => {
 
     if (!form.email.trim()) {
       next.email = "Enter your email address.";
-    } else if (
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
-    ) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       next.email = "Enter a valid email address.";
     }
 
-    if (
-      form.phone.trim() &&
-      !/^[0-9+\-\s()]{7,20}$/.test(form.phone.trim())
-    ) {
+    if (form.phone.trim() && !/^[0-9+\-\s()]{7,20}$/.test(form.phone.trim())) {
       next.phone = "Enter a valid phone number.";
     }
 
@@ -311,25 +296,17 @@ const CreateComplaint = () => {
     const rawUserId = getCurrentUserId();
     const userId = Number(rawUserId);
 
-    if (
-      !rawUserId ||
-      !Number.isInteger(userId) ||
-      userId <= 0
-    ) {
+    if (!rawUserId || !Number.isInteger(userId) || userId <= 0) {
       setErrors((prev) => ({
         ...prev,
-        form:
-          "Unable to identify the logged-in user. Please log in again.",
+        form: "Unable to identify the logged-in user. Please log in again.",
       }));
       return;
     }
 
     const categoryId = Number(form.categoryId);
 
-    if (
-      !Number.isInteger(categoryId) ||
-      categoryId <= 0
-    ) {
+    if (!Number.isInteger(categoryId) || categoryId <= 0) {
       setErrors((prev) => ({
         ...prev,
         categoryId: "Please select a valid complaint category.",
@@ -342,20 +319,13 @@ const CreateComplaint = () => {
     formData.append("CP_full_name", form.name.trim());
     formData.append("CP_mobile", form.phone.trim());
     formData.append("CP_email", form.email.trim());
-    formData.append(
-      "CP_complaint_category_id",
-      String(categoryId)
-    );
+    formData.append("CP_complaint_category_id", String(categoryId));
     formData.append("CP_details", form.details.trim());
     formData.append("complainer", String(userId));
     formData.append("CP_user_type_id", "1");
 
     if (attachment) {
-      formData.append(
-        "Attachment",
-        attachment,
-        attachment.name
-      );
+      formData.append("Attachment", attachment, attachment.name);
     }
 
     setSubmitting(true);
@@ -363,22 +333,19 @@ const CreateComplaint = () => {
     try {
       const response = await submitComplaint(formData);
 
-      if (
-        response?.success === false ||
-        response?.Success === false
-      ) {
+      if (response?.success === false || response?.Success === false) {
         throw new Error(
           response.message ||
             response.Message ||
-            "Failed to submit the complaint."
+            "Failed to submit the complaint.",
         );
       }
 
-      navigate("/jobseeker/complaint-list", {
-        replace: true,
-        state: {
-          successMessage: "Complaint submitted successfully.",
-        },
+      setStatusModal({
+        isOpen: true,
+        type: "success",
+        title: "Complaint Submitted",
+        message: "Your complaint has been submitted successfully.",
       });
     } catch (error) {
       console.error("Complaint submission failed:", error);
@@ -390,34 +357,27 @@ const CreateComplaint = () => {
           ? Object.values(apiErrors).flat().join(" ")
           : "";
 
-      setErrors((prev) => ({
-        ...prev,
-        form:
+      setStatusModal({
+        isOpen: true,
+        type: "error",
+        title: "Submission Failed",
+        message:
           validationMessage ||
           error.response?.data?.message ||
           error.response?.data?.Message ||
           error.response?.data?.title ||
           error.message ||
           "Unable to submit your complaint. Please try again.",
-      }));
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
   // Consistent horizontal label/control layout for all fields.
-  const renderField = ({
-    id,
-    label,
-    required = false,
-    error,
-    children,
-  }) => (
+  const renderField = ({ id, label, required = false, error, children }) => (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
-      <label
-        htmlFor={id}
-        className={LABEL_CLASS}
-      >
+      <label htmlFor={id} className={LABEL_CLASS}>
         {label}
         {required && <span className="ml-1 text-black">*</span>}
       </label>
@@ -426,10 +386,7 @@ const CreateComplaint = () => {
         {children}
 
         {error && (
-          <p
-            className="text-xs text-red-600"
-            role="alert"
-          >
+          <p className="text-xs text-red-600" role="alert">
             {error}
           </p>
         )}
@@ -439,10 +396,7 @@ const CreateComplaint = () => {
 
   return (
     <div className="min-h-full bg-white text-slate-800">
-      <PageHeader
-        title="Add Complaint"
-        onBack={() => navigate(-1)}
-      />
+      <PageHeader title="Raise Complaint" onBack={() => navigate(-1)} />
 
       <form onSubmit={handleSubmit} noValidate>
         <div className="grid grid-cols-1 gap-4">
@@ -537,9 +491,7 @@ const CreateComplaint = () => {
                     <select
                       id="categoryId"
                       value={form.categoryId}
-                      onChange={(e) =>
-                        update("categoryId", e.target.value)
-                      }
+                      onChange={(e) => update("categoryId", e.target.value)}
                       disabled={categoriesLoading}
                       className={`${inputClass(Boolean(errors.categoryId || errors.categories))} w-full cursor-pointer pl-9 text-sm text-black disabled:cursor-not-allowed`}
                     >
@@ -583,9 +535,7 @@ const CreateComplaint = () => {
                         id="details"
                         rows={6}
                         value={form.details}
-                        onChange={(e) =>
-                          update("details", e.target.value)
-                        }
+                        onChange={(e) => update("details", e.target.value)}
                         placeholder="Describe your complaint in detail."
                         className={`${inputClass(Boolean(errors.details), false)} w-full resize-y pl-9 text-sm text-black`}
                       />
@@ -603,14 +553,9 @@ const CreateComplaint = () => {
           {/* Supporting Document */}
           <Card title="Supporting Document" icon={Paperclip}>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
-              <label
-                htmlFor="attachment"
-                className={LABEL_CLASS}
-              >
+              <label htmlFor="attachment" className={LABEL_CLASS}>
                 Attachment
-                <span className="ml-1 font-normal text-black">
-                  (Optional)
-                </span>
+                <span className="ml-1 font-normal text-black">(Optional)</span>
               </label>
 
               <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -656,10 +601,7 @@ const CreateComplaint = () => {
                 </div>
 
                 {errors.attachment && (
-                  <p
-                    className="text-xs text-red-600"
-                    role="alert"
-                  >
+                  <p className="text-xs text-red-600" role="alert">
                     {errors.attachment}
                   </p>
                 )}
@@ -696,10 +638,7 @@ const CreateComplaint = () => {
             style={{ backgroundColor: ACCENT }}
           >
             {submitting ? (
-              <LoaderCircle
-                size={15}
-                className="animate-spin"
-              />
+              <LoaderCircle size={15} className="animate-spin" />
             ) : (
               <Plus size={15} />
             )}
@@ -712,6 +651,35 @@ const CreateComplaint = () => {
           </button>
         </div>
       </form>
+      <StatusModal
+        isOpen={statusModal.isOpen}
+        type={statusModal.type}
+        title={statusModal.title}
+        message={statusModal.message}
+        confirmText="OK"
+        onConfirm={() => {
+          if (statusModal.type === "success") {
+            navigate("/jobseeker/complaint-list", {
+              replace: true,
+              state: {
+                successMessage: "Complaint submitted successfully.",
+              },
+            });
+            return;
+          }
+
+          setStatusModal((prev) => ({
+            ...prev,
+            isOpen: false,
+          }));
+        }}
+        onCancel={() => {
+          setStatusModal((prev) => ({
+            ...prev,
+            isOpen: false,
+          }));
+        }}
+      />
     </div>
   );
 };

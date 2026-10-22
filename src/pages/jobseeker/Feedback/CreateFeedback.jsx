@@ -12,6 +12,7 @@ import {
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import { submitFeedback } from "../../../api/feedbackApi";
 import { getCurrentUserId } from "../../../utils/authUtils";
+import StatusModal from "../../../components/common/StatusModal.jsx";
 
 import {
   ACCENT,
@@ -46,6 +47,12 @@ const CreateFeedback = () => {
     name: "",
     mobile: "",
     email: "",
+  });
+  const [statusModal, setStatusModal] = useState({
+    isOpen: false,
+    type: "info",
+    title: "",
+    message: "",
   });
   const [loadingProfile, setLoadingProfile] = useState(true);
 
@@ -118,8 +125,11 @@ const CreateFeedback = () => {
     if (loadingProfile || submitting) return;
 
     if (!jobseeker.name || !jobseeker.email) {
-      setErrors({
-        form:
+      setStatusModal({
+        isOpen: true,
+        type: "error",
+        title: "Profile Details Missing",
+        message:
           "Your name or email could not be loaded. Please try logging in again.",
       });
       return;
@@ -143,8 +153,11 @@ const CreateFeedback = () => {
     const userId = Number(rawUserId);
 
     if (!rawUserId || !Number.isInteger(userId) || userId <= 0) {
-      setErrors({
-        form: "Unable to identify the logged-in user. Please log in again.",
+      setStatusModal({
+        isOpen: true,
+        type: "error",
+        title: "Authentication Error",
+        message: "Unable to identify the logged-in user. Please log in again.",
       });
       return;
     }
@@ -168,16 +181,23 @@ const CreateFeedback = () => {
 
       if (result?.success === false || result?.Success === false) {
         throw new Error(
-          result.message ||
-            result.Message ||
-            "Failed to submit feedback."
+          result.message || result.Message || "Failed to submit feedback.",
         );
       }
 
-      navigate("/jobseeker/feedback-list", { replace: true });
+      setStatusModal({
+        isOpen: true,
+        type: "success",
+        title: "Feedback Submitted",
+        message:
+          "Thank you for sharing your feedback. Your response has been submitted successfully.",
+      });
     } catch (err) {
-      setErrors({
-        form:
+      setStatusModal({
+        isOpen: true,
+        type: "error",
+        title: "Submission Failed",
+        message:
           err.response?.data?.message ||
           err.response?.data?.Message ||
           err.message ||
@@ -188,18 +208,9 @@ const CreateFeedback = () => {
     }
   };
 
-  const renderField = ({
-    id,
-    label,
-    required = false,
-    error,
-    children,
-  }) => (
+  const renderField = ({ id, label, required = false, error, children }) => (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
-      <label
-        htmlFor={id}
-        className={`${LABEL_CLASS} sm:pt-2`}
-      >
+      <label htmlFor={id} className={`${LABEL_CLASS} sm:pt-2`}>
         {label}
         {required && <span className="ml-1 text-black">*</span>}
       </label>
@@ -217,10 +228,7 @@ const CreateFeedback = () => {
 
   return (
     <div className="min-h-full bg-white text-slate-800">
-      <PageHeader
-        title="Add Your Feedback"
-        onBack={() => navigate(-1)}
-      />
+      <PageHeader title="Add Your Feedback" onBack={() => navigate(-1)} />
 
       <form onSubmit={handleSubmit} noValidate>
         <div className="grid grid-cols-1 gap-4">
@@ -263,9 +271,7 @@ const CreateFeedback = () => {
                       value={jobseeker.mobile}
                       readOnly
                       placeholder={
-                        loadingProfile
-                          ? "Loading mobile..."
-                          : "Mobile number"
+                        loadingProfile ? "Loading mobile..." : "Mobile number"
                       }
                       className={`${inputClass(false)} w-full bg-slate-50 pl-9 text-sm text-black`}
                     />
@@ -288,9 +294,7 @@ const CreateFeedback = () => {
                       value={jobseeker.email}
                       readOnly
                       placeholder={
-                        loadingProfile
-                          ? "Loading email..."
-                          : "Email address"
+                        loadingProfile ? "Loading email..." : "Email address"
                       }
                       className={`${inputClass(false)} w-full bg-slate-50 pl-9 text-sm text-black`}
                     />
@@ -303,10 +307,7 @@ const CreateFeedback = () => {
           {/* Rating */}
           <Card title="Rating" icon={Star}>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-5">
-              <span
-                className={LABEL_CLASS}
-                id="overallRatingLabel"
-              >
+              <span className={LABEL_CLASS} id="overallRatingLabel">
                 Overall Rating
                 <span className="ml-1 text-black">*</span>
               </span>
@@ -326,9 +327,7 @@ const CreateFeedback = () => {
                       aria-label={`${n} out of 5 stars`}
                       onClick={() => update("rating", n)}
                       className={`rounded p-1 text-2xl transition hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
-                        n <= form.rating
-                          ? "text-amber-400"
-                          : "text-gray-300"
+                        n <= form.rating ? "text-amber-400" : "text-gray-300"
                       }`}
                     >
                       ★
@@ -376,9 +375,7 @@ const CreateFeedback = () => {
                     id="usefulText"
                     rows={3}
                     value={form.usefulText}
-                    onChange={(e) =>
-                      update("usefulText", e.target.value)
-                    }
+                    onChange={(e) => update("usefulText", e.target.value)}
                     placeholder="What worked well?"
                     className={textareaClass(errors, "usefulText")}
                   />
@@ -394,9 +391,7 @@ const CreateFeedback = () => {
                     id="improveText"
                     rows={3}
                     value={form.improveText}
-                    onChange={(e) =>
-                      update("improveText", e.target.value)
-                    }
+                    onChange={(e) => update("improveText", e.target.value)}
                     placeholder="Share your suggestions for improvement"
                     className={textareaClass(errors, "improveText")}
                   />
@@ -412,9 +407,7 @@ const CreateFeedback = () => {
                     id="suggestions"
                     rows={3}
                     value={form.suggestions}
-                    onChange={(e) =>
-                      update("suggestions", e.target.value)
-                    }
+                    onChange={(e) => update("suggestions", e.target.value)}
                     placeholder="Any other suggestions?"
                     className={textareaClass(errors, "suggestions")}
                   />
@@ -451,8 +444,6 @@ const CreateFeedback = () => {
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-transparent px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             style={{ backgroundColor: ACCENT }}
           >
-           
-
             {submitting
               ? "Sending..."
               : loadingProfile
@@ -461,6 +452,36 @@ const CreateFeedback = () => {
           </button>
         </div>
       </form>
+
+      <StatusModal
+        isOpen={statusModal.isOpen}
+        type={statusModal.type}
+        title={statusModal.title}
+        message={statusModal.message}
+        confirmText="OK"
+        onConfirm={() => {
+          if (statusModal.type === "success") {
+            navigate("/jobseeker/feedback-list", {
+              replace: true,
+              state: {
+                successMessage: "Feedback submitted successfully.",
+              },
+            });
+            return;
+          }
+
+          setStatusModal((prev) => ({
+            ...prev,
+            isOpen: false,
+          }));
+        }}
+        onCancel={() => {
+          setStatusModal((prev) => ({
+            ...prev,
+            isOpen: false,
+          }));
+        }}
+      />
     </div>
   );
 };

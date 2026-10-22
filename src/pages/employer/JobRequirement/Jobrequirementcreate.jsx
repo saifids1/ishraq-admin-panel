@@ -1,26 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Activity,
-  Briefcase,
-  Building2,
-  CalendarDays,
-  ClipboardList,
-  Clock,
-  FileText,
-  Globe,
-  GraduationCap,
-  Hotel,
-  Layers,
+  ChevronDown,
+  ChevronsLeft,
   LoaderCircle,
-  MapPin,
   Paperclip,
   Plus,
-  Tag,
-  Timer,
-  Users,
-  Utensils,
-  Wallet,
   X as CloseIcon,
 } from "lucide-react";
 
@@ -42,17 +27,22 @@ import {
   getEmployerRequest,
 } from "../../../utils/employerProfile";
 
-import SelectField from "../../../components/common/SelectField";
-import {
-  ACCENT,
-  Card,
-  Field,
-  IconField,
-  PageHeader,
-  Pill,
-  Toast,
-  inputClass,
-} from "../../../components/common/FormUi";
+import StatusModal from "../../../components/common/StatusModal";
+
+const LIST_PATH = "/employer/job-requirement-list";
+const MAX_FILE_MB = 5;
+
+const selectClass = (hasError) =>
+  `w-full appearance-none rounded-lg border bg-white px-3 py-2 pr-9 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500 ${
+    hasError ? "border-red-400" : "border-slate-300"
+  }`;
+
+const inputClass = (hasError) =>
+  `w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500 ${
+    hasError ? "border-red-400" : "border-slate-300"
+  }`;
+
+const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
 
 const EMPTY = {
   instituteTypeId: "",
@@ -71,7 +61,6 @@ const EMPTY = {
   dutyHours: "",
   accommodation: "No",
   food: "No",
-  status: "Open",
   joiningDate: "",
   deadline: "",
   description: "",
@@ -116,7 +105,7 @@ const extractList = (response) => {
   return [];
 };
 
-// Converts raw master rows into { value, label } options for SelectField.
+// Converts raw master rows into { value, label } options for the select inputs.
 const toOptions = (list, idKey, labelKey) =>
   list
     .map((item) => ({
@@ -131,16 +120,6 @@ const getErrorMessage = (error, fallback) =>
   (typeof error?.response?.data === "string" ? error.response.data : null) ||
   error?.message ||
   fallback;
-
-const readField = (item, key) => {
-  if (item?.[key] !== undefined && item?.[key] !== null) return item[key];
-
-  const actualKey = Object.keys(item || {}).find(
-    (candidate) => candidate.toLowerCase() === key.toLowerCase(),
-  );
-
-  return actualKey ? item[actualKey] : undefined;
-};
 
 // Runs the shared validator and maps its keys onto this form's field names.
 // The shared validator checks organizationName and mobile, which this form
@@ -171,9 +150,57 @@ const validateCreateForm = (clean) => {
   return errors;
 };
 
+/* ---------------- Layout helpers (same as EditJobSeeker) ---------------- */
+
+const FieldRow = ({ label, required, error, children, fullWidth }) => (
+  <div
+    className={`grid grid-cols-[160px_1fr] items-start gap-3 ${
+      fullWidth ? "md:col-span-2" : ""
+    }`}
+  >
+    <label className={`${FIELD_LABEL} pt-2`}>
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <div className="min-w-0">
+      {children}
+      {error && <span className="mt-1 block text-xs text-red-500">{error}</span>}
+    </div>
+  </div>
+);
+
+const SelectInput = ({ value, onChange, disabled, placeholder, options, hasError }) => (
+  <div className="relative">
+    <select
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      className={selectClass(hasError)}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+    <ChevronDown
+      size={16}
+      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+    />
+  </div>
+);
+
+const SectionTitle = ({ children }) => (
+  <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+    {children}
+  </h3>
+);
+
+/* ========================================================= */
+
 const JobRequirementCreate = () => {
-  const fileInputRef = useRef(null);
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
   const [employer, setEmployer] = useState(null);
   const [loadingEmployer, setLoadingEmployer] = useState(true);
@@ -182,7 +209,7 @@ const JobRequirementCreate = () => {
   const [file, setFile] = useState(null);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [modal, setModal] = useState(null);
 
   const [jobCategories, setJobCategories] = useState([]);
   const [jobRoles, setJobRoles] = useState([]);
@@ -208,6 +235,41 @@ const JobRequirementCreate = () => {
     instituteTypeId,
   });
 
+  /* ---------- modal helpers (same pattern as EditJobSeeker) ---------- */
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      title: extra.title,
+      message,
+      confirmText: extra.confirmText || "OK",
+      showCancel: false,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => setModal(null),
+    });
+  };
+
+  const openConfirm = ({ title, message, confirmText, onConfirm }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => setModal(null),
+    });
+  };
+
+  /* ---------- field change with cascade resets ---------- */
+
   const change = (name, value) => {
     setForm((previous) => {
       const next = { ...previous, [name]: value };
@@ -225,7 +287,8 @@ const JobRequirementCreate = () => {
     }));
   };
 
-  // Load the logged-in employer so its organization type can be used as the job type.
+  /* ---------- load the logged-in employer ---------- */
+
   useEffect(() => {
     let cancelled = false;
 
@@ -261,10 +324,10 @@ const JobRequirementCreate = () => {
         );
       } catch (error) {
         if (!cancelled) {
-          setToast({
-            tone: "bad",
-            msg: getErrorMessage(error, "Failed to load employer details."),
-          });
+          openStatus(
+            "error",
+            getErrorMessage(error, "Failed to load employer details."),
+          );
         }
       } finally {
         if (!cancelled) setLoadingEmployer(false);
@@ -278,7 +341,8 @@ const JobRequirementCreate = () => {
     };
   }, []);
 
-  // Load the master dropdown lists.
+  /* ---------- load employment types and countries ---------- */
+
   useEffect(() => {
     let cancelled = false;
 
@@ -297,10 +361,10 @@ const JobRequirementCreate = () => {
         setCountries(extractList(countryResponse));
       } catch (error) {
         if (!cancelled) {
-          setToast({
-            tone: "bad",
-            msg: getErrorMessage(error, "Failed to load master data."),
-          });
+          openStatus(
+            "error",
+            getErrorMessage(error, "Failed to load master data."),
+          );
         }
       } finally {
         if (!cancelled) setLoadingMasters(false);
@@ -314,7 +378,8 @@ const JobRequirementCreate = () => {
     };
   }, []);
 
-  // Institute type -> Job Category.
+  /* ---------- Institute type -> Job Category ---------- */
+
   useEffect(() => {
     let cancelled = false;
 
@@ -334,10 +399,10 @@ const JobRequirementCreate = () => {
         if (!cancelled) setJobCategories(extractList(response));
       } catch (error) {
         if (!cancelled) {
-          setToast({
-            tone: "bad",
-            msg: getErrorMessage(error, "Failed to load job categories."),
-          });
+          openStatus(
+            "error",
+            getErrorMessage(error, "Failed to load job categories."),
+          );
         }
       } finally {
         if (!cancelled) setLoadingCategories(false);
@@ -351,7 +416,8 @@ const JobRequirementCreate = () => {
     };
   }, [form.instituteTypeId]);
 
-  // Job Category -> Job Role.
+  /* ---------- Job Category -> Job Role ---------- */
+
   useEffect(() => {
     let cancelled = false;
 
@@ -370,10 +436,10 @@ const JobRequirementCreate = () => {
         if (!cancelled) setJobRoles(extractList(response));
       } catch (error) {
         if (!cancelled) {
-          setToast({
-            tone: "bad",
-            msg: getErrorMessage(error, "Failed to load job roles."),
-          });
+          openStatus(
+            "error",
+            getErrorMessage(error, "Failed to load job roles."),
+          );
         }
       } finally {
         if (!cancelled) setLoadingRoles(false);
@@ -387,7 +453,8 @@ const JobRequirementCreate = () => {
     };
   }, [form.jobCategoryId]);
 
-  // Country -> State.
+  /* ---------- Country -> State ---------- */
+
   useEffect(() => {
     let cancelled = false;
 
@@ -414,10 +481,7 @@ const JobRequirementCreate = () => {
         }
       } catch (error) {
         if (!cancelled) {
-          setToast({
-            tone: "bad",
-            msg: getErrorMessage(error, "Failed to load states."),
-          });
+          openStatus("error", getErrorMessage(error, "Failed to load states."));
         }
       } finally {
         if (!cancelled) setLoadingStates(false);
@@ -431,7 +495,8 @@ const JobRequirementCreate = () => {
     };
   }, [form.countryId]);
 
-  // State -> City.
+  /* ---------- State -> City ---------- */
+
   useEffect(() => {
     let cancelled = false;
 
@@ -457,10 +522,7 @@ const JobRequirementCreate = () => {
         }
       } catch (error) {
         if (!cancelled) {
-          setToast({
-            tone: "bad",
-            msg: getErrorMessage(error, "Failed to load cities."),
-          });
+          openStatus("error", getErrorMessage(error, "Failed to load cities."));
         }
       } finally {
         if (!cancelled) setLoadingCities(false);
@@ -474,12 +536,7 @@ const JobRequirementCreate = () => {
     };
   }, [form.stateId]);
 
-  useEffect(() => {
-    if (!toast) return undefined;
-
-    const timer = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(timer);
-  }, [toast]);
+  /* ---------- file ---------- */
 
   const onFile = (event) => {
     const selectedFile = event.target.files?.[0];
@@ -489,85 +546,37 @@ const JobRequirementCreate = () => {
     const allowedExtensions = /\.(pdf|doc|docx)$/i;
 
     if (!allowedExtensions.test(selectedFile.name)) {
-      setToast({
-        tone: "bad",
-        msg: "Only PDF, DOC, and DOCX files are allowed.",
-      });
+      openStatus("warning", "Only PDF, DOC, and DOCX files are allowed.");
       event.target.value = "";
       return;
     }
 
-    if (selectedFile.size > 5 * 1024 * 1024) {
-      setToast({
-        tone: "bad",
-        msg: "File must be 5 MB or smaller.",
-      });
+    if (selectedFile.size > MAX_FILE_MB * 1024 * 1024) {
+      openStatus("warning", `File must be ${MAX_FILE_MB} MB or smaller.`);
       event.target.value = "";
       return;
     }
 
     setFile(selectedFile);
-    setToast(null);
+  };
+
+  const removeFile = () => {
+    setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const resetForm = () => {
     setForm(buildInitialForm(organizationInstituteTypeId));
     setFile(null);
     setErrors({});
-    setToast(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const submit = async (event) => {
-    event.preventDefault();
+  /* ---------- save ---------- */
 
-    const clean = Object.fromEntries(
-      Object.entries(form).map(([key, value]) => [
-        key,
-        typeof value === "string" ? value.trim() : value,
-      ]),
-    );
-
-    const validationErrors = validateCreateForm(clean);
-
-    if (!clean.jobCategoryId)
-      validationErrors.jobCategoryId = "Select a job category.";
-    if (!clean.jobRoleId) validationErrors.jobRoleId = "Select a job role.";
-    if (!clean.countryId) validationErrors.countryId = "Select a country.";
-    if (!clean.stateId) validationErrors.stateId = "Select a state.";
-    if (!clean.cityId) validationErrors.cityId = "Select a city.";
-    if (!clean.employmentTypeId)
-      validationErrors.employmentTypeId = "Select an employment type.";
-
-    setErrors(validationErrors);
-
-    if (Object.values(validationErrors).some(Boolean)) {
-      setToast({
-        tone: "bad",
-        msg: "Please fix the highlighted fields.",
-      });
-      return;
-    }
-
+  const save = async (clean) => {
     const employerId = Number(employer?.EM_employer_id);
-
-    if (!Number.isInteger(employerId) || employerId <= 0) {
-      setToast({
-        tone: "bad",
-        msg: "Unable to identify the logged-in employer. Please log in again.",
-      });
-      return;
-    }
-
-    // Job type is always the organization's institute type.
     const instituteTypeId = Number(organizationInstituteTypeId);
-
-    if (!Number.isInteger(instituteTypeId) || instituteTypeId <= 0) {
-      setToast({
-        tone: "bad",
-        msg: "Your organization's type is missing. Please update your profile first.",
-      });
-      return;
-    }
 
     const payload = new FormData();
 
@@ -625,7 +634,6 @@ const JobRequirementCreate = () => {
     }
 
     setSaving(true);
-    setToast(null);
 
     try {
       const response = await createJobRequirement(payload);
@@ -639,380 +647,461 @@ const JobRequirementCreate = () => {
         );
       }
 
-      setToast({
-        tone: "ok",
-        msg:
-          result?.Message ||
+      openStatus(
+        "update",
+        result?.Message ||
           result?.message ||
           "Job requirement created successfully.",
-      });
-
-      setTimeout(() => {
-        navigate("/employer/job-requirement-list");
-      }, 800);
+        {
+          confirmText: "Continue",
+          onConfirm: () => navigate(LIST_PATH),
+        },
+      );
     } catch (error) {
-      setToast({
-        tone: "bad",
-        msg: getErrorMessage(error, "Failed to create job requirement."),
-      });
+      openStatus(
+        "error",
+        getErrorMessage(error, "Failed to create job requirement."),
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  /* ------------------------ FIELD RENDERING --------------------- */
+  /* ---------- submit ---------- */
+
+  const submit = (event) => {
+    event.preventDefault();
+    if (saving) return;
+
+    const clean = Object.fromEntries(
+      Object.entries(form).map(([key, value]) => [
+        key,
+        typeof value === "string" ? value.trim() : value,
+      ]),
+    );
+
+    const validationErrors = validateCreateForm(clean);
+
+    if (!clean.jobCategoryId)
+      validationErrors.jobCategoryId = "Select a job category.";
+    if (!clean.jobRoleId) validationErrors.jobRoleId = "Select a job role.";
+    if (!clean.countryId) validationErrors.countryId = "Select a country.";
+    if (!clean.stateId) validationErrors.stateId = "Select a state.";
+    if (!clean.cityId) validationErrors.cityId = "Select a city.";
+    if (!clean.employmentTypeId)
+      validationErrors.employmentTypeId = "Select an employment type.";
+
+    setErrors(validationErrors);
+
+    if (Object.values(validationErrors).some(Boolean)) {
+      openStatus(
+        "warning",
+        Object.values(validationErrors).find(Boolean) ||
+          "Please correct the highlighted fields.",
+      );
+      return;
+    }
+
+    const employerId = Number(employer?.EM_employer_id);
+
+    if (!Number.isInteger(employerId) || employerId <= 0) {
+      openStatus(
+        "error",
+        "Unable to identify the logged-in employer. Please log in again.",
+      );
+      return;
+    }
+
+    // Job type is always the organization's institute type.
+    const instituteTypeId = Number(organizationInstituteTypeId);
+
+    if (!Number.isInteger(instituteTypeId) || instituteTypeId <= 0) {
+      openStatus(
+        "error",
+        "Your organization's type is missing. Please update your profile first.",
+      );
+      return;
+    }
+
+    openConfirm({
+      title: "Confirm create",
+      message: "Are you sure you want to create this job requirement?",
+      confirmText: "Create",
+      onConfirm: () => save(clean),
+    });
+  };
+
+  /* ---------- field helpers ---------- */
 
   const renderSelect = ({
     name,
     label,
-    icon,
     required = false,
     options,
     loading = false,
     disabled = false,
     placeholder,
+    fullWidth = false,
   }) => (
-    <Field
+    <FieldRow
       label={label}
-      htmlFor={name}
       required={required}
       error={errors[name]}
+      fullWidth={fullWidth}
     >
-      <IconField icon={icon}>
-        <SelectField
-          value={form[name] ?? ""}
-          onChange={(next) => change(name, next)}
-          options={options}
-          placeholder={loading ? "Loading..." : placeholder}
-          disabled={disabled || loading || saving}
-          hasError={Boolean(errors[name])}
-        />
-      </IconField>
-    </Field>
+      <SelectInput
+        value={form[name] ?? ""}
+        onChange={(event) => change(name, event.target.value)}
+        disabled={saving || disabled || loading}
+        placeholder={loading ? "Loading..." : placeholder}
+        options={options}
+        hasError={Boolean(errors[name])}
+      />
+    </FieldRow>
   );
 
   const renderInput = ({
     name,
     label,
-    icon,
     type = "text",
     required = false,
     min,
-    full = false,
+    fullWidth = false,
   }) => (
-    <Field
+    <FieldRow
       label={label}
-      htmlFor={name}
       required={required}
       error={errors[name]}
-      className={full ? "sm:col-span-2" : ""}
+      fullWidth={fullWidth}
     >
-      <IconField icon={icon}>
-        <input
-          id={name}
-          type={type}
-          min={min}
-          value={form[name] ?? ""}
-          disabled={saving}
-          onChange={(event) => change(name, event.target.value)}
-          className={inputClass(Boolean(errors[name]))}
-        />
-      </IconField>
-    </Field>
+      <input
+        type={type}
+        min={min}
+        value={form[name] ?? ""}
+        disabled={saving}
+        onChange={(event) => change(name, event.target.value)}
+        className={inputClass(Boolean(errors[name]))}
+      />
+    </FieldRow>
   );
 
+  /* ----------------------------- UI ----------------------------- */
+
   return (
-    <div className="w-full bg-white text-slate-800">
-      <PageHeader
-        title="Add Job Requirement"
-        onBack={() => navigate(-1)}
-        right={<Pill icon={Plus}>New requirement</Pill>}
-      />
-
-      <form onSubmit={submit} noValidate autoComplete="off">
-        <div className="grid grid-cols-1 gap-4">
-          {(loadingMasters || loadingEmployer) && (
-            <p className="text-sm text-slate-500">
-              {loadingEmployer
-                ? "Loading organization details..."
-                : "Loading master data..."}
-            </p>
-          )}
-
-          <Card title="Job Information" icon={Briefcase}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <Field label="Job Type" htmlFor="jobType">
-                <IconField icon={Building2}>
-                  <input
-                    id="jobType"
-                    type="text"
-                    readOnly
-                    disabled
-                    value={
-                      employer?.InstituteTypeName ||
-                      (loadingEmployer ? "Loading..." : "-")
-                    }
-                    className={inputClass(false)}
-                  />
-                </IconField>
-              </Field>
-
-              {renderSelect({
-                name: "jobCategoryId",
-                label: "Job Category",
-                icon: Tag,
-                required: true,
-                options: toOptions(
-                  jobCategories,
-                  "jC_job_category_id",
-                  "jC_name",
-                ),
-                loading: loadingCategories,
-                disabled: !form.instituteTypeId,
-                placeholder: form.instituteTypeId
-                  ? "Select Job Category"
-                  : "Select Job Type First",
-              })}
-
-              {renderSelect({
-                name: "jobRoleId",
-                label: "Job Role",
-                icon: Briefcase,
-                required: true,
-                options: toOptions(jobRoles, "jR_job_role_id", "jR_name"),
-                loading: loadingRoles,
-                disabled: !form.jobCategoryId,
-                placeholder: form.jobCategoryId
-                  ? "Select Job Role"
-                  : "Select Job Category First",
-              })}
-
-              {renderInput({
-                name: "position",
-                label: "Position Title",
-                icon: ClipboardList,
-                required: true,
-              })}
-              {renderInput({
-                name: "department",
-                label: "Department / Speciality",
-                icon: Layers,
-              })}
-              {renderInput({
-                name: "vacancies",
-                label: "Number of Vacancies",
-                icon: Users,
-                type: "number",
-                required: true,
-                min: 1,
-              })}
-              {renderSelect({
-                name: "employmentTypeId",
-                label: "Employment Type",
-                icon: Activity,
-                required: true,
-                options: toOptions(
-                  employmentTypes,
-                  "eT_employment_type_id",
-                  "eT_name",
-                ),
-                loading: loadingMasters,
-                placeholder: "Select Employment Type",
-              })}
-              {renderInput({
-                name: "qualification",
-                label: "Qualification Required",
-                icon: GraduationCap,
-              })}
-              {renderInput({
-                name: "experience",
-                label: "Experience Required",
-                icon: Clock,
-              })}
-              {renderInput({
-                name: "salary",
-                label: "Salary Range",
-                icon: Wallet,
-              })}
-              {renderInput({
-                name: "dutyHours",
-                label: "Duty Hours",
-                icon: Timer,
-              })}
+    <div className="min-h-full bg-[#f4f8fb]">
+      <div className="mx-auto">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* HEADER */}
+          <div className="flex justify-between border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                title="Back"
+                aria-label="Back"
+                className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
+              >
+                <ChevronsLeft size={18} strokeWidth={2} />
+              </button>
+              <h2 className="font-semibold text-slate-800">
+                Add Job Requirement
+              </h2>
             </div>
-          </Card>
+          </div>
 
-          <Card title="Facilities & Dates" icon={CalendarDays}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {renderSelect({
-                name: "accommodation",
-                label: "Accommodation",
-                icon: Hotel,
-                options: YES_NO,
-                placeholder: "Select",
-              })}
-              {renderSelect({
-                name: "food",
-                label: "Food Facility",
-                icon: Utensils,
-                options: YES_NO,
-                placeholder: "Select",
-              })}
-              {renderInput({
-                name: "deadline",
-                label: "Application Deadline",
-                icon: CalendarDays,
-                type: "date",
-              })}
-              {renderInput({
-                name: "joiningDate",
-                label: "Expected Joining Date",
-                icon: CalendarDays,
-                type: "date",
-              })}
+          {loadingEmployer ? (
+            <div className="p-8 text-center text-sm text-slate-500">
+              Loading organization details...
             </div>
-          </Card>
+          ) : (
+            <form
+              onSubmit={submit}
+              noValidate
+              autoComplete="off"
+              className="space-y-6 p-4"
+            >
+              {/* JOB INFORMATION */}
+              <section>
+                <SectionTitle>Job Information</SectionTitle>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                  <FieldRow label="Job Type">
+                    <input
+                      type="text"
+                      readOnly
+                      disabled
+                      value={
+                        employer?.InstituteTypeName ||
+                        employer?.instituteTypeName ||
+                        "-"
+                      }
+                      className={inputClass(false)}
+                    />
+                  </FieldRow>
 
-          <Card title="Job Location" icon={MapPin}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {renderSelect({
-                name: "countryId",
-                label: "Country",
-                icon: Globe,
-                required: true,
-                options: toOptions(countries, "cM_Id", "cM_CountryName"),
-                loading: loadingMasters,
-                placeholder: "Select Country",
-              })}
-              {renderSelect({
-                name: "stateId",
-                label: "State",
-                icon: MapPin,
-                required: true,
-                options: toOptions(states, "sM_Id", "sM_StateName"),
-                loading: loadingStates,
-                disabled: !form.countryId,
-                placeholder: form.countryId
-                  ? "Select State"
-                  : "Select Country First",
-              })}
-              {renderSelect({
-                name: "cityId",
-                label: "City",
-                icon: MapPin,
-                required: true,
-                options: toOptions(cities, "ctM_Id", "ctM_CityName"),
-                loading: loadingCities,
-                disabled: !form.stateId,
-                placeholder: form.stateId
-                  ? "Select City"
-                  : "Select State First",
-              })}
-            </div>
-          </Card>
+                  {renderSelect({
+                    name: "jobCategoryId",
+                    label: "Job Category",
+                    required: true,
+                    options: toOptions(
+                      jobCategories,
+                      "jC_job_category_id",
+                      "jC_name",
+                    ),
+                    loading: loadingCategories,
+                    disabled: !form.instituteTypeId,
+                    placeholder: form.instituteTypeId
+                      ? "Select Job Category"
+                      : "Select Job Type First",
+                  })}
 
-          <Card title="Description & Attachment" icon={FileText}>
-            <div className="grid grid-cols-1 gap-4">
-              <Field label="Job Description" htmlFor="description">
-                <textarea
-                  id="description"
-                  rows={5}
-                  value={form.description}
-                  disabled={saving}
-                  onChange={(event) =>
-                    change("description", event.target.value)
-                  }
-                  className={`${inputClass(false, false)} resize-y`}
-                />
-              </Field>
+                  {renderSelect({
+                    name: "jobRoleId",
+                    label: "Job Role",
+                    required: true,
+                    options: toOptions(jobRoles, "jR_job_role_id", "jR_name"),
+                    loading: loadingRoles,
+                    disabled: !form.jobCategoryId,
+                    placeholder: form.jobCategoryId
+                      ? "Select Job Role"
+                      : "Select Job Category First",
+                  })}
 
-              <div>
-                <span className="mb-1.5 block text-xs font-medium text-slate-500">
-                  Upload Job Description (optional)
-                </span>
+                  {renderInput({
+                    name: "position",
+                    label: "Position Title",
+                    required: true,
+                  })}
 
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed bg-[#f4f9fb] px-4 text-sm font-medium transition hover:bg-[#eaf3f7]"
-                    style={{ color: ACCENT, borderColor: ACCENT }}
-                  >
-                    <Paperclip size={15} />
-                    Choose file
-                  </button>
+                  {renderInput({
+                    name: "department",
+                    label: "Department / Speciality",
+                  })}
 
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx"
-                    onChange={onFile}
-                    className="hidden"
-                  />
+                  {renderInput({
+                    name: "vacancies",
+                    label: "Number of Vacancies",
+                    type: "number",
+                    required: true,
+                    min: 1,
+                  })}
 
-                  {file ? (
-                    <span className="inline-flex items-center gap-2 rounded-full bg-[#eaf3f7] px-3 py-1 text-xs text-slate-700">
-                      {file.name}
+                  {renderSelect({
+                    name: "employmentTypeId",
+                    label: "Employment Type",
+                    required: true,
+                    options: toOptions(
+                      employmentTypes,
+                      "eT_employment_type_id",
+                      "eT_name",
+                    ),
+                    loading: loadingMasters,
+                    placeholder: "Select Employment Type",
+                  })}
+
+                  {renderInput({
+                    name: "qualification",
+                    label: "Qualification Required",
+                  })}
+
+                  {renderInput({
+                    name: "experience",
+                    label: "Experience Required",
+                  })}
+
+                  {renderInput({
+                    name: "salary",
+                    label: "Salary Range",
+                  })}
+
+                  {renderInput({
+                    name: "dutyHours",
+                    label: "Duty Hours",
+                  })}
+                </div>
+              </section>
+
+              {/* FACILITIES & DATES */}
+              <section>
+                <SectionTitle>Facilities & Dates</SectionTitle>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                  {renderSelect({
+                    name: "accommodation",
+                    label: "Accommodation",
+                    options: YES_NO,
+                    placeholder: "Select",
+                  })}
+
+                  {renderSelect({
+                    name: "food",
+                    label: "Food Facility",
+                    options: YES_NO,
+                    placeholder: "Select",
+                  })}
+
+                  {renderInput({
+                    name: "deadline",
+                    label: "Application Deadline",
+                    type: "date",
+                  })}
+
+                  {renderInput({
+                    name: "joiningDate",
+                    label: "Expected Joining Date",
+                    type: "date",
+                  })}
+                </div>
+              </section>
+
+              {/* LOCATION */}
+              <section>
+                <SectionTitle>Job Location</SectionTitle>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                  {renderSelect({
+                    name: "countryId",
+                    label: "Country",
+                    required: true,
+                    options: toOptions(countries, "cM_Id", "cM_CountryName"),
+                    loading: loadingMasters,
+                    placeholder: "Select Country",
+                  })}
+
+                  {renderSelect({
+                    name: "stateId",
+                    label: "State",
+                    required: true,
+                    options: toOptions(states, "sM_Id", "sM_StateName"),
+                    loading: loadingStates,
+                    disabled: !form.countryId,
+                    placeholder: form.countryId
+                      ? "Select State"
+                      : "Select Country First",
+                  })}
+
+                  {renderSelect({
+                    name: "cityId",
+                    label: "City",
+                    required: true,
+                    options: toOptions(cities, "ctM_Id", "ctM_CityName"),
+                    loading: loadingCities,
+                    disabled: !form.stateId,
+                    placeholder: form.stateId
+                      ? "Select City"
+                      : "Select State First",
+                  })}
+                </div>
+              </section>
+
+              {/* DESCRIPTION & ATTACHMENT */}
+              <section>
+                <SectionTitle>Description & Attachment</SectionTitle>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                  <FieldRow label="Job Description" fullWidth>
+                    <textarea
+                      rows={5}
+                      value={form.description}
+                      disabled={saving}
+                      onChange={(event) =>
+                        change("description", event.target.value)
+                      }
+                      className={`${inputClass(false)} resize-y`}
+                    />
+                  </FieldRow>
+
+                  <FieldRow label="Upload Job Description" fullWidth>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      hidden
+                      accept=".pdf,.doc,.docx"
+                      onChange={onFile}
+                    />
+
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5">
                       <button
                         type="button"
-                        onClick={() => {
-                          setFile(null);
-                          if (fileInputRef.current)
-                            fileInputRef.current.value = "";
-                        }}
-                        aria-label="Remove file"
-                        className="text-slate-500 hover:text-red-600"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={saving}
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-4 py-2 text-sm font-medium text-[#2f6b8a] transition hover:bg-[#eaf2f7] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        <CloseIcon size={14} />
+                        <Paperclip size={15} />
+                        {file ? "Change file" : "Choose file"}
                       </button>
+
+                      <span className="truncate text-sm text-slate-600">
+                        {file ? file.name : "No file chosen"}
+                      </span>
+
+                      {file && (
+                        <button
+                          type="button"
+                          onClick={removeFile}
+                          disabled={saving}
+                          aria-label="Remove file"
+                          className="text-slate-500 hover:text-red-600 disabled:opacity-60"
+                        >
+                          <CloseIcon size={14} />
+                        </button>
+                      )}
+                    </div>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      PDF, DOC or DOCX, up to {MAX_FILE_MB} MB. Optional.
                     </span>
-                  ) : (
-                    <span className="text-xs text-slate-500">
-                      PDF or Word, up to 5 MB
-                    </span>
-                  )}
+                  </FieldRow>
+                </div>
+              </section>
+
+              {/* FOOTER */}
+              <div className="flex justify-between gap-3 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  disabled={saving}
+                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Clear
+                </button>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => navigate(LIST_PATH)}
+                    disabled={saving}
+                    className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {saving ? (
+                      <LoaderCircle size={15} className="animate-spin" />
+                    ) : (
+                      <Plus size={15} />
+                    )}
+                    {saving ? "Creating..." : "Create Job Requirement"}
+                  </button>
                 </div>
               </div>
-            </div>
-          </Card>
+            </form>
+          )}
         </div>
+      </div>
 
-        <div className="mt-4 flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-end">
-          <button
-            type="button"
-            onClick={resetForm}
-            disabled={saving}
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-          >
-            Clear
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate("/employer/job-requirement-list")}
-            disabled={saving}
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            disabled={saving || loadingEmployer}
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ backgroundColor: ACCENT }}
-          >
-            {saving ? (
-              <LoaderCircle size={15} className="animate-spin" />
-            ) : (
-              <Plus size={15} />
-            )}
-            {saving ? "Creating..." : "Create Job Requirement"}
-          </button>
-        </div>
-      </form>
-
-      <Toast toast={toast} />
+      <StatusModal
+        isOpen={Boolean(modal)}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
     </div>
   );
 };

@@ -54,12 +54,12 @@ export  const DashboardTitle = () => {
   return (
     <div
       ref={wrapRef}
-      className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 flex-col items-center sm:flex"
+      className="pointer-events-none absolute left-[40%] top-1/2 hidden -translate-x-1/2 -translate-y-1/2 flex-col items-center sm:flex"
     >
       <div className="flex items-center gap-2">
         <h2
           ref={lettersRef}
-          className="whitespace-nowrap text-base font-extrabold tracking-tight text-[#2c6b8a] md:text-lg"
+          className="m-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]"
           aria-label={DASHBOARD_TITLE}
         >
           {DASHBOARD_TITLE.split("").map((char, i) => (
