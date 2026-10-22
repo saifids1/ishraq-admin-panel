@@ -4,6 +4,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import toast from "react-hot-toast";
 import jobCategoryApi from "../../../api/Services/jobCategoryApi";
+import instituteTypeApi from "../../../api/Services/instituteTypeApi";
+import jobRoleApi from "../../../api/Services/jobRoleApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 
 const selectClass =
@@ -72,6 +74,12 @@ const toForm = (item) => ({
       "jobCategory"
     )
   ),
+  instituteType: String(
+    firstValue(item, "JB_institute_type_id", "jB_institute_type_id", "instituteTypeId")
+  ),
+  jobRole: String(
+    firstValue(item, "JB_job_role_id", "jB_job_role_id", "jobRoleId")
+  ),
   jobCategoryName: firstValue(item, "jobCategoryName", "jC_name", "jobCategory"),
   address: firstValue(
     item,
@@ -109,42 +117,13 @@ const EMPTY_FORM = {
   mobile: "",
   whatsapp: "",
   password: "",
+  instituteType: "",
   jobCategory: "",
+  jobRole: "",
   jobCategoryName: "",
   address: "",
   document: null,
 };
-
-/* ---------- job category prefetch (module-level cache) ---------- */
-
-let jobCategoriesPromise = null;
-
-const loadJobCategoriesOnce = () => {
-  if (!jobCategoriesPromise) {
-    jobCategoriesPromise = jobCategoryApi
-      .getAllList()
-      .then((response) =>
-        extractList(response)
-          .map((item) => ({
-            id: firstValue(item, "jC_job_category_id", "JC_job_category_id"),
-            name: firstValue(item, "jC_name", "JC_name", "name"),
-          }))
-          .filter((category) => category.id && category.name)
-      )
-      .catch((err) => {
-        // allow a retry on the next call if it failed
-        jobCategoriesPromise = null;
-        throw err;
-      });
-  }
-  return jobCategoriesPromise;
-};
-
-// Kick off the fetch as soon as this module is imported, so by the time
-// the form mounts (or the user opens the dropdown) data is often ready.
-loadJobCategoriesOnce().catch(() => {
-  /* swallow — component will retry / show empty */
-});
 
 /* ---------- validation ---------- */
 
@@ -172,7 +151,9 @@ const validate = (form, requireDocument = true) => {
     errors.password = "Password must be at least 6 characters";
   }
 
+  if (!form.instituteType) errors.instituteType = "Select an institute type";
   if (!form.jobCategory) errors.jobCategory = "Select a profession";
+  if (!form.jobRole) errors.jobRole = "Select a job role";
   if (!form.address.trim()) errors.address = "Address is required";
 
   if (requireDocument && !form.document) {
@@ -208,25 +189,75 @@ const AddJobSeeker = ({ mode }) => {
 
   /* ---------- dropdown sources ---------- */
 
+  const [instituteTypes, setInstituteTypes] = useState([]);
+  const [loadingInstituteTypes, setLoadingInstituteTypes] = useState(true);
   const [jobCategories, setJobCategories] = useState([]);
-  const [loadingCategories, setLoadingCategories] = useState(true);
+  const [loadingCategories, setLoadingCategories] = useState(false);
   const [categoryError, setCategoryError] = useState("");
+  const [jobRoles, setJobRoles] = useState([]);
+  const [loadingRoles, setLoadingRoles] = useState(false);
+  const [roleError, setRoleError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
+
+    const loadInstituteTypes = async () => {
+      setLoadingInstituteTypes(true);
+      setCategoryError("");
+      try {
+        const response = await instituteTypeApi.getAllList();
+        if (!cancelled) setInstituteTypes(extractList(response));
+      } catch (err) {
+        if (!cancelled) {
+          setCategoryError(
+            getApiErrorMessage(err) ||
+              "Unable to load institute types. Check the API connection."
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingInstituteTypes(false);
+      }
+    };
+
+    loadInstituteTypes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setJobCategories([]);
+    setJobRoles([]);
+
+    if (!form.instituteType) {
+      setLoadingCategories(false);
+      return undefined;
+    }
 
     const loadJobCategories = async () => {
       setLoadingCategories(true);
       setCategoryError("");
       try {
-        const list = await loadJobCategoriesOnce();
-        if (!cancelled) setJobCategories(list);
+        const response = await jobCategoryApi.getByInstituteType(
+          Number(form.instituteType),
+        );
+        if (!cancelled) {
+          setJobCategories(
+            extractList(response)
+              .map((item) => ({
+                id: firstValue(item, "jC_job_category_id", "JC_job_category_id"),
+                name: firstValue(item, "jC_name", "JC_name", "name"),
+              }))
+              .filter((category) => category.id && category.name),
+          );
+        }
       } catch (err) {
         if (!cancelled) {
           setJobCategories([]);
           setCategoryError(
-            getApiErrorMessage(err) ||
-              "Unable to load professions. Check the API connection."
+            getApiErrorMessage(err) || "Unable to load professions.",
           );
         }
       } finally {
@@ -235,11 +266,52 @@ const AddJobSeeker = ({ mode }) => {
     };
 
     loadJobCategories();
-
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [form.instituteType]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setJobRoles([]);
+
+    if (!form.jobCategory) {
+      setLoadingRoles(false);
+      return undefined;
+    }
+
+    const loadJobRoles = async () => {
+      setLoadingRoles(true);
+      setRoleError("");
+      try {
+        const response = await jobRoleApi.getByJobCategory(
+          Number(form.jobCategory),
+        );
+        if (!cancelled) {
+          setJobRoles(
+            extractList(response)
+              .map((item) => ({
+                id: firstValue(item, "jR_job_role_id", "JR_job_role_id"),
+                name: firstValue(item, "jR_name", "JR_name", "name"),
+              }))
+              .filter((role) => role.id && role.name),
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setJobRoles([]);
+          setRoleError(getApiErrorMessage(err) || "Unable to load job roles.");
+        }
+      } finally {
+        if (!cancelled) setLoadingRoles(false);
+      }
+    };
+
+    loadJobRoles();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.jobCategory]);
 
   useEffect(() => {
     if (!id) return undefined;
@@ -275,6 +347,26 @@ const AddJobSeeker = ({ mode }) => {
   const set = (key) => (e) => {
     setForm((c) => ({ ...c, [key]: e.target.value }));
     setErrors((c) => ({ ...c, [key]: undefined }));
+  };
+
+  const setMasterData = (key) => (event) => {
+    const value = event.target.value;
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === "instituteType"
+        ? { jobCategory: "", jobRole: "", jobCategoryName: "" }
+        : {}),
+      ...(key === "jobCategory" ? { jobRole: "", jobCategoryName: "" } : {}),
+    }));
+    setErrors((current) => ({
+      ...current,
+      [key]: undefined,
+      ...(key === "instituteType"
+        ? { jobCategory: undefined, jobRole: undefined }
+        : {}),
+      ...(key === "jobCategory" ? { jobRole: undefined } : {}),
+    }));
   };
 
   const onMobile = (e) => {
@@ -320,6 +412,21 @@ const AddJobSeeker = ({ mode }) => {
     setServerError("");
 
     const foundErrors = validate(form, isCreate);
+    if (
+      form.jobCategory &&
+      !jobCategories.some(
+        (category) => String(category.id) === String(form.jobCategory),
+      )
+    ) {
+      foundErrors.jobCategory =
+        "Select a profession for the selected institute type.";
+    }
+    if (
+      form.jobRole &&
+      !jobRoles.some((role) => String(role.id) === String(form.jobRole))
+    ) {
+      foundErrors.jobRole = "Select a job role for the selected profession.";
+    }
     if (Object.keys(foundErrors).length) {
       setErrors(foundErrors);
       return;
@@ -334,9 +441,9 @@ const AddJobSeeker = ({ mode }) => {
         Email: form.email.trim(),
         JB_mobile: form.mobile.replace(/\D/g, ""),
         JB_whatsapp: (form.whatsapp || form.mobile).replace(/\D/g, ""),
+        JB_institute_type_id: Number(form.instituteType),
         JB_job_category_id: Number(form.jobCategory),
-        JB_job_role_id: 1,
-        JB_institute_type_id: 1,
+        JB_job_role_id: Number(form.jobRole),
         JB_highest_qualification: "N/A",
         JB_speciality: "",
         JB_registration_number: "",
@@ -389,10 +496,6 @@ const AddJobSeeker = ({ mode }) => {
   };
 
   const star = <span className="ml-1 text-red-500">*</span>;
-  const hasCategoryOption = jobCategories.some(
-    (category) => String(category.id) === String(form.jobCategory),
-  );
-
   const viewValue = (value) =>
     value === null || value === undefined || String(value).trim() === ""
       ? "—"
@@ -533,6 +636,44 @@ const AddJobSeeker = ({ mode }) => {
                   )}
                 </div>
 
+                {/* Institute Type */}
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Institute Type {star}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={form.instituteType}
+                      onChange={setMasterData("instituteType")}
+                      disabled={saving || loadingInstituteTypes || isView}
+                      className={selectClass}
+                    >
+                      <option value="">
+                        {loadingInstituteTypes
+                          ? "Loading institute types..."
+                          : "Select Institute Type"}
+                      </option>
+                      {instituteTypes.map((item) => (
+                        <option
+                          key={item.iT_institute_type_id}
+                          value={String(item.iT_institute_type_id)}
+                        >
+                          {item.iT_name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={17}
+                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                    />
+                  </div>
+                  {errors.instituteType && (
+                    <span className="mt-1 block text-xs text-red-500">
+                      {errors.instituteType}
+                    </span>
+                  )}
+                </div>
+
                 {/* Profession / Job Category */}
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -541,25 +682,27 @@ const AddJobSeeker = ({ mode }) => {
                   <div className="relative">
                     <select
                       value={form.jobCategory}
-                      onChange={set("jobCategory")}
-                      disabled={saving || loadingCategories || isView}
+                      onChange={setMasterData("jobCategory")}
+                      disabled={
+                        saving ||
+                        loadingCategories ||
+                        isView ||
+                        !form.instituteType
+                      }
                       className={selectClass}
                     >
                       <option value="">
-                        {loadingCategories
-                          ? "Loading professions..."
-                          : "Select Profession"}
+                        {!form.instituteType
+                          ? "Select Institute Type first"
+                          : loadingCategories
+                            ? "Loading professions..."
+                            : "Select Profession"}
                       </option>
                       {jobCategories.map((category) => (
                         <option key={category.id} value={category.id}>
                           {category.name}
                         </option>
                       ))}
-                      {form.jobCategory && !hasCategoryOption && (
-                        <option value={form.jobCategory}>
-                          {form.jobCategoryName || form.jobCategory}
-                        </option>
-                      )}
                     </select>
                     <ChevronDown
                       size={17}
@@ -574,6 +717,50 @@ const AddJobSeeker = ({ mode }) => {
                   {categoryError && (
                     <span className="mt-1 block text-xs text-red-500">
                       {categoryError}
+                    </span>
+                  )}
+                </div>
+
+                {/* Job Role */}
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Job Role {star}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={form.jobRole}
+                      onChange={setMasterData("jobRole")}
+                      disabled={
+                        saving || loadingRoles || isView || !form.jobCategory
+                      }
+                      className={selectClass}
+                    >
+                      <option value="">
+                        {!form.jobCategory
+                          ? "Select Profession first"
+                          : loadingRoles
+                            ? "Loading job roles..."
+                            : "Select Job Role"}
+                      </option>
+                      {jobRoles.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={17}
+                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                    />
+                  </div>
+                  {errors.jobRole && (
+                    <span className="mt-1 block text-xs text-red-500">
+                      {errors.jobRole}
+                    </span>
+                  )}
+                  {roleError && (
+                    <span className="mt-1 block text-xs text-red-500">
+                      {roleError}
                     </span>
                   )}
                 </div>

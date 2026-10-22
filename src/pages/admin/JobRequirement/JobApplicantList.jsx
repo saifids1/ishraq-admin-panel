@@ -1,3 +1,4 @@
+import { useStatusToast } from "../../../components/common/StatusModalProvider";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -70,7 +71,7 @@ const JobApplicantList = () => {
 
   const [query, setQuery] = useState({ search: "" });
 
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useStatusToast();
 
   /* --------------------------- FETCH --------------------------- */
 

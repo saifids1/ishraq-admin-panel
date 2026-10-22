@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   KeyRound,
@@ -19,25 +19,9 @@ import {
   Users,
 } from "lucide-react";
 
-/* ------------------------------------------------------------------ */
-/*  DEMO DATA  (replace with your API call)                            */
-/* ------------------------------------------------------------------ */
-
-const USERS = [
-  { id: "js-1", role: "jobseeker", name: "Ayesha Khan", email: "ayesha.khan@gmail.com", phone: "+91 98765 43210" },
-  { id: "js-2", role: "jobseeker", name: "Imran Shaikh", email: "imran.shaikh@gmail.com", phone: "+91 98230 12345" },
-  { id: "js-3", role: "jobseeker", name: "Sana Pathan", email: "sana.pathan@gmail.com", phone: "+91 99223 34455" },
-  { id: "js-4", role: "jobseeker", name: "Rohit Deshmukh", email: "rohit.deshmukh@gmail.com", phone: "+91 90110 22334" },
-  { id: "js-5", role: "jobseeker", name: "Neha Jadhav", email: "neha.jadhav@outlook.com", phone: "+91 97650 88123" },
-  { id: "em-1", role: "employer", name: "Al Noor Hospital", email: "hr@alnoorhospital.com", phone: "+91 240 235 1100" },
-  { id: "em-2", role: "employer", name: "CarePlus Clinic", email: "jobs@careplusclinic.in", phone: "+91 98220 77881" },
-  { id: "em-3", role: "employer", name: "Sunrise Pharmacy", email: "contact@sunrisepharma.in", phone: "+91 91234 56780" },
-];
-
-// Replace the body with your real request, e.g.
-// await api.post(`/admin/users/${user.id}/reset-password`, { password })
-const resetUserPassword = (user, password) =>
-  new Promise((resolve) => setTimeout(resolve, 900));
+import { updatePasswordByEmailApi } from "../../../api/authApi";
+import jobseekerApi from "../../../api/Services/adjobseekerApi";
+import { getAllEmployers } from "../../../api/employerApi";
 
 /* ------------------------------------------------------------------ */
 /*  HELPERS                                                            */
@@ -49,7 +33,7 @@ const ROLE = {
 };
 
 const ROLE_FILTERS = [
-  { value: "all", label: "All", icon: Users },
+  // { value: "all", label: "All", icon: Users },
   { value: "jobseeker", label: "Job Seekers", icon: User },
   { value: "employer", label: "Employers", icon: Building2 },
 ];
@@ -75,6 +59,39 @@ const initials = (name = "") =>
   name.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 
 const digits = (s = "") => s.replace(/\D/g, "");
+
+const firstValue = (item, ...keys) =>
+  keys
+    .map((key) => item?.[key])
+    .find((value) => value !== undefined && value !== null && value !== "") ?? "";
+
+const extractList = (response) => {
+  // Axios response: { data: { success, data: [...] } }
+  // Also support an already-unwrapped response and paginated list wrappers.
+  const body = response?.data ?? response;
+  const payload = body?.data ?? body?.Data ?? body;
+  const list = Array.isArray(payload)
+    ? payload
+    : payload?.items ?? payload?.Items ?? payload?.data ?? payload?.Data;
+
+  return Array.isArray(list) ? list : [];
+};
+
+const normalizeJobSeeker = (user) => ({
+  id: firstValue(user, "id", "jB_jobseeker_id", "jS_jobseeker_id", "jobseeker_id", "jS_id", "userId"),
+  name: firstValue(user, "name", "fullName", "jS_full_name", "jS_name", "JB_full_name", "email", "jS_email"),
+  email: String(firstValue(user, "email", "Email", "jS_email")),
+  phone: String(firstValue(user, "phone", "phoneNumber", "mobile", "jS_mobile")),
+  role: "jobseeker",
+});
+
+const normalizeEmployer = (user) => ({
+  id: firstValue(user, "id", "employerId", "eM_employer_id", "userId"),
+  name: firstValue(user, "name", "organizationName", "eM_organization_name", "companyName", "email"),
+  email: String(firstValue(user, "email", "Email")),
+  phone: String(firstValue(user, "phone", "phoneNumber", "mobile")),
+  role: "employer",
+});
 
 const Avatar = ({ user, size = "h-9 w-9", text = "text-[12px]" }) => (
   <span
@@ -154,6 +171,56 @@ const ResetPassword = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState("");
+
+  /* LOAD USERS FROM API */
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadUsers = async () => {
+      setLoading(true);
+      setApiError("");
+      try {
+        const jobseekerPromises = roleFilter === "all" || roleFilter === "jobseeker"
+          ? jobseekerApi.getList().then(extractList)
+          : Promise.resolve([]);
+
+        const employerPromises = roleFilter === "all" || roleFilter === "employer"
+          ? getAllEmployers().then(extractList)
+          : Promise.resolve([]);
+
+        const [jobSeekersResult, employersResult] = await Promise.allSettled([
+          jobseekerPromises,
+          employerPromises,
+        ]);
+        const jobSeekers = jobSeekersResult.status === "fulfilled" ? jobSeekersResult.value : [];
+        const employers = employersResult.status === "fulfilled" ? employersResult.value : [];
+
+        if (jobSeekersResult.status === "rejected" && employersResult.status === "rejected") {
+          throw jobSeekersResult.reason;
+        }
+
+        const combined = [
+          ...jobSeekers.map(normalizeJobSeeker),
+          ...employers.map(normalizeEmployer),
+        ];
+
+        if (!cancelled) setUsers(combined);
+      } catch (err) {
+        if (!cancelled) {
+          setApiError("Failed to load users. Please try again.");
+          setUsers([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadUsers();
+    return () => { cancelled = true; };
+  }, [roleFilter]);
 
   const boxRef = useRef(null);
   const inputRef = useRef(null);
@@ -163,7 +230,7 @@ const ResetPassword = () => {
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     const qDigits = digits(q);
-    return USERS.filter((u) => {
+    return users.filter((u) => {
       if (roleFilter !== "all" && u.role !== roleFilter) return false;
       if (!q) return true;
       return (
@@ -238,7 +305,7 @@ const ResetPassword = () => {
     setSubmitting(true);
     setError("");
     try {
-      await resetUserPassword(selected, newPassword);
+      await updatePasswordByEmailApi(selected.email, newPassword);
       setSuccess(selected);
       setSelected(null);
       setNewPassword("");
@@ -310,7 +377,16 @@ const ResetPassword = () => {
               <h2 className="text-[15px] font-bold text-[#1e2b36]">Find the user</h2>
             </div>
 
-            {selected ? (
+            {loading ? (
+              <div className="flex items-center gap-2 py-4 text-[13px] text-[#6b7a88]">
+                <Loader2 size={16} className="animate-spin" /> Loading users…
+              </div>
+            ) : apiError ? (
+              <div className="flex items-start gap-2 py-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                {apiError}
+              </div>
+            ) : selected ? (
               <div className="rp-pop flex flex-wrap items-center gap-3 rounded-xl border border-[#2c6b8a]/30 bg-[#e8f1f6]/60 p-3">
                 <Avatar user={selected} size="h-11 w-11" text="text-[14px]" />
                 <div className="min-w-0 flex-1">

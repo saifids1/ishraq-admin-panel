@@ -1,192 +1,151 @@
-import React from "react";
-import { AlertTriangle, CheckCircle, XCircle, Info, X } from "lucide-react";
+import React, { useEffect } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleX,
+  Info,
+  RefreshCw,
+  X,
+} from "lucide-react";
+
+const STATUS_STYLES = {
+  success: {
+    title: "Success",
+    background: "#F0FDF4",
+    text: "#166534",
+    accent: "#16A34A",
+    Icon: CheckCircle2,
+  },
+  error: {
+    title: "Error",
+    background: "#FEF2F2",
+    text: "#991B1B",
+    accent: "#DC2626",
+    Icon: CircleX,
+  },
+  warning: {
+    title: "Warning",
+    background: "#FFFBEB",
+    text: "#92400E",
+    accent: "#D97706",
+    Icon: AlertTriangle,
+  },
+  info: {
+    title: "Information",
+    background: "#EFF6FF",
+    text: "#1E40AF",
+    accent: "#2563EB",
+    Icon: Info,
+  },
+  update: {
+    title: "Updated",
+    background: "#F5F3FF",
+    text: "#5B21B6",
+    accent: "#7C3AED",
+    Icon: RefreshCw,
+  },
+  confirm: {
+    title: "Please confirm",
+    background: "#EFF6FF",
+    text: "#1E40AF",
+    accent: "#2563EB",
+    Icon: Info,
+  },
+};
 
 const StatusModal = ({
   isOpen,
-  entity,
-  entityName = "Item",
-  actionType,
+  type = "info",
+  title,
+  message,
+  confirmText = "OK",
+  cancelText = "Cancel",
+  showCancel = false,
+  busy = false,
   onConfirm,
   onCancel,
-  customMessage,
-  successType = "",
 }) => {
+  const config = STATUS_STYLES[type] ?? STATUS_STYLES.info;
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !busy) onCancel?.();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isOpen, busy, onCancel]);
+
   if (!isOpen) return null;
 
-  const displayName = entity?.name || entity?.entityName || entity?.label || entityName;
-
-  const isError = actionType === "Error" || successType === "error";
-  const isSuccess = actionType === "Success" || successType === "success";
-  const isWarning = actionType === "Warning" || successType === "warning";
-  const isInfo = actionType === "Info" || successType === "info";
-  const isActivate = actionType === "Activate";
-  const isDeactivate = actionType === "Deactivate";
-  const isDelete = actionType === "Delete";
-
-  const getConfig = () => {
-    const base = { showCancel: false, buttonText: "OK" };
-
-    // Success - only OK button, no cancel
-    if (isSuccess) return {
-      ...base,
-      title: "Success!",
-      message: customMessage || `${entityName} "${displayName}" processed successfully!`,
-      icon: <CheckCircle size={30} />,
-      headerBg: "bg-[#336298]",
-      headerTextColor: "text-white",
-      iconColor: "text-white",
-      buttonColor: "bg-[#336298] hover:bg-[#2a507a]",
-      showCancel: false,
-    };
-
-    // Error - only OK button, no cancel
-    if (isError) return {
-      ...base,
-      title: "Error!",
-      message: customMessage || "An error occurred. Please try again.",
-      icon: <XCircle size={30} />,
-      headerBg: "bg-[#336298]",
-      headerTextColor: "text-white",
-      iconColor: "text-white",
-      buttonColor: "bg-[#336298] hover:bg-[#2a507a]",
-      showCancel: false,
-    };
-
-    // Warning - has Cancel and OK
-   // Warning - only OK button
-if (isWarning) return {
-  ...base,
-  title: "Warning!",
-  message: customMessage || "Please review the information below.",
-  icon: <AlertTriangle size={30} />,
-  headerBg: "bg-[#336298]",
-  headerTextColor: "text-white",
-  iconColor: "text-white",
-  buttonColor: "bg-[#336298] hover:bg-[#2a507a]",
-  buttonText: "OK",
-  showCancel: false,
-};
-
-    // Info - has Cancel and OK
-    if (isInfo) return {
-      ...base,
-      title: "Information",
-      message: customMessage || "Please review the information below.",
-      icon: <Info size={30} />,
-      headerBg: "bg-[#336298]",
-      headerTextColor: "text-white",
-      iconColor: "text-white",
-      buttonColor: "bg-[#336298] hover:bg-[#2a507a]",
-      showCancel: true,
-    };
-
-    // Activate - has Cancel and Activate button
-    if (isActivate) return {
-      ...base,
-      title: `Activate ${entityName}`,
-      message: customMessage || `Are you sure you want to activate "${displayName}"?`,
-      icon: <AlertTriangle size={30} />,
-      headerBg: "bg-[#336298]",
-      headerTextColor: "text-white",
-      iconColor: "text-white",
-      buttonColor: "bg-[#336298] hover:bg-[#2a507a]",
-      buttonText: "Activate",
-      showCancel: true,
-    };
-
-    // Deactivate - has Cancel and Deactivate button
-    if (isDeactivate) return {
-      ...base,
-      title: `Deactivate ${entityName}`,
-      message: customMessage || `Are you sure you want to deactivate "${displayName}"?`,
-      icon: <AlertTriangle size={30} />,
-      headerBg: "bg-[#336298]",
-      headerTextColor: "text-white",
-      iconColor: "text-white",
-      buttonColor: "bg-[#336298] hover:bg-[#2a507a]",
-      buttonText: "Deactivate",
-      showCancel: true,
-    };
-
-    // Delete - has Cancel and Delete button
-    if (isDelete) return {
-      ...base,
-      title: `Delete ${entityName}`,
-      message: customMessage || `Are you sure you want to delete "${displayName}"?`,
-      icon: <AlertTriangle size={30} />,
-      headerBg: "bg-[#336298]",
-      headerTextColor: "text-white",
-      iconColor: "text-white",
-      buttonColor: "bg-[#336298] hover:bg-[#2a507a]",
-      buttonText: "Delete",
-      showCancel: true,
-    };
-
-    // Default - has Cancel and Confirm
-    return {
-      ...base,
-      title: `${entityName} Action`,
-      message: customMessage || "Are you sure you want to proceed?",
-      icon: <Info size={30} />,
-      headerBg: "bg-[#336298]",
-      headerTextColor: "text-white",
-      iconColor: "text-white",
-      buttonColor: "bg-[#336298] hover:bg-[#2a507a]",
-      buttonText: "Confirm",
-      showCancel: true,
-    };
-  };
-
-  const config = getConfig();
-
-  const getCloseButtonColor = () => {
-    return "text-white hover:text-red-500";
-  };
+  const Icon = config.Icon;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-[410px] rounded-lg bg-white shadow-2xl border border-slate-200 overflow-hidden">
-        {/* Header with Close Button */}
-        <div className={`px-6 py-4 ${config.headerBg} border-b border-slate-200 flex items-center justify-between`}>
-          <div className="flex items-center gap-3">
-            <span className={config.iconColor}>{config.icon}</span>
-            <h3 className={`text-[20px] font-semibold ${config.headerTextColor}`}>{config.title}</h3>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel || onConfirm}
-            className={`p-1 rounded-full hover:bg-red-50 transition-colors duration-200 ${getCloseButtonColor()}`}
-            aria-label="Close"
+    <div className="fixed inset-0 z-[100] grid place-items-center p-4" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !busy) onCancel?.();
+    }}>
+      <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" />
+      <section
+        role={showCancel ? "alertdialog" : "dialog"}
+        aria-modal="true"
+        aria-labelledby="status-modal-title"
+        aria-describedby="status-modal-message"
+        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+      >
+        <div className="h-14" style={{ backgroundColor: config.accent }} />
+        <button
+          type="button"
+          aria-label="Close dialog"
+          disabled={busy}
+          onClick={onCancel ?? onConfirm}
+          className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-lg font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
+        >
+          <X size={18} />
+        </button>
+        <div className="flex gap-4 p-6 pr-14">
+          <span
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full"
+            style={{ backgroundColor: config.background, color: config.accent }}
           >
-            <X size={20} />
-          </button>
+            <Icon size={25} strokeWidth={2.2} />
+          </span>
+          <div className="pt-1">
+            <h2 id="status-modal-title" className="text-lg font-bold" style={{ color: config.text }}>
+              {title || config.title}
+            </h2>
+            <p id="status-modal-message" className="mt-1.5 whitespace-pre-line text-sm leading-6 text-slate-600">
+              {message}
+            </p>
+          </div>
         </div>
-
-        {/* Message */}
-        <div className="px-15 py-5">
-          <p className="text-[15px] font-medium  text-black leading-relaxed whitespace-pre-line">{config.message}</p>
-        </div>
-
-        {/* Buttons */}
-        <div className="px-2 py-2 bg-slate-50 border-t border-slate-200 flex justify-end items-center gap-2.5">
-          {config.showCancel && (
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
+          {showCancel && (
             <button
               type="button"
+              disabled={busy}
               onClick={onCancel}
-              className="px-5 py-2 rounded-md border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
             >
-              Cancel
+              {cancelText}
             </button>
           )}
           <button
             type="button"
+            autoFocus
+            disabled={busy}
             onClick={onConfirm}
-            className={`px-3 py-2 rounded-md text-xs font-semibold text-white shadow-sm transition ${config.buttonColor}`}
+            className="h-10 rounded-lg px-5 text-sm font-semibold text-white shadow-sm transition hover:brightness-95 disabled:opacity-60"
+            style={{ backgroundColor: config.accent }}
           >
-            {config.buttonText}
+            {busy ? "Please wait…" : confirmText}
           </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ChevronDown, ChevronsLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
-
+import StatusModal from "../../../../components/common/StatusModal";
 import cityMasterApi from "../../../../api/Services/cityMasterApi";
 import countryMasterApi from "../../../../api/Services/countryMasterApi";
 import stateMasterApi from "../../../../api/Services/stateMasterApi";
@@ -22,8 +22,8 @@ const config = {
   updatedAtField: "ctM_UpdatedAt",
   createdByField: "ctM_CreatedBy",
   updatedByField: "ctM_UpdatedBy",
-  createdByNameField: "ctM_CreatedByName",
-  updatedByNameField: "ctM_UpdatedByName",
+  createdByNameField: "createdByName",
+  updatedByNameField: "updatedByName",
   stateField: "ctM_StateId",
   postalCodeField: "ctM_PostalCode",
 };
@@ -32,7 +32,6 @@ const listPath = "/admin/settings/master/cityMaster";
 
 const formatDate = (value) => {
   if (value === null || value === undefined || value === "") return "";
-
   const s = String(value).trim();
   if (s.startsWith("0001-01-01")) return "";
 
@@ -43,37 +42,27 @@ const formatDate = (value) => {
   } else {
     d = value instanceof Date ? value : new Date(s);
   }
-
   if (Number.isNaN(d.getTime())) return "";
 
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
-
   return `${dd}-${mm}-${yyyy}`;
 };
 
 const extractRecord = (response) => {
   let result = response?.data ?? response;
+  if (result?.data !== undefined) result = result.data;
+  else if (result?.Data !== undefined) result = result.Data;
 
-  if (result?.data !== undefined) {
-    result = result.data;
-  } else if (result?.Data !== undefined) {
-    result = result.Data;
-  }
-
-  if (result?.data && !Array.isArray(result.data)) {
-    result = result.data;
-  } else if (result?.Data && !Array.isArray(result.Data)) {
-    result = result.Data;
-  }
+  if (result?.data && !Array.isArray(result.data)) result = result.data;
+  else if (result?.Data && !Array.isArray(result.Data)) result = result.Data;
 
   return result;
 };
 
 const extractList = (response) => {
   const root = response?.data ?? response;
-
   const candidates = [
     root?.data?.data,
     root?.Data?.Data,
@@ -81,13 +70,11 @@ const extractList = (response) => {
     root?.Data,
     root,
   ];
-
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) return candidate;
     if (Array.isArray(candidate?.data)) return candidate.data;
     if (Array.isArray(candidate?.Data)) return candidate.Data;
   }
-
   return [];
 };
 
@@ -102,22 +89,16 @@ const pickUserDisplay = (item, nameKey, idKey) => {
   if (name !== undefined && name !== null && String(name).trim() !== "") {
     return String(name);
   }
-
   const id = item?.[idKey];
   if (id === undefined || id === null || id === "") return "";
-
   return String(id);
 };
 
-/**
- * Resolve the current user's id. Adjust if your app stores auth elsewhere.
- */
 const getCurrentUserId = () => {
   const raw =
     localStorage.getItem("userId") ??
     localStorage.getItem("user_id") ??
     localStorage.getItem("id");
-
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
@@ -155,63 +136,109 @@ const CreateCity = ({ mode }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Local StatusModal state (replaces StatusModalProvider)
+  // modal = { type, title, message, confirmText, cancelText, showCancel,
+  //           onConfirm, onCancel }
+  // ─────────────────────────────────────────────────────────────────────
+  const [modal, setModal] = useState(null);
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      message,
+      confirmText: extra.confirmText || "OK",
+      cancelText: extra.cancelText || "Cancel",
+      showCancel: false,
+      title: extra.title,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        extra.onCancel?.();
+      },
+    });
+  };
+
+  const openConfirm = ({ title, message, confirmText, cancelText, onConfirm, onCancel }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: cancelText || "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        onCancel?.();
+      },
+    });
+  };
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Load countries
+  // ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-
     const loadCountries = async () => {
       setLoadingCountries(true);
-
       try {
         const response = await countryMasterApi.getAllList();
         const result = extractList(response);
-
         if (!cancelled) setCountries(result);
       } catch (err) {
         if (!cancelled) {
           console.error("Failed to load countries:", err);
           setError("Failed to load countries.");
+          openStatus("error", "Failed to load countries.");
         }
       } finally {
         if (!cancelled) setLoadingCountries(false);
       }
     };
-
     loadCountries();
-
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Load states
+  // ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-
     const loadStates = async () => {
       setLoadingStates(true);
-
       try {
         const response = await stateMasterApi.getAllList();
         const result = extractList(response);
-
         if (!cancelled) setStates(result);
       } catch (err) {
         if (!cancelled) {
           console.error("Failed to load states:", err);
           setStates([]);
           setError("Failed to load states.");
+          openStatus("error", "Failed to load states.");
         }
       } finally {
         if (!cancelled) setLoadingStates(false);
       }
     };
-
     loadStates();
-
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Load record (view/edit)
+  // ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -221,14 +248,7 @@ const CreateCity = ({ mode }) => {
       setCountryId("");
       setStateId("");
       setPostalCode("");
-
-      setAudit({
-        createdAt: "",
-        createdBy: "",
-        updatedAt: "",
-        updatedBy: "",
-      });
-
+      setAudit({ createdAt: "", createdBy: "", updatedAt: "", updatedBy: "" });
       setError("");
       setLoading(false);
       return;
@@ -242,13 +262,11 @@ const CreateCity = ({ mode }) => {
     const loadRecord = async () => {
       setLoading(true);
       setError("");
-
       try {
         const response = await config.api.getById(id);
         const item = extractRecord(response);
 
         if (cancelled) return;
-
         if (
           !item ||
           typeof item !== "object" ||
@@ -267,7 +285,6 @@ const CreateCity = ({ mode }) => {
         if (savedStateId) {
           const stateResponse = await stateMasterApi.getById(savedStateId);
           const stateRecord = extractRecord(stateResponse);
-
           if (!cancelled) {
             setCountryId(String(stateRecord?.sM_CountryId ?? ""));
           }
@@ -283,13 +300,15 @@ const CreateCity = ({ mode }) => {
           updatedAt: formatDate(item[config.updatedAtField]),
           updatedBy: pickUserDisplay(
             item,
-            config.updatedByNameField,
+            config.updatedByNameField || "-",
             config.updatedByField,
           ),
         });
       } catch (err) {
         if (!cancelled) {
-          setError(getErrorMessage(err, "Failed to load record."));
+          const msg = getErrorMessage(err, "Failed to load record.");
+          setError(msg);
+          openStatus("error", msg);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -297,41 +316,22 @@ const CreateCity = ({ mode }) => {
     };
 
     loadRecord();
-
     return () => {
       cancelled = true;
     };
   }, [id, isCreate]);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    if (saving) return;
-
-    const trimmedName = name.trim();
-
-    if (!trimmedName) {
-      setError("City name is required.");
-      return;
-    }
-
-    if (!countryId) {
-      setError("Country is required.");
-      return;
-    }
-
-    if (!stateId) {
-      setError("State is required.");
-      return;
-    }
-
+  // ─────────────────────────────────────────────────────────────────────
+  // Core save logic (shared by create and update)
+  // ─────────────────────────────────────────────────────────────────────
+  const runSave = async () => {
     setSaving(true);
     setError("");
 
+    const trimmedName = name.trim();
+
     try {
       if (isCreate) {
-        // POST /CityMaster — matches the create contract:
-        // { ctM_CityName, ctM_StateId, ctM_PostalCode, ctM_IsActive, ctM_CreatedBy }
         const payload = {
           [config.nameField]: trimmedName,
           [config.stateField]: Number(stateId),
@@ -341,9 +341,17 @@ const CreateCity = ({ mode }) => {
         };
 
         await config.api.create(payload);
+
+        openStatus(
+          "success",
+          `${config.singular} "${trimmedName}" created successfully.`,
+          {
+            title: "Created",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
       } else {
-        // PUT /CityMaster — matches the edit contract:
-        // { ctM_Id, ctM_CityName, ctM_StateId, ctM_PostalCode, ctM_IsActive, ctM_UpdatedBy }
         const payload = {
           [config.idField]: Number(id),
           [config.nameField]: trimmedName,
@@ -354,18 +362,67 @@ const CreateCity = ({ mode }) => {
         };
 
         await config.api.update(payload);
-      }
 
-      navigate(listPath);
+        openStatus(
+          "update",
+          `${config.singular} "${trimmedName}" updated successfully.`,
+          {
+            title: "Updated",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
+      }
     } catch (err) {
-      setError(
-        getErrorMessage(
-          err,
-          `Failed to ${isCreate ? "create" : "update"} city.`,
-        ),
+      const msg = getErrorMessage(
+        err,
+        `Failed to ${isCreate ? "create" : "update"} city.`,
       );
+      setError(msg);
+      openStatus("error", msg);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Submit handler
+  // ─────────────────────────────────────────────────────────────────────
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (saving) return;
+
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      const msg = "City name is required.";
+      setError(msg);
+      openStatus("warning", msg);
+      return;
+    }
+    if (!countryId) {
+      const msg = "Country is required.";
+      setError(msg);
+      openStatus("warning", msg);
+      return;
+    }
+    if (!stateId) {
+      const msg = "State is required.";
+      setError(msg);
+      openStatus("warning", msg);
+      return;
+    }
+
+    if (isCreate) {
+      runSave();
+    } else {
+      openConfirm({
+        title: `Update ${config.singular}?`,
+        message: "Are you sure you want to save these changes?",
+        confirmText: "Update",
+        cancelText: "Cancel",
+        onConfirm: runSave,
+      });
     }
   };
 
@@ -399,7 +456,6 @@ const CreateCity = ({ mode }) => {
               >
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
-
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
           </div>
@@ -417,7 +473,6 @@ const CreateCity = ({ mode }) => {
                   Country
                   {!isView && <span className="ml-1 text-red-500">*</span>}
                 </label>
-
                 <div className="relative">
                   <select
                     value={countryId}
@@ -435,17 +490,12 @@ const CreateCity = ({ mode }) => {
                         ? "Loading countries..."
                         : "Select Country"}
                     </option>
-
                     {countries.map((country) => (
-                      <option
-                        key={country.cM_Id}
-                        value={String(country.cM_Id)}
-                      >
+                      <option key={country.cM_Id} value={String(country.cM_Id)}>
                         {country.cM_CountryName}
                       </option>
                     ))}
                   </select>
-
                   <ChevronDown
                     size={17}
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
@@ -458,7 +508,6 @@ const CreateCity = ({ mode }) => {
                   State
                   {!isView && <span className="ml-1 text-red-500">*</span>}
                 </label>
-
                 <div className="relative">
                   <select
                     value={stateId}
@@ -474,7 +523,6 @@ const CreateCity = ({ mode }) => {
                           ? "Loading states..."
                           : "Select State"}
                     </option>
-
                     {states
                       .filter(
                         (state) =>
@@ -486,7 +534,6 @@ const CreateCity = ({ mode }) => {
                         </option>
                       ))}
                   </select>
-
                   <ChevronDown
                     size={17}
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
@@ -496,10 +543,9 @@ const CreateCity = ({ mode }) => {
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Value
+                  City Name
                   {!isView && <span className="ml-1 text-red-500">*</span>}
                 </label>
-
                 <input
                   type="text"
                   value={name}
@@ -515,7 +561,6 @@ const CreateCity = ({ mode }) => {
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Postal Code
                 </label>
-
                 <input
                   type="text"
                   value={postalCode}
@@ -530,7 +575,6 @@ const CreateCity = ({ mode }) => {
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Status
                 </label>
-
                 <div className="relative">
                   <select
                     value={status}
@@ -541,7 +585,6 @@ const CreateCity = ({ mode }) => {
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
                   </select>
-
                   <ChevronDown
                     size={17}
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
@@ -550,63 +593,56 @@ const CreateCity = ({ mode }) => {
               </div>
 
               {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Created At
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.createdAt || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
-
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Created By
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.createdBy || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
-
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Updated At
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.updatedAt || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
-
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Updated By
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.updatedBy || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Created At
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.createdAt || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Created By
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.createdBy || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Updated At
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.updatedAt || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Updated By
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.updatedBy || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                </>
               )}
             </div>
 
@@ -642,6 +678,20 @@ const CreateCity = ({ mode }) => {
           </form>
         </div>
       </div>
+
+      {/* ───── Directly mounted StatusModal (no provider needed) ───── */}
+      <StatusModal
+        isOpen={!!modal}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
     </div>
   );
 };

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ChevronDown, ChevronsLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import StatusModal from "../../../../components/common/StatusModal";
 import complaintCategoryApi from "../../../../api/Services/complaintCategoryApi";
 
 const selectClass =
@@ -22,7 +23,6 @@ const config = {
   updatedAtField: "cC_updated_at",
   createdByField: "cC_created_by",
   updatedByField: "cC_updated_by",
-  // Display-name fields returned by the API (preferred over the numeric IDs).
   createdByNameField: "cC_created_by_name",
   updatedByNameField: "cC_updated_by_name",
 };
@@ -31,10 +31,6 @@ const listPath = "/admin/settings/master/complaintCategory";
 
 /* --------------------------- DATE HELPERS ------------------------- */
 
-/**
- * Format a date value into dd-mm-yyyy.
- * Empty / invalid / .NET default (0001-01-01) → "".
- */
 const formatDate = (value) => {
   if (value === null || value === undefined || value === "") return "";
 
@@ -82,9 +78,13 @@ const getErrorMessage = (error, fallback) =>
   error?.message ||
   fallback;
 
-/**
- * Prefer the display name if present, otherwise fall back to the raw id.
- */
+const getSuccessMessage = (response, fallback) =>
+  response?.data?.message ||
+  response?.data?.Message ||
+  response?.data?.data?.message ||
+  response?.data?.data?.Message ||
+  fallback;
+
 const pickUserDisplay = (item, nameKey, idKey) => {
   const name = item?.[nameKey];
   if (name !== undefined && name !== null && String(name).trim() !== "") {
@@ -103,7 +103,6 @@ const CreateComplaintCategory = ({ mode }) => {
 
   const isCreate = mode === "create";
 
-  // Driven by state so the Edit button can flip view → edit in place.
   const [isView, setIsView] = useState(mode === "view");
   const [isEdit, setIsEdit] = useState(mode === "edit");
 
@@ -121,6 +120,58 @@ const CreateComplaintCategory = ({ mode }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // ───────────────────────────────────────────────────────────────────
+  // Local StatusModal state (no provider needed)
+  // modal = { type, title, message, confirmText, cancelText,
+  //           showCancel, onConfirm, onCancel }
+  // ───────────────────────────────────────────────────────────────────
+  const [modal, setModal] = useState(null);
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      message,
+      title: extra.title,
+      confirmText: extra.confirmText || "OK",
+      cancelText: extra.cancelText || "Cancel",
+      showCancel: false,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        extra.onCancel?.();
+      },
+    });
+  };
+
+  const openConfirm = ({
+    title,
+    message,
+    confirmText,
+    cancelText,
+    onConfirm,
+    onCancel,
+  }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: cancelText || "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        onCancel?.();
+      },
+    });
+  };
+
   // Reset create form or load the existing record for edit/view.
   useEffect(() => {
     let cancelled = false;
@@ -128,14 +179,12 @@ const CreateComplaintCategory = ({ mode }) => {
     if (isCreate) {
       setName("");
       setStatus("Active");
-
       setAudit({
         createdAt: "",
         createdBy: "",
         updatedAt: "",
         updatedBy: "",
       });
-
       setError("");
       setLoading(false);
       return;
@@ -169,7 +218,6 @@ const CreateComplaintCategory = ({ mode }) => {
 
         setAudit({
           createdAt: formatDate(item[config.createdAtField]),
-          // Prefer the name; fall back to the raw id.
           createdBy: pickUserDisplay(
             item,
             config.createdByNameField,
@@ -184,7 +232,9 @@ const CreateComplaintCategory = ({ mode }) => {
         });
       } catch (err) {
         if (!cancelled) {
-          setError(getErrorMessage(err, "Failed to load record."));
+          const msg = getErrorMessage(err, "Failed to load record.");
+          setError(msg);
+          openStatus("error", msg);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -201,6 +251,67 @@ const CreateComplaintCategory = ({ mode }) => {
   const title = config.singular;
   const disabled = isView || loading || saving;
 
+  // ───────────────────────────────────────────────────────────────────
+  // Core save (shared by create + update)
+  // ───────────────────────────────────────────────────────────────────
+  const runSave = async () => {
+    setSaving(true);
+    setError("");
+
+    const trimmed = name.trim();
+
+    try {
+      if (isCreate) {
+        const payload = {
+          [config.nameField]: trimmed,
+          [config.activeField]: status === "Active",
+        };
+
+        const response = await config.api.create(payload);
+
+        openStatus(
+          "success",
+          getSuccessMessage(
+            response,
+            `${title} "${trimmed}" created successfully.`,
+          ),
+          {
+            title: "Created",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
+      } else {
+        const payload = {
+          [config.nameField]: trimmed,
+          [config.activeField]: status === "Active",
+          [config.idField]: Number(id),
+        };
+
+        await config.api.update(payload);
+
+        openStatus(
+          "update",
+          `${title} "${trimmed}" updated successfully.`,
+          {
+            title: "Updated",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
+      }
+    } catch (err) {
+      const msg = getErrorMessage(err, "Failed to save. Please try again.");
+      setError(msg);
+      openStatus("error", msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ───────────────────────────────────────────────────────────────────
+  // Submit
+  // ───────────────────────────────────────────────────────────────────
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -209,42 +320,25 @@ const CreateComplaintCategory = ({ mode }) => {
     const trimmed = name.trim();
 
     if (!trimmed) {
-      setError(`${title} name is required.`);
+      const msg = `${title} name is required.`;
+      setError(msg);
+      openStatus("warning", msg);
       return;
     }
 
-    setSaving(true);
-    setError("");
-
-    try {
-      if (isCreate) {
-        // POST /ComplaintCategory
-        const payload = {
-          [config.nameField]: trimmed,
-          [config.activeField]: status === "Active",
-        };
-
-        await config.api.create(payload);
-      } else {
-        // PUT /ComplaintCategory — id goes INSIDE the body.
-        const payload = {
-          [config.nameField]: trimmed,
-          [config.activeField]: status === "Active",
-          [config.idField]: Number(id),
-        };
-
-        await config.api.update(payload);
-      }
-
-      navigate(listPath);
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to save. Please try again."));
-    } finally {
-      setSaving(false);
+    if (isCreate) {
+      runSave();
+    } else {
+      openConfirm({
+        title: `Update ${title}?`,
+        message: "Are you sure you want to save these changes?",
+        confirmText: "Update",
+        cancelText: "Cancel",
+        onConfirm: runSave,
+      });
     }
   };
 
-  // Clicking Edit flips the view into edit mode (matches the siblings).
   const handleEditClick = () => {
     setIsView(false);
     setIsEdit(true);
@@ -288,7 +382,7 @@ const CreateComplaintCategory = ({ mode }) => {
               {/* Value */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Value
+                  Category Name
                   {!isView && <span className="ml-1 text-red-500">*</span>}
                 </label>
 
@@ -327,68 +421,60 @@ const CreateComplaintCategory = ({ mode }) => {
                 </div>
               </div>
 
-              {/* Created At — read only */}
               {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Created At
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.createdAt || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Created At
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.createdAt || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
 
-              {/* Created By — read only (name preferred, id fallback) */}
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Created By
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.createdBy || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Created By
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.createdBy || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
 
-              {/* Updated At — read only */}
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Updated At
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.updatedAt || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
-              )}
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Updated At
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.updatedAt || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
 
-              {/* Updated By — read only (name preferred, id fallback) */}
-              {!isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Updated By
-                  </label>
-                  <input
-                    type="text"
-                    value={audit.updatedBy || "—"}
-                    readOnly
-                    disabled
-                    className={inputClass}
-                  />
-                </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Updated By
+                    </label>
+                    <input
+                      type="text"
+                      value={audit.updatedBy || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                </>
               )}
             </div>
 
@@ -401,7 +487,6 @@ const CreateComplaintCategory = ({ mode }) => {
                 {isView ? "Back" : "Cancel"}
               </button>
 
-              {/* Edit button — only in view mode */}
               {isView && (
                 <button
                   type="button"
@@ -412,7 +497,6 @@ const CreateComplaintCategory = ({ mode }) => {
                 </button>
               )}
 
-              {/* Save button — only when NOT in view mode */}
               {!isView && (
                 <button
                   type="submit"
@@ -426,6 +510,20 @@ const CreateComplaintCategory = ({ mode }) => {
           </form>
         </div>
       </div>
+
+      {/* ───── Directly mounted StatusModal (no provider) ───── */}
+      <StatusModal
+        isOpen={!!modal}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
     </div>
   );
 };

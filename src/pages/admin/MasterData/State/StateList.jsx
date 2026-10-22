@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import StatusModal from "../../../../components/common/StatusModal";
+import { useStatusToast } from "../../../../components/common/StatusModalProvider";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
   Search as SearchIcon,
-  X as CloseIcon,
   Inbox,
   ShieldCheck,
   ShieldAlert,
@@ -17,10 +18,7 @@ import { getApiErrorMessage } from "../../../../api/utils/apiHelpers";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
-/**
- * Format any date value into dd-mm-yyyy.
- * Returns "-" for invalid / missing / .NET default values.
- */
+/** Format dates as dd-mm-yyyy. Returns "-" for missing/invalid/default values. */
 const formatDate = (value) => {
   if (value === null || value === undefined || value === "") return "-";
 
@@ -39,23 +37,17 @@ const formatDate = (value) => {
 
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-
-  return `${dd}-${mm}-${yyyy}`;
+  return `${dd}-${mm}-${d.getFullYear()}`;
 };
-
-/* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
 
 const LIST_COLUMNS = [
-  { key: "sM_StateName",  label: "State Name", format: (v) => v ?? "-" },
-  { key: "countryName",   label: "Country",    format: (v) => v ?? "-" },
-  { key: "sM_CreatedAt",  label: "Created At", format: (v) => formatDate(v) },
-  { key: "sM_UpdatedAt",  label: "Updated At", format: (v) => formatDate(v) },
+  { key: "sM_StateName", label: "State Name", format: (v) => v ?? "-" },
+  { key: "countryName", label: "Country", format: (v) => v ?? "-" },
+  // { key: "sM_CreatedAt", label: "Created At", format: formatDate },
+  // { key: "sM_UpdatedAt", label: "Updated At", format: formatDate },
 ];
-
-/* ------------------------------ TONES ----------------------------- */
 
 const TONES = {
   success: {
@@ -87,23 +79,18 @@ const TONES = {
 const BADGE_BASE =
   "inline-flex h-7 min-w-[96px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
-const STATUS_TONES = {
-  Active: "success",
-  Inactive: "danger",
-};
-
+const STATUS_TONES = { Active: "success", Inactive: "danger" };
 const toneOf = (value) => TONES[STATUS_TONES[value]] ?? TONES.neutral;
-
-/* ------------------------------ NORMALIZE ------------------------------ */
 
 const toListRow = (item, srNo) => ({
   ...item,
-  id: item["sM_Id"],
-  name: item["sM_StateName"],
-  status: item["sM_IsActive"] ? "Active" : "Inactive",
+  id: item?.sM_Id,
+  name: item?.sM_StateName,
+  status: item?.sM_IsActive ? "Active" : "Inactive",
   srNo,
 });
 
+/** Supports the paged API response and a plain-array response. */
 const parseListResponse = (response, pageSize) => {
   const inner = response?.data?.data;
 
@@ -115,10 +102,11 @@ const parseListResponse = (response, pageSize) => {
     };
   }
 
-  const list = inner?.data ?? [];
-  const totalRecords = inner?.totalRecords ?? list.length;
-  const totalPages =
-    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize));
+  const list = Array.isArray(inner?.data) ? inner.data : [];
+  const totalRecords = Number(inner?.totalRecords ?? list.length);
+  const totalPages = Number(
+    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize)),
+  );
 
   return { list, totalRecords, totalPages };
 };
@@ -136,25 +124,37 @@ const StateList = () => {
   const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const loadRequestRef = useRef(0);
 
-  const [query, setQuery] = useState({
-    search: "",
-    status: "All",
-  });
-
+  const [query, setQuery] = useState({ search: "", status: "All" });
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useStatusToast();
 
   /* --------------------------- FETCH --------------------------- */
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
+
     try {
-      const response = await stateMasterApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
+      const params = {
+        PageNo: page,
+        PageSize: pageSize,
+        Search: query.search.trim(),
+      };
+
+      if (query.status === "Active") params.IsActive = true;
+      if (query.status === "Inactive") params.IsActive = false;
+
+      const response = await stateMasterApi.getAll(params);
+      if (requestId !== loadRequestRef.current) return;
+      const {
+        list,
+        totalRecords: total,
+        totalPages: pages,
+      } = parseListResponse(response, pageSize);
 
       setRows(
         list.map((item, index) =>
@@ -164,66 +164,51 @@ const StateList = () => {
       setTotalRecords(total);
       setTotalPages(pages);
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       setRows([]);
       setTotalRecords(0);
       setTotalPages(0);
       setError(getApiErrorMessage(err) || "Unable to load state records.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, query.search, query.status]);
 
   useEffect(() => {
     load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
   const handleToggle = async (row) => {
-    try {
-      await stateMasterApi.toggleActive(row.id);
-      const response = await stateMasterApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
-
-      setRows(
-        list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
-      );
-      setTotalRecords(total);
-      setTotalPages(pages);
-    } catch (err) {
-      setError(getApiErrorMessage(err) || "Unable to update status.");
-    }
+    await stateMasterApi.toggleActive(row.id);
+    await load();
   };
 
   /* ---------------------------- QUERY HELPERS ---------------------------- */
 
-  const patchFilter = (patch) => setQuery((q) => ({ ...q, ...patch }));
+  const patchFilter = (patch) => {
+    setQuery((q) => ({ ...q, ...patch }));
+    setPage(1);
+  };
 
-  /* ---------------------------- FILTERED ROWS ---------------------------- */
+  /* ---------------------------- PAGINATION ---------------------------- */
 
-  const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (
-        q &&
-        !LIST_COLUMNS.some((c) =>
-          String(r[c.key] ?? "").toLowerCase().includes(q),
-        )
-      )
-        return false;
-      if (query.status !== "All" && r.status !== query.status) return false;
-      return true;
-    });
-  }, [rows, query]);
-
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
+  // The server returns only the current page, so do not filter or slice rows locally.
+  const count = totalRecords;
+  const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const pageRows = rows;
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -239,7 +224,7 @@ const StateList = () => {
     if (!toast) return undefined;
     const t = setTimeout(() => setToast(null), 2800);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [toast, setToast]);
 
   /* ---------------------------- STATUS TOGGLE ---------------------------- */
 
@@ -250,6 +235,7 @@ const StateList = () => {
 
   const confirmToggle = async () => {
     if (!confirm) return;
+
     const { row, next } = confirm;
     setBusy(true);
     try {
@@ -257,13 +243,13 @@ const StateList = () => {
       setToast({
         id: Date.now(),
         tone: next === "Active" ? "ok" : "warn",
-        msg: `${row["sM_StateName"] || "State"} is now ${next.toLowerCase()}`,
+        msg: `${row.sM_StateName || "State"} is now ${next.toLowerCase()}`,
       });
     } catch (err) {
       setToast({
         id: Date.now(),
         tone: "err",
-        msg: err?.message || "Could not update status",
+        msg: getApiErrorMessage(err) || err?.message || "Could not update status",
       });
     } finally {
       setBusy(false);
@@ -276,10 +262,10 @@ const StateList = () => {
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
-  const td = "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
+  const td =
+    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2";
-
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
@@ -341,6 +327,7 @@ const StateList = () => {
           </button>
         </div>
       </div>
+
       <div
         aria-hidden="true"
         className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent"
@@ -356,27 +343,26 @@ const StateList = () => {
         </div>
       )}
 
-      {/* TABLE — header stays fixed; only body scrolls */}
+      {/* TABLE HEADER */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[760px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />
               <col style={{ width: "150px" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
+              {/* <col style={{ width: "170px" }} /> */}
+              {/* <col style={{ width: "170px" }} /> */}
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
-
             <thead className="sticky top-0 z-10">
               <tr>
                 <th scope="col" className={thClass}>Sr.No</th>
                 <th scope="col" className={thClass}>State Name</th>
                 <th scope="col" className={thClass}>Country</th>
-                <th scope="col" className={thClass}>Created At</th>
-                <th scope="col" className={thClass}>Updated At</th>
+                {/* <th scope="col" className={thClass}>Created At</th> */}
+                {/* <th scope="col" className={thClass}>Updated At</th> */}
                 <th scope="col" className={thClass}>Status</th>
                 <th scope="col" className={thClass}>Actions</th>
               </tr>
@@ -384,26 +370,25 @@ const StateList = () => {
           </table>
         </div>
 
-        {/* Body-only scroll container */}
+        {/* BODY-ONLY SCROLL CONTAINER */}
         <div
           className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[760px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
               <col style={{ width: "auto" }} />
               <col style={{ width: "150px" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
+              {/* <col style={{ width: "170px" }} /> */}
+              {/* <col style={{ width: "170px" }} /> */}
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
-
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={5} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center">
                       <span
                         aria-hidden="true"
@@ -415,13 +400,11 @@ const StateList = () => {
                 </tr>
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
+                  <td colSpan={5} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
                     <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                       <Inbox size={22} />
                     </div>
-                    <p className="mt-3 text-[15px] text-[#1e2b36]">
-                      No states yet
-                    </p>
+                    <p className="mt-3 text-[15px] text-[#1e2b36]">No states found</p>
                   </td>
                 </tr>
               ) : (
@@ -431,40 +414,30 @@ const StateList = () => {
                     style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
                     className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                   >
-                    {/* Sr.No */}
-                    <td className={`${td} tabular-nums`}>
-                      {start + index + 1}
+                    <td className={`${td} tabular-nums`}>{start + index + 1}</td>
+
+                    <td className={`${td} whitespace-nowrap`}>
+                      <div className="w-full min-w-0 truncate">{row.sM_StateName ?? "-"}</div>
                     </td>
 
-                    {/* State Name */}
                     <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row["sM_StateName"] ?? "-"}
-                      </div>
-                    </td>
-
-                    {/* Country */}
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate ps-2">
-                        {row["countryName"] ?? "-"}
-                      </div>
+                      <div className="w-full min-w-0 truncate ps-2">{row.countryName ?? "-"}</div>
                     </td>
 
                     {/* Created At */}
+                    {/*
                     <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row["sM_CreatedAt"])}
-                      </div>
+                      <div className="w-full min-w-0 truncate">{formatDate(row.sM_CreatedAt)}</div>
                     </td>
+                    */}
 
                     {/* Updated At */}
+                    {/*
                     <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row["sM_UpdatedAt"])}
-                      </div>
+                      <div className="w-full min-w-0 truncate">{formatDate(row.sM_UpdatedAt)}</div>
                     </td>
+                    */}
 
-                    {/* Status */}
                     <td className={`${td} whitespace-nowrap`}>
                       <div className="w-full min-w-0 truncate">
                         <span className={`${BADGE_BASE} ${toneOf(row.status).badge}`}>
@@ -473,13 +446,12 @@ const StateList = () => {
                       </div>
                     </td>
 
-                    {/* Actions */}
                     <td className={`${td} justify-center text-center`}>
-                      <div className="flex items-center justify-center text-center gap-2">
+                      <div className="flex items-center justify-center gap-2 text-center">
                         <button
                           type="button"
-                          title={`View ${row["sM_StateName"] || "State"}`}
-                          aria-label={`View ${row["sM_StateName"] || "State"}`}
+                          title={`View ${row.sM_StateName || "State"}`}
+                          aria-label={`View ${row.sM_StateName || "State"}`}
                           onClick={() => navigate(`/admin/settings/master/stateMaster/${row.id}/view`)}
                           className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                         >
@@ -490,16 +462,8 @@ const StateList = () => {
                           type="button"
                           role="switch"
                           aria-checked={row.status === "Active"}
-                          aria-label={
-                            row.status === "Active"
-                              ? `Deactivate ${row["sM_StateName"] || "State"}`
-                              : `Activate ${row["sM_StateName"] || "State"}`
-                          }
-                          title={
-                            row.status === "Active"
-                              ? "Active. Click to deactivate"
-                              : "Not active. Click to activate"
-                          }
+                          aria-label={row.status === "Active" ? `Deactivate ${row.sM_StateName || "State"}` : `Activate ${row.sM_StateName || "State"}`}
+                          title={row.status === "Active" ? "Active. Click to deactivate" : "Not active. Click to activate"}
                           onClick={() => askToggle(row)}
                           className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
                             row.status === "Active"
@@ -509,23 +473,13 @@ const StateList = () => {
                         >
                           <span
                             className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                              row.status === "Active"
-                                ? "translate-x-[18px]"
-                                : "translate-x-0"
+                              row.status === "Active" ? "translate-x-[18px]" : "translate-x-0"
                             }`}
                           >
                             {row.status === "Active" ? (
-                              <UserRoundCheck
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-emerald-700"
-                              />
+                              <UserRoundCheck size={13} strokeWidth={2.7} className="text-emerald-700" />
                             ) : (
-                              <UserRoundX
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-rose-700"
-                              />
+                              <UserRoundX size={13} strokeWidth={2.7} className="text-rose-700" />
                             )}
                           </span>
                         </button>
@@ -544,16 +498,12 @@ const StateList = () => {
         <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
           <span>
             Showing{" "}
-            <strong className="font-semibold text-[#53677f]">
-              {count ? start + 1 : 0}
-            </strong>{" "}
+            <strong className="font-semibold text-[#53677f]">{count ? start + 1 : 0}</strong>{" "}
             to{" "}
-            <strong className="font-semibold text-[#53677f]">
-              {Math.min(start + pageSize, count)}
-            </strong>{" "}
-            of <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
-            entries
+            <strong className="font-semibold text-[#53677f]">{Math.min(start + pageRows.length, count)}</strong>{" "}
+            of <strong className="font-semibold text-[#53677f]">{count}</strong> entries
           </span>
+
           <label className="flex items-center gap-1.5">
             <span>Show:</span>
             <select
@@ -565,9 +515,7 @@ const StateList = () => {
               className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[13px] text-[#34445a] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30"
             >
               {DEFAULT_PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
+                <option key={n} value={n}>{n}</option>
               ))}
             </select>
           </label>
@@ -577,16 +525,18 @@ const StateList = () => {
           <button
             type="button"
             onClick={() => setPage(currentPage - 1)}
-            disabled={currentPage === 1}
+            disabled={currentPage === 1 || loading}
             className={navBtn}
           >
             Previous
           </button>
+
           {pageNumbers.map((n) => (
             <button
               key={n}
               type="button"
               onClick={() => setPage(n)}
+              disabled={loading}
               aria-current={n === currentPage ? "page" : undefined}
               className={`${pageBtn} ${
                 n === currentPage
@@ -597,10 +547,11 @@ const StateList = () => {
               {n}
             </button>
           ))}
+
           <button
             type="button"
             onClick={() => setPage(currentPage + 1)}
-            disabled={currentPage === totalPagesLocal}
+            disabled={currentPage === totalPagesLocal || loading || totalRecords === 0}
             className={navBtn}
           >
             Next
@@ -608,79 +559,20 @@ const StateList = () => {
         </nav>
       </div>
 
-      {/* DIALOG */}
-      {confirm &&
-        (() => {
-          const tone = toneOf(confirm.next);
-          const { core, ring, Icon } = tone;
-          return (
-            <div className="fixed inset-0 z-50 grid place-items-center p-4">
-              <div
-                className="js-fade absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
-                onClick={() => setConfirm(null)}
-                aria-hidden="true"
-              />
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="list-dialog-title"
-                className="js-pop relative w-full max-w-[400px] overflow-hidden rounded-2xl bg-white shadow-2xl"
-              >
-                <div className={`h-1.5 w-full bg-gradient-to-r ${core}`} />
-                <button
-                  type="button"
-                  onClick={() => setConfirm(null)}
-                  aria-label="Close"
-                  className="absolute right-3 top-4 grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-[#9aa5b1] hover:bg-slate-100"
-                >
-                  <CloseIcon size={16} />
-                </button>
-
-                <div className="px-6 pb-5 pt-6 text-center">
-                  <div className="relative mx-auto mb-4 grid h-16 w-16 place-items-center">
-                    <span className={`js-halo absolute inset-0 rounded-full ${ring}`} />
-                    <span
-                      className={`relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br ${core} text-white shadow-lg`}
-                    >
-                      <Icon size={22} />
-                    </span>
-                  </div>
-                  <h2 id="list-dialog-title" className="text-[18px] font-bold text-[#1e2b36]">
-                    Set state to {confirm.next}?
-                  </h2>
-                  <p className="mx-auto mt-1.5 max-w-[320px] text-[13.5px] leading-relaxed text-[#6b7a88]">
-                    This state will be marked as {confirm.next.toLowerCase()}.
-                  </p>
-                  <div className="mt-4 rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] p-3 text-left">
-                    <p className="truncate text-[14px] font-semibold text-[#1e2b36]">
-                      {confirm.row["sM_StateName"] || "State"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-2.5 border-t border-[#e2e8ee] bg-[#f9fbfc] px-6 py-3.5">
-                  <button
-                    type="button"
-                    onClick={() => setConfirm(null)}
-                    disabled={busy}
-                    className="h-10 flex-1 cursor-pointer rounded-[10px] border border-[#dce3eb] bg-white text-[13.5px] font-semibold text-[#34445a] hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    autoFocus
-                    onClick={confirmToggle}
-                    disabled={busy}
-                    className={`h-10 flex-1 cursor-pointer rounded-[10px] bg-gradient-to-r ${core} text-[13.5px] font-semibold text-white shadow-md hover:brightness-105 active:scale-[0.98] disabled:opacity-60`}
-                  >
-                    {busy ? "Saving..." : `Yes, set ${confirm.next.toLowerCase()}`}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+      {/* CONFIRM DIALOG */}
+      {confirm && (
+        <StatusModal
+          isOpen
+          type="confirm"
+          title={`Set status to ${confirm.next}?`}
+          message={`Are you sure you want to set ${confirm.row.name ?? "this state"} to ${confirm.next.toLowerCase()}?`}
+          showCancel
+          busy={busy}
+          confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+          onCancel={() => setConfirm(null)}
+          onConfirm={confirmToggle}
+        />
+      )}
 
       {/* TOAST */}
       {toast && (
@@ -699,7 +591,7 @@ const StateList = () => {
                   : "bg-rose-500"
             }`}
           >
-            ✓
+            {toast.tone === "err" ? "!" : "✓"}
           </span>
           {toast.msg}
         </div>

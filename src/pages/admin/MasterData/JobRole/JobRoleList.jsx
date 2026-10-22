@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import StatusModal from "../../../../components/common/StatusModal";
+import { useStatusToast } from "../../../../components/common/StatusModalProvider";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -13,46 +15,15 @@ import {
   Plus,
 } from "lucide-react";
 import jobRoleApi from "../../../../api/Services/jobRoleApi";
+import jobCategoryApi from "../../../../api/Services/jobCategoryApi";
+import instituteTypeApi from "../../../../api/Services/instituteTypeApi";
 import { getApiErrorMessage } from "../../../../api/utils/apiHelpers";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
-/**
- * Format any date value into dd-mm-yyyy.
- * Returns "-" for invalid / missing / .NET default values.
- */
-const formatDate = (value) => {
-  if (value === null || value === undefined || value === "") return "-";
-
-  const s = String(value).trim();
-  if (s.startsWith("0001-01-01")) return "-";
-
-  let d;
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (plain) {
-    d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
-  } else {
-    d = value instanceof Date ? value : new Date(s);
-  }
-
-  if (Number.isNaN(d.getTime())) return "-";
-
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-
-  return `${dd}-${mm}-${yyyy}`;
-};
-
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
-
-const LIST_COLUMNS = [
-  { key: "jR_name",       label: "Job Role",   format: (v) => v ?? "-" },
-  { key: "jR_created_at", label: "Created At", format: (v) => formatDate(v) },
-  { key: "jR_updated_at", label: "Updated At", format: (v) => formatDate(v) },
-];
 
 /* ------------------------------ TONES ----------------------------- */
 
@@ -99,6 +70,8 @@ const toListRow = (item, srNo) => ({
   ...item,
   id: item["jR_job_role_id"],
   name: item["jR_name"],
+  jobCategoryName: item.jobCategoryName ?? "",
+  instituteTypeName: item.instituteTypeName ?? "",
   status: item["jR_is_active"] ? "Active" : "Inactive",
   srNo,
 });
@@ -114,10 +87,11 @@ const parseListResponse = (response, pageSize) => {
     };
   }
 
-  const list = inner?.data ?? [];
-  const totalRecords = inner?.totalRecords ?? list.length;
-  const totalPages =
-    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize));
+  const list = Array.isArray(inner?.data) ? inner.data : [];
+  const totalRecords = Number(inner?.totalRecords ?? list.length);
+  const totalPages = Number(
+    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize)),
+  );
 
   return { list, totalRecords, totalPages };
 };
@@ -135,6 +109,7 @@ const JobRoleList = () => {
   const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const loadRequestRef = useRef(0);
 
   const [query, setQuery] = useState({
     search: "",
@@ -143,93 +118,191 @@ const JobRoleList = () => {
 
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useStatusToast();
 
   /* --------------------------- FETCH --------------------------- */
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError("");
     try {
-      const response = await jobRoleApi.getAll({ pageNo: page, pageSize });
+      const params = {
+        PageNo: page,
+        PageSize: pageSize,
+        Search: query.search.trim(),
+      };
+
+      if (query.status === "Active") params.IsActive = true;
+      if (query.status === "Inactive") params.IsActive = false;
+
+      const response = await jobRoleApi.getAll(params);
+      if (requestId !== loadRequestRef.current) return;
       const { list, totalRecords: total, totalPages: pages } =
         parseListResponse(response, pageSize);
 
+      let categoryById = new Map();
+      let instituteTypeById = new Map();
+      if (list.length) {
+        try {
+          const categoriesResponse = await jobCategoryApi.getAllList();
+          const categoriesRoot = categoriesResponse?.data ?? categoriesResponse;
+          const categoryCandidates = [
+            categoriesRoot?.data?.data,
+            categoriesRoot?.Data?.Data,
+            categoriesRoot?.data,
+            categoriesRoot?.Data,
+            categoriesRoot,
+          ];
+          const categories = categoryCandidates.find(Array.isArray) || [];
+          categoryById = new Map(
+            categories.map((category) => [
+              String(category.jC_job_category_id),
+              category,
+            ]),
+          );
+          const missingInstituteTypeNames = categories.some(
+            (category) =>
+              category.jC_institute_type_id &&
+              !category.instituteTypeName,
+          );
+          if (missingInstituteTypeNames) {
+            try {
+              const institutesResponse = await instituteTypeApi.getAllList();
+              const institutesRoot = institutesResponse?.data ?? institutesResponse;
+              const instituteCandidates = [
+                institutesRoot?.data?.data,
+                institutesRoot?.Data?.Data,
+                institutesRoot?.data,
+                institutesRoot?.Data,
+                institutesRoot,
+              ];
+              const institutes = instituteCandidates.find(Array.isArray) || [];
+              instituteTypeById = new Map(
+                institutes.map((institute) => [
+                  String(institute.iT_institute_type_id),
+                  institute.iT_name ?? "",
+                ]),
+              );
+            } catch (err) {
+              console.error(
+                "Failed to resolve institute type names for job roles:",
+                err,
+              );
+              setError(
+                "Job roles loaded, but some Institute Type names could not be resolved.",
+              );
+            }
+          }
+        } catch (err) {
+          console.error("Failed to resolve job role relationships:", err);
+          setError(
+            "Job roles loaded, but their relationship names could not be resolved.",
+          );
+        }
+      }
+
+      if (
+        list.some((item) => {
+          const category = categoryById.get(String(item.jR_job_category_id));
+          return (
+            !category?.jC_name ||
+            !(
+              category.instituteTypeName ||
+              instituteTypeById.get(String(category.jC_institute_type_id))
+            )
+          );
+        })
+      ) {
+        setError(
+          "Job roles loaded, but one or more relationship names are unavailable.",
+        );
+      }
+
+      if (requestId !== loadRequestRef.current) return;
+
       setRows(
         list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
+          toListRow(
+            {
+              ...item,
+              jobCategoryName:
+                categoryById.get(String(item.jR_job_category_id))?.jC_name ??
+                "",
+              instituteTypeName:
+                categoryById.get(String(item.jR_job_category_id))
+                  ?.instituteTypeName ??
+                instituteTypeById.get(
+                  String(
+                    categoryById.get(String(item.jR_job_category_id))
+                      ?.jC_institute_type_id,
+                  ),
+                ) ??
+                "",
+            },
+            (page - 1) * pageSize + index + 1,
+          ),
         ),
       );
       setTotalRecords(total);
-      setTotalPages(pages);
+      setTotalPages(Math.max(1, Number(pages) || 1));
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       setRows([]);
       setTotalRecords(0);
-      setTotalPages(0);
+      setTotalPages(1);
       setError(getApiErrorMessage(err) || "Unable to load job role records.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, query.search, query.status]);
 
   useEffect(() => {
     load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
   const handleToggle = async (row) => {
     try {
       await jobRoleApi.toggleActive(row.id);
-      const response = await jobRoleApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
-
-      setRows(
-        list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
-      );
-      setTotalRecords(total);
-      setTotalPages(pages);
+      await load();
     } catch (err) {
       setError(getApiErrorMessage(err) || "Unable to update status.");
+      throw err;
     }
   };
 
   /* ---------------------------- QUERY HELPERS ---------------------------- */
 
-  const patchFilter = (patch) => setQuery((q) => ({ ...q, ...patch }));
+  const patchFilter = (patch) => {
+    setQuery((q) => ({ ...q, ...patch }));
+    setPage(1);
+  };
 
-  /* ---------------------------- FILTERED ROWS ---------------------------- */
+  /* ---------------------------- SERVER PAGINATION ---------------------------- */
 
-  const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (
-        q &&
-        !LIST_COLUMNS.some((c) =>
-          String(r[c.key] ?? "").toLowerCase().includes(q),
-        )
-      )
-        return false;
-      if (query.status !== "All" && r.status !== query.status) return false;
-      return true;
-    });
-  }, [rows, query]);
-
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
+  const count = totalRecords;
+  const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
-  const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const start = count === 0 ? 0 : (currentPage - 1) * pageSize;
+  const pageRows = rows;
 
   const pageNumbers = useMemo(() => {
     const win = 5;
     let from = Math.max(1, currentPage - Math.floor(win / 2));
     const to = Math.min(totalPagesLocal, from + win - 1);
     from = Math.max(1, to - win + 1);
-    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+    return Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => from + i);
   }, [currentPage, totalPagesLocal]);
 
   /* ---------------------------- TOAST ---------------------------- */
@@ -355,43 +428,41 @@ const JobRoleList = () => {
         </div>
       )}
 
-      {/* TABLE — header stays fixed; only body scrolls */}
+      {/* TABLE */}
       <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[930px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
-              <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
+              <col style={{ width: "200px" }} />
+              <col style={{ width: "190px" }} />
+              <col style={{ width: "190px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
-
             <thead className="sticky top-0 z-10">
               <tr>
                 <th scope="col" className={thClass}>Sr.No</th>
                 <th scope="col" className={thClass}>Job Role</th>
-                <th scope="col" className={thClass}>Created At</th>
-                <th scope="col" className={thClass}>Updated At</th>
+                <th scope="col" className={thClass}>Job Category</th>
+                <th scope="col" className={thClass}>Institute Type</th>
                 <th scope="col" className={thClass}>Status</th>
-                <th scope="col" className={thClass}>Actions</th>
+                <th scope="col" className={`${thClass} sticky right-0 z-20`}>Actions</th>
               </tr>
             </thead>
           </table>
         </div>
 
-        {/* Body-only scroll container */}
         <div
           className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
           style={{ scrollbarGutter: "stable" }}
         >
-          <table className="w-full min-w-[860px] table-fixed border-collapse text-[15px]">
+          <table className="w-full min-w-[930px] table-fixed border-collapse text-[15px]">
             <colgroup>
               <col style={{ width: "60px" }} />
-              <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "170px" }} />
+              <col style={{ width: "200px" }} />
+              <col style={{ width: "190px" }} />
+              <col style={{ width: "190px" }} />
               <col style={{ width: "130px" }} />
               <col style={{ width: "160px" }} />
             </colgroup>
@@ -439,17 +510,21 @@ const JobRoleList = () => {
                       </div>
                     </td>
 
-                    {/* Created At */}
                     <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row["jR_created_at"])}
+                      <div
+                        className="w-full min-w-0 truncate"
+                        title={String(row.jobCategoryName ?? "")}
+                      >
+                        {row.jobCategoryName || "-"}
                       </div>
                     </td>
 
-                    {/* Updated At */}
                     <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {formatDate(row["jR_updated_at"])}
+                      <div
+                        className="w-full min-w-0 truncate"
+                        title={String(row.instituteTypeName ?? "")}
+                      >
+                        {row.instituteTypeName || "-"}
                       </div>
                     </td>
 
@@ -463,7 +538,7 @@ const JobRoleList = () => {
                     </td>
 
                     {/* Actions */}
-                    <td className={`${td} justify-center text-center`}>
+                    <td className={`${td} sticky right-0 z-10 justify-center bg-white text-center`}>
                       <div className="flex items-center justify-center text-center gap-2">
                         <button
                           type="button"
@@ -598,80 +673,21 @@ const JobRoleList = () => {
       </div>
 
       {/* DIALOG */}
-      {confirm &&
-        (() => {
-          const tone = toneOf(confirm.next);
-          const { core, ring, Icon } = tone;
-          return (
-            <div className="fixed inset-0 z-50 grid place-items-center p-4">
-              <div
-                className="js-fade absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
-                onClick={() => setConfirm(null)}
-                aria-hidden="true"
-              />
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="list-dialog-title"
-                className="js-pop relative w-full max-w-[400px] overflow-hidden rounded-2xl bg-white shadow-2xl"
-              >
-                <div className={`h-1.5 w-full bg-gradient-to-r ${core}`} />
-                <button
-                  type="button"
-                  onClick={() => setConfirm(null)}
-                  aria-label="Close"
-                  className="absolute right-3 top-4 grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-[#9aa5b1] hover:bg-slate-100"
-                >
-                  <CloseIcon size={16} />
-                </button>
+      {confirm && (
+        <StatusModal
+          isOpen
+          type="confirm"
+          title={`Set status to ${confirm.next}?`}
+          message={`Are you sure you want to set ${confirm.row.name ?? confirm.row.fullName ?? confirm.row.organizationName ?? confirm.row.companyName ?? confirm.row.jobCategory ?? confirm.row["ctM_CityName"] ?? confirm.row["ctM_CountryName"] ?? "this record"} to ${confirm.next.toLowerCase()}?`}
+          showCancel
+          busy={busy}
+          confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+          onCancel={() => setConfirm(null)}
+          onConfirm={confirmToggle}
+        />
+      )}
 
-                <div className="px-6 pb-5 pt-6 text-center">
-                  <div className="relative mx-auto mb-4 grid h-16 w-16 place-items-center">
-                    <span className={`js-halo absolute inset-0 rounded-full ${ring}`} />
-                    <span
-                      className={`relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br ${core} text-white shadow-lg`}
-                    >
-                      <Icon size={22} />
-                    </span>
-                  </div>
-                  <h2 id="list-dialog-title" className="text-[18px] font-bold text-[#1e2b36]">
-                    Set job role to {confirm.next}?
-                  </h2>
-                  <p className="mx-auto mt-1.5 max-w-[320px] text-[13.5px] leading-relaxed text-[#6b7a88]">
-                    This job role will be marked as {confirm.next.toLowerCase()}.
-                  </p>
-                  <div className="mt-4 rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] p-3 text-left">
-                    <p className="truncate text-[14px] font-semibold text-[#1e2b36]">
-                      {confirm.row["jR_name"] || "Job Role"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-2.5 border-t border-[#e2e8ee] bg-[#f9fbfc] px-6 py-3.5">
-                  <button
-                    type="button"
-                    onClick={() => setConfirm(null)}
-                    disabled={busy}
-                    className="h-10 flex-1 cursor-pointer rounded-[10px] border border-[#dce3eb] bg-white text-[13.5px] font-semibold text-[#34445a] hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    autoFocus
-                    onClick={confirmToggle}
-                    disabled={busy}
-                    className={`h-10 flex-1 cursor-pointer rounded-[10px] bg-gradient-to-r ${core} text-[13.5px] font-semibold text-white shadow-md hover:brightness-105 active:scale-[0.98] disabled:opacity-60`}
-                  >
-                    {busy ? "Saving..." : `Yes, set ${confirm.next.toLowerCase()}`}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-      {/* TOAST */}
+      {/* TOAST */}{/* TOAST */}
       {toast && (
         <div
           key={toast.id}

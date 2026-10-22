@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import { ChevronDown, ChevronsLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import StatusModal from "../../../../components/common/StatusModal";
 import jobRoleApi from "../../../../api/Services/jobRoleApi";
+import jobCategoryApi from "../../../../api/Services/jobCategoryApi";
 import instituteTypeApi from "../../../../api/Services/instituteTypeApi";
 
 const selectClass =
@@ -23,7 +25,7 @@ const config = {
   updatedByField: "jR_updated_by",
   createdByNameField: "jR_created_by_name",
   updatedByNameField: "jR_updated_by_name",
-  instituteTypeField: "jR_institute_type_id",
+  jobCategoryField: "jR_job_category_id",
 };
 
 const listPath = "/admin/settings/master/jobRole";
@@ -95,6 +97,13 @@ const getErrorMessage = (error, fallback) =>
   error?.message ||
   fallback;
 
+const getSuccessMessage = (response, fallback) =>
+  response?.data?.message ||
+  response?.data?.Message ||
+  response?.data?.data?.message ||
+  response?.data?.data?.Message ||
+  fallback;
+
 const pickUserDisplay = (item, nameKey, idKey) => {
   const name = item?.[nameKey];
   if (name !== undefined && name !== null && String(name).trim() !== "") {
@@ -123,6 +132,11 @@ const CreateJobRole = ({ mode }) => {
 
   const [instituteTypes, setInstituteTypes] = useState([]);
   const [instituteTypeId, setInstituteTypeId] = useState("");
+  const [jobCategories, setJobCategories] = useState([]);
+  const [jobCategoryId, setJobCategoryId] = useState("");
+  const [jobCategoryName, setJobCategoryName] = useState("");
+  const [instituteTypeName, setInstituteTypeName] = useState("");
+  const [loadingCategories, setLoadingCategories] = useState(false);
 
   const [audit, setAudit] = useState({
     createdAt: "",
@@ -134,6 +148,26 @@ const CreateJobRole = ({ mode }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [modal, setModal] = useState(null);
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      message,
+      confirmText: extra.confirmText || "OK",
+      cancelText: extra.cancelText || "Cancel",
+      showCancel: false,
+      title: extra.title,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        extra.onCancel?.();
+      },
+    });
+  };
 
   useEffect(() => {
     if (!needsInstituteType) {
@@ -171,6 +205,9 @@ const CreateJobRole = ({ mode }) => {
       setName("");
       setStatus("Active");
       setInstituteTypeId("");
+      setJobCategoryId("");
+      setJobCategoryName("");
+      setInstituteTypeName("");
 
       setAudit({
         createdAt: "",
@@ -210,7 +247,50 @@ const CreateJobRole = ({ mode }) => {
         setName(item[config.nameField] ?? "");
         setStatus(item[config.activeField] ? "Active" : "Inactive");
 
-        setInstituteTypeId(String(item[config.instituteTypeField] ?? ""));
+        const savedCategoryId = String(item[config.jobCategoryField] ?? "");
+        setJobCategoryId(savedCategoryId);
+        let relatedCategoryName = "";
+        let relatedInstituteTypeName = "";
+        if (savedCategoryId) {
+          try {
+            const categoryResponse =
+              await jobCategoryApi.getById(savedCategoryId);
+            const category = extractRecord(categoryResponse);
+            relatedCategoryName = category?.jC_name ?? "";
+            const savedInstituteTypeId = category?.jC_institute_type_id;
+            setInstituteTypeId(String(savedInstituteTypeId ?? ""));
+            relatedInstituteTypeName = category?.instituteTypeName ?? "";
+
+            if (!relatedInstituteTypeName && savedInstituteTypeId) {
+              try {
+                const instituteResponse =
+                  await instituteTypeApi.getById(savedInstituteTypeId);
+                const institute = extractRecord(instituteResponse);
+                relatedInstituteTypeName = institute?.iT_name ?? "";
+              } catch (relationshipError) {
+                console.error(
+                  "Failed to resolve job role institute type:",
+                  relationshipError,
+                );
+                setError(
+                  "Job role loaded, but its Institute Type name could not be resolved.",
+                );
+              }
+            }
+          } catch (relationshipError) {
+            console.error(
+              "Failed to resolve job role category:",
+              relationshipError,
+            );
+            setError(
+              "Job role loaded, but its relationship names could not be resolved.",
+            );
+          }
+        }
+        if (!cancelled) {
+          setJobCategoryName(relatedCategoryName);
+          setInstituteTypeName(relatedInstituteTypeName);
+        }
 
         setAudit({
           createdAt: formatDate(item[config.createdAtField]),
@@ -242,6 +322,44 @@ const CreateJobRole = ({ mode }) => {
     };
   }, [id, isCreate]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setJobCategories([]);
+
+    if (!instituteTypeId || !needsInstituteType) {
+      setLoadingCategories(false);
+      return undefined;
+    }
+
+    const loadJobCategories = async () => {
+      setLoadingCategories(true);
+      try {
+        const response = await jobCategoryApi.getByInstituteType(
+          Number(instituteTypeId),
+        );
+        if (!cancelled) setJobCategories(extractList(response));
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load job categories:", err);
+          setError(getErrorMessage(err, "Failed to load job categories."));
+        }
+      } finally {
+        if (!cancelled) setLoadingCategories(false);
+      }
+    };
+
+    loadJobCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, [instituteTypeId, needsInstituteType]);
+
+  const handleInstituteTypeChange = (value) => {
+    setInstituteTypeId(value);
+    setJobCategoryId("");
+    setJobCategories([]);
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -250,12 +368,34 @@ const CreateJobRole = ({ mode }) => {
     const trimmedName = name.trim();
 
     if (!trimmedName) {
-      setError("Value is required.");
+      const message = "Value is required.";
+      setError(message);
+      if (isCreate) openStatus("warning", message);
       return;
     }
 
     if (needsInstituteType && !instituteTypeId) {
-      setError("Institute Type is required.");
+      const message = "Institute Type is required.";
+      setError(message);
+      if (isCreate) openStatus("warning", message);
+      return;
+    }
+    if (!jobCategoryId) {
+      const message = "Job Category is required.";
+      setError(message);
+      if (isCreate) openStatus("warning", message);
+      return;
+    }
+    if (
+      needsInstituteType &&
+      !jobCategories.some(
+        (category) =>
+          String(category.jC_job_category_id) === String(jobCategoryId),
+      )
+    ) {
+      const message = "Select a Job Category for the selected Institute Type.";
+      setError(message);
+      if (isCreate) openStatus("warning", message);
       return;
     }
 
@@ -268,13 +408,22 @@ const CreateJobRole = ({ mode }) => {
         const payload = {
           [config.activeField]: status === "Active",
           [config.nameField]: trimmedName,
+          [config.jobCategoryField]: Number(jobCategoryId),
         };
 
-        if (instituteTypeId) {
-          payload[config.instituteTypeField] = Number(instituteTypeId);
-        }
-
-        await config.api.create(payload);
+        const response = await config.api.create(payload);
+        openStatus(
+          "success",
+          getSuccessMessage(
+            response,
+            `${config.singular} "${trimmedName}" created successfully.`,
+          ),
+          {
+            title: "Created",
+            onConfirm: () => navigate(listPath),
+            onCancel: () => navigate(listPath),
+          },
+        );
       } else {
         // PUT /JobRole — id inside the body.
         const payload = {
@@ -282,23 +431,21 @@ const CreateJobRole = ({ mode }) => {
           [config.nameField]: trimmedName,
           [config.idField]: Number(id),
         };
-
-        // Preserve institute type on update when we have it.
-        if (instituteTypeId) {
-          payload[config.instituteTypeField] = Number(instituteTypeId);
+        if (jobCategoryId) {
+          payload[config.jobCategoryField] = Number(jobCategoryId);
         }
 
         await config.api.update(payload);
       }
 
-      navigate(listPath);
+      if (!isCreate) navigate(listPath);
     } catch (err) {
-      setError(
-        getErrorMessage(
-          err,
-          `Failed to ${isCreate ? "create" : "update"} job role.`,
-        ),
+      const message = getErrorMessage(
+        err,
+        `Failed to ${isCreate ? "create" : "update"} job role.`,
       );
+      setError(message);
+      if (isCreate) openStatus("error", message);
     } finally {
       setSaving(false);
     }
@@ -358,7 +505,7 @@ const CreateJobRole = ({ mode }) => {
                     <select
                       value={instituteTypeId}
                       onChange={(event) =>
-                        setInstituteTypeId(event.target.value)
+                        handleInstituteTypeChange(event.target.value)
                       }
                       disabled={disabled}
                       required={!isView}
@@ -381,6 +528,75 @@ const CreateJobRole = ({ mode }) => {
                     />
                   </div>
                 </div>
+              )}
+
+              {needsInstituteType && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Job Category
+                    {!isView && <span className="ml-1 text-red-500">*</span>}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={jobCategoryId}
+                      onChange={(event) =>
+                        setJobCategoryId(event.target.value)
+                      }
+                      disabled={disabled || loadingCategories || !instituteTypeId}
+                      required={!isView}
+                      className={selectClass}
+                    >
+                      <option value="">
+                        {!instituteTypeId
+                          ? "Select Institute Type first"
+                          : loadingCategories
+                            ? "Loading job categories..."
+                            : "Select Job Category"}
+                      </option>
+                      {jobCategories.map((category) => (
+                        <option
+                          key={category.jC_job_category_id}
+                          value={String(category.jC_job_category_id)}
+                        >
+                          {category.jC_name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={17}
+                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {!needsInstituteType && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Job Category
+                    </label>
+                    <input
+                      type="text"
+                      value={jobCategoryName || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Institute Type
+                    </label>
+                    <input
+                      type="text"
+                      value={instituteTypeName || "—"}
+                      readOnly
+                      disabled
+                      className={inputClass}
+                    />
+                  </div>
+                </>
               )}
 
               <div>
@@ -516,6 +732,18 @@ const CreateJobRole = ({ mode }) => {
           </form>
         </div>
       </div>
+      <StatusModal
+        isOpen={!!modal}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
     </div>
   );
 };

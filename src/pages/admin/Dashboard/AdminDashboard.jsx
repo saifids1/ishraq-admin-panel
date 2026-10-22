@@ -1,3 +1,4 @@
+import { useStatusToast } from "../../../components/common/StatusModalProvider";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AreaChart,
@@ -739,7 +740,7 @@ const AdminDashboard = () => {
     { id: 3, ...FEED_POOL[1], when: "12 min ago" },
   ]);
   const feedCursor = useRef(3);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useStatusToast();
 
   const r = RANGES[range];
   const sum = (k) => r.series.reduce((s, d) => s + d[k], 0);

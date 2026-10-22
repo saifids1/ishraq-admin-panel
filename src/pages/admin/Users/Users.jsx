@@ -1,3 +1,4 @@
+import { useStatusToast } from "../../../components/common/StatusModalProvider";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
@@ -106,7 +107,7 @@ export default function Users() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useStatusToast();
 
   // Navigation
   const goList = () => {

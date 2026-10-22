@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useStatusModal } from "../../../components/common/StatusModalProvider";
 import { Save, ChevronDown, ChevronsLeft } from "lucide-react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 
@@ -151,6 +152,8 @@ const MasterDataForm = ({ mode }) => {
   const [loadingInstituteTypes, setLoadingInstituteTypes] = useState(false);
   const [loadingJobRoles, setLoadingJobRoles] = useState(false);
   const [error, setError] = useState("");
+
+  const { showStatus } = useStatusModal();
 
   const isJobRole = masterKey === "jobRole";
   const isJobCategory = masterKey === "jobCategory";
@@ -507,15 +510,18 @@ const MasterDataForm = ({ mode }) => {
     try {
       if (isCreate) {
         await config.api.create(payload);
+        showStatus("success", `Created ${title} successfully.`);
       } else {
         await config.api.update({
           ...payload,
           [config.idField]: Number(id),
         });
+        showStatus("update", `Updated ${title} successfully.`);
       }
 
       navigate(listPath);
     } catch (err) {
+      showStatus("error", getErrorMessage(err, "Failed to save. Please try again."));
       setError(getErrorMessage(err, "Failed to save. Please try again."));
     } finally {
       setSaving(false);

@@ -16,6 +16,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
+import applicationApi from "../../../api/applicationApi";
 
 /* ---------------- Design tokens (match EmployerProfile) ---------------- */
 const T = {
@@ -48,6 +49,31 @@ const NAV = [
   { id: "resume", label: "Documents", icon: FileIcon },
   { id: "jobs", label: "Applied Jobs", icon: Briefcase },
 ];
+
+/* ---------------- API URL Configuration ---------------- */
+
+const DOCUMENT_BASE_URL = (process.env.REACT_APP_DOCUMENT_BASE_URL || "").trim();
+
+
+const toAbsoluteUrl = (url) => {
+  if (!url) return url;
+
+  const raw = String(url).trim();
+
+  // Already absolute (http/https) — trust it as-is
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  // Normalize the path
+  let clean = raw.replace(/\\/g, "/").replace(/^\/+/, "");
+  clean = clean.replace(/^wwwroot\//i, ""); // strip "wwwroot/"
+  clean = clean.replace(/^api\//i, "");     // strip accidental "api/"
+  clean = clean.replace(/^\/+/, "");
+
+  // No base configured → fall back to root-relative path (works same-origin)
+  if (!DOCUMENT_BASE_URL) return `/${clean}`;
+
+  return `${DOCUMENT_BASE_URL.replace(/\/+$/, "")}/${clean}`;
+};
 
 /* ---------------- Data helpers (unchanged logic) ---------------- */
 const STORAGE_KEY = "ishraq_jobseekers";
@@ -203,10 +229,98 @@ const toJobseekerView = (item, id) => {
               String(documentPath || "Resume / CV")
                 .split(/[\\/]/)
                 .pop(),
-            url: documentUrl,
+            url: toAbsoluteUrl(documentUrl || documentPath), // <-- Applied here
           }
         : null,
   };
+};
+
+/* ---------------- Applied jobs helpers ---------------- */
+const hasValue = (value) =>
+  value !== undefined && value !== null && String(value).trim() !== "";
+
+const text = (value) => (hasValue(value) ? String(value).trim() : "-");
+
+const lowerKeys = (value) =>
+  Object.fromEntries(
+    Object.entries(value ?? {}).map(([key, item]) => [
+      key.toLowerCase(),
+      item,
+    ]),
+  );
+
+const unwrapPage = (response) => {
+  const body = response?.data ?? response;
+  const result = body?.data ?? body?.Data ?? body;
+
+  return {
+    rows: Array.isArray(result?.data)
+      ? result.data
+      : Array.isArray(result?.Data)
+        ? result.Data
+        : [],
+    pageNo: Number(result?.pageNo ?? result?.PageNo ?? 1),
+    pageSize: Number(result?.pageSize ?? result?.PageSize ?? 10),
+    totalRecords: Number(
+      result?.totalRecords ?? result?.TotalRecords ?? 0,
+    ),
+    totalPages: Number(result?.totalPages ?? result?.TotalPages ?? 0),
+  };
+};
+
+const normalizeApplication = (raw) => {
+  const app = lowerKeys(raw);
+  const job = lowerKeys(app.jobrequirement);
+  const employer = lowerKeys(job.employer);
+  const jobLocation = lowerKeys(job.joblocation);
+  const employmentType = lowerKeys(job.employmenttype);
+
+  const requirementActive = job.jq_is_active;
+
+  return {
+    id: app.ap_application_id,
+    requirementId: app.ap_job_requirement_id,
+    applicationNumber: app.apply_id,
+    appliedDate: app.ap_created_at,
+
+    organizationName:
+      employer.em_organization_name ??
+      job.employername ??
+      raw?.organizationName,
+
+    position: job.jq_position_title,
+    department: job.jq_department_speciality,
+
+    location:
+      jobLocation.ctm_cityname ??
+      job.joblocationname ??
+      job.locationname,
+
+    employmentType:
+      employmentType.name ??
+      job.employmenttypename ??
+      job.jq_employment_type_name,
+
+    jobStatus:
+      requirementActive === true || requirementActive === 1
+        ? "Open"
+        : requirementActive === false || requirementActive === 0
+          ? "Closed"
+          : "-",
+
+    isActive: app.ap_is_active,
+  };
+};
+
+const formatDate = (value) => {
+  if (!hasValue(value)) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 };
 
 /* ---------------- Documents tab helper ---------------- */
@@ -235,13 +349,13 @@ const DocumentBox = ({ doc }) => {
 
       {doc.url ? (
         <div className="mt-2.5 flex gap-2">
-          <a
+          {/* <a
             href={doc.url}
             download={doc.name}
             className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#2f6b8a] text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
           >
             <Download size={13} /> Download
-          </a>
+          </a> */}
           <a
             href={doc.url}
             target="_blank"
@@ -270,6 +384,15 @@ const JobSeekerDetails = () => {
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  /* Applied jobs state */
+  const [appliedJobs, setAppliedJobs] = useState([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobsError, setJobsError] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -305,6 +428,40 @@ const JobSeekerDetails = () => {
       cancelled = true;
     };
   }, [id]);
+
+  /* Load applied jobs for this jobseeker */
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadJobs = async () => {
+      if (!id) return;
+      setJobsLoading(true);
+      setJobsError(null);
+      try {
+        const response = await applicationApi.getAppliedJobs(id, page, pageSize);
+        const result = unwrapPage(response);
+        if (!cancelled) {
+          setAppliedJobs(result.rows.map(normalizeApplication));
+          setTotalRecords(result.totalRecords);
+          setTotalPages(result.totalPages);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setJobsError(err?.message || "Failed to load applied jobs");
+          setAppliedJobs([]);
+          setTotalRecords(0);
+          setTotalPages(0);
+        }
+      } finally {
+        if (!cancelled) setJobsLoading(false);
+      }
+    };
+
+    loadJobs();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, page, pageSize]);
 
   /* Navigation helpers */
   const goToEditProfile = () => navigate(`/admin/jobseekers/${id}/edit`);
@@ -685,15 +842,93 @@ const JobSeekerDetails = () => {
                 {/* -------- Applied Jobs -------- */}
                 {tab === "jobs" && (
                   <section
-                    className={`${T.surface} ${T.radius} border ${T.border}`}
+                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
                   >
-                    <div className="px-4 py-12 text-center">
-                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                        <Inbox size={22} />
+                    <div className="p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <h3 className="font-semibold text-[#1a2b3c]">
+                          Applied Jobs
+                        </h3>
+                        <p className="text-xs text-[#5b6b7c]">
+                          {totalRecords} application
+                          {totalRecords !== 1 ? "s" : ""}
+                        </p>
                       </div>
-                      <p className="mt-3 text-[15px] text-[#1e2b36]">
-                        No applied jobs yet
-                      </p>
+
+                      {jobsLoading && (
+                        <div className="px-4 py-12 text-center">
+                          <p className="text-[#5b6b7c]">
+                            Loading applied jobs…
+                          </p>
+                        </div>
+                      )}
+
+                      {jobsError && !jobsLoading && (
+                        <div className="px-4 py-8 text-center text-[#5b6b7c]">
+                          {jobsError}
+                        </div>
+                      )}
+
+                      {!jobsLoading && !jobsError && appliedJobs.length === 0 && (
+                        <div className="px-4 py-12 text-center">
+                          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                            <Inbox size={22} />
+                          </div>
+                          <p className="mt-3 text-[15px] text-[#1e2b3c]">
+                            No applied jobs yet
+                          </p>
+                        </div>
+                      )}
+
+                      {!jobsLoading && !jobsError && appliedJobs.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr className="border-b border-[#e3e8ee]">
+                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
+                                  Position
+                                </th>
+                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
+                                  Organization
+                                </th>
+                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
+                                  Location
+                                </th>
+                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
+                                  Job Status
+                                </th>
+                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
+                                  Applied On
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {appliedJobs.map((application) => (
+                                <tr
+                                  key={application.id}
+                                  className="border-b border-[#e3e8ee] last:border-0"
+                                >
+                                  <td className="py-3 text-[#1a2b3c] font-medium">
+                                    {text(application.position)}
+                                  </td>
+                                  <td className="py-3 text-[#1a2b3c]">
+                                    {text(application.organizationName)}
+                                  </td>
+                                  <td className="py-3 text-[#1a2b3c]">
+                                    {text(application.location)}
+                                  </td>
+                                  <td className="py-3 text-[#1a2b3c]">
+                                    {application.jobStatus}
+                                  </td>
+                                  <td className="py-3 text-[#1a2b3c]">
+                                    {formatDate(application.appliedDate)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   </section>
                 )}

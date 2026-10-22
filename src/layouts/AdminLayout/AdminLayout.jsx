@@ -2,9 +2,11 @@ import React from "react";
 import { Outlet } from "react-router-dom";
 import AdminSidebar from "./AdminSidebar";
 import AdminHeader from "./AdminHeader";
+import { StatusModalProvider } from "../../components/common/StatusModalProvider";
 
 const AdminLayout = () => {
   return (
+    <StatusModalProvider>
     <div className="flex h-screen min-w-0 overflow-hidden bg-gray-50">
 
       {/* SIDEBAR */}
@@ -23,6 +25,7 @@ const AdminLayout = () => {
 
       </div>
     </div>
+    </StatusModalProvider>
   );
 };
 
