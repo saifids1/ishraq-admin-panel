@@ -1,6 +1,6 @@
 import StatusModal from "../../../components/common/StatusModal";
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -16,6 +16,7 @@ import {
   Building2,
   BadgeCheck,
   Briefcase,
+  RefreshCw,
 } from "lucide-react";
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
 import employerApi from "../../../api/Services/adminemployeelistApi";
@@ -35,17 +36,18 @@ const ORG_TYPE_STYLE = {
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
+const TABLE_MIN_WIDTH = 1450;
 
 const COLUMNS = [
-  { key: "srNo",          width: "60px"  },
-  { key: "companyName",   width: "230px" },
+  { key: "srNo", width: "60px" },
+  { key: "companyName", width: "230px" },
   { key: "contactPerson", width: "200px" },
-  { key: "orgType",       width: "170px" },
-  { key: "status",        width: "130px" },
-  { key: "jobs",          width: "130px" },
-  { key: "email",         width: "220px" },
-  { key: "mobile",        width: "150px" },
-  { key: "actions",       width: "160px" },
+  { key: "orgType", width: "170px" },
+  { key: "status", width: "130px" },
+  { key: "jobs", width: "130px" },
+  { key: "email", width: "220px" },
+  { key: "mobile", width: "150px" },
+  { key: "actions", width: "160px" },
 ];
 
 /* ------------------------------ TONES ----------------------------- */
@@ -150,7 +152,12 @@ const EmployerList = () => {
 
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useStatusToast();
+
+  /* refs for horizontal scroll sync */
+  const headerScrollRef = useRef(null);
+  const bodyScrollRef = useRef(null);
 
   /* --------------------------- FETCH --------------------------- */
 
@@ -182,6 +189,37 @@ const EmployerList = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  /* sync header & body horizontal scroll */
+  useEffect(() => {
+    const body = bodyScrollRef.current;
+    const header = headerScrollRef.current;
+    if (!body || !header) return undefined;
+
+    const onScroll = () => {
+      header.scrollLeft = body.scrollLeft;
+    };
+    body.addEventListener("scroll", onScroll);
+    return () => body.removeEventListener("scroll", onScroll);
+  }, []);
+
+  /* --------------------------- REFRESH --------------------------- */
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await load();
+    } catch (err) {
+      setToast({
+        id: Date.now(),
+        tone: "err",
+        msg: err?.message || "Could not refresh",
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, refreshing, setToast]);
 
   /* --------------------------- STATS --------------------------- */
 
@@ -235,7 +273,6 @@ const EmployerList = () => {
 
   const handleToggle = async (row, isActive) => {
     try {
-      // PATCH /api/Employer/{id}/active-status?isActive=true  (via adminemployeelistApi)
       await employerApi.toggleActive(row.id, isActive);
 
       const response = await employerApi.getAll({ pageNo: page, pageSize });
@@ -250,10 +287,6 @@ const EmployerList = () => {
       setTotalRecords(total);
       setTotalPages(pages);
     } catch (err) {
-      // Helpful for debugging 405/404 etc.
-      // NOTE: axiosInstance's interceptor rejects with a plain object
-      // ({ message, status, ... }) instead of the original axios error,
-      // so the status lives on `err.status` (fall back to err.response).
       const status = err?.status ?? err?.response?.status;
       if (status === 405) {
         console.error(
@@ -263,7 +296,7 @@ const EmployerList = () => {
         );
       }
       setError(getApiErrorMessage(err) || "Unable to update status.");
-      throw err; // propagate so confirmToggle shows the error toast
+      throw err;
     }
   };
 
@@ -351,17 +384,22 @@ const EmployerList = () => {
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
-  const td = "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
+  const td =
+    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2";
+  const btnRefresh =
+    "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
   const thClass =
-    "sticky top-0 z-10 bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-2 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)] whitespace-nowrap";
+    "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
-  const stickyActionsCol =
-    "sticky right-0 z-20 bg-white shadow-[-6px_0_8px_-6px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
+  /* Sticky actions column — header + cells */
   const stickyActionsHead =
-    "sticky top-0 right-0 z-30 text-white bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] shadow-[-6px_0_8px_-6px_rgba(30,43,54,0.25)]";
+    "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
+
+  const stickyActionsCell =
+    "sticky right-0 z-20 bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
 
   /* ---------------------------- RENDER ---------------------------- */
 
@@ -411,6 +449,26 @@ const EmployerList = () => {
 
             <button
               type="button"
+              title="Refresh table"
+              aria-label="Refresh table"
+              onClick={handleRefresh}
+              disabled={refreshing || loading}
+              className={btnRefresh}
+            >
+              <RefreshCw
+                size={15}
+                strokeWidth={2.2}
+                className={`transition-transform duration-500 ${
+                  refreshing ? "animate-spin" : "group-hover:rotate-90"
+                }`}
+              />
+              <span className="hidden sm:inline">
+                {refreshing ? "Refreshing..." : "Refresh"}
+              </span>
+            </button>
+
+            <button
+              type="button"
               title="Add"
               onClick={() => navigate("/admin/settings/master/employer/add")}
               className={btnPrimary}
@@ -433,199 +491,302 @@ const EmployerList = () => {
         {error && (
           <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <span>{error}</span>
-            <button type="button" onClick={load} className="font-semibold underline">
+            <button
+              type="button"
+              onClick={load}
+              className="font-semibold underline"
+            >
               Retry
             </button>
           </div>
         )}
 
-        {/* TABLE */}
-        <div
-          className="common-scrollbar mt-4 max-h-[55vh] overflow-auto rounded-lg border border-[#cbe1f4]"
-          style={{ scrollbarGutter: "stable" }}
-        >
-          <table className="w-full min-w-[1450px] table-fixed border-collapse text-[15px]">
-            <colgroup>
-              {COLUMNS.map((c) => (
-                <col key={c.key} style={{ width: c.width }} />
-              ))}
-            </colgroup>
+        {/*
+          TABLE LAYOUT
+          - Outer wrapper: 370px fixed, rounded border
+          - Header strip: fixed, no vertical scrollbar, horizontal-scroll
+            synced from body via ref
+          - Body: vertical scrollbar only here (scrollbarGutter reserves space)
+          - Actions column: sticky right in BOTH header and body
+        */}
+        <div className="mt-4 h-[370px] overflow-hidden rounded-lg border border-[#cbe1f4]">
+          <div className="flex h-full flex-col">
+            {/* Header strip — fixed, no vertical scrollbar */}
+            <div
+              ref={headerScrollRef}
+              className="shrink-0 overflow-hidden"
+            >
+              <table
+                className="w-full table-fixed border-collapse text-[15px]"
+                style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+              >
+                <colgroup>
+                  {COLUMNS.map((c) => (
+                    <col key={c.key} style={{ width: c.width }} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col" className={thClass}>
+                      Sr.No
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Organization Name
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Contact Person
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Organization Type
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Status
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Jobs
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Email
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Contact Number
+                    </th>
+                    <th scope="col" className={stickyActionsHead}>
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+              </table>
+            </div>
 
-            <thead>
-              <tr>
-                <th scope="col" className={thClass}>Sr.No</th>
-                <th scope="col" className={thClass}>Organization Name</th>
-                <th scope="col" className={thClass}>Contact Person</th>
-                <th scope="col" className={thClass}>Organization Type</th>
-                <th scope="col" className={thClass}>Status</th>
-                <th scope="col" className={thClass}>Jobs</th>
-                <th scope="col" className={thClass}>Email</th>
-                <th scope="col" className={thClass}>Contact Number</th>
-                <th scope="col" className={stickyActionsHead}>
-                  Actions
-                </th>
-              </tr>
-            </thead>
+            {/* Body — vertical scrollbar lives here only */}
+            <div
+              ref={bodyScrollRef}
+              className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
+              style={{ scrollbarGutter: "stable" }}
+            >
+              <table
+                className="w-full table-fixed border-collapse text-[15px]"
+                style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+              >
+                <colgroup>
+                  {COLUMNS.map((c) => (
+                    <col key={c.key} style={{ width: c.width }} />
+                  ))}
+                </colgroup>
 
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center">
-                      <span
-                        aria-hidden="true"
-                        className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
-                      />
-                      <p className="mt-3 text-[15px] text-[#6b7a88]">Loading...</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : pageRows.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
-                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                      <Inbox size={22} />
-                    </div>
-                    <p className="mt-3 text-[15px] text-[#1e2b36]">
-                      No employers yet
-                    </p>
-                  </td>
-                </tr>
-              ) : (
-                pageRows.map((row, index) => (
-                  <tr
-                    key={row.id ?? index}
-                    style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
-                    className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
-                  >
-                    <td className={`${td} tabular-nums`}>
-                      {start + index + 1}
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span className="flex flex-col min-w-0">
-                        <span className="font-medium text-slate-900 truncate">
-                          {row.companyName || "-"}
-                        </span>
-                        {[row.city, row.state].filter(Boolean).length > 0 && (
-                          <span className="text-[12px] text-[#6b7a88] truncate">
-                            {[row.city, row.state].filter(Boolean).join(", ")}
-                          </span>
-                        )}
-                      </span>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span className="flex flex-col min-w-0">
-                        <span className="font-medium text-slate-900 truncate">
-                          {row.contactPerson || "-"}
-                        </span>
-                        {row.designation && (
-                          <span className="text-[12px] text-[#6b7a88] truncate">
-                            {row.designation}
-                          </span>
-                        )}
-                      </span>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span
-                        title={row.orgType}
-                        className={`inline-flex h-7 w-[140px] items-center justify-center rounded-md px-2.5 text-[15px] ring-1 ring-inset whitespace-nowrap shadow-sm ${
-                          ORG_TYPE_STYLE[row.orgType] || "bg-gray-600 text-white ring-gray-700"
-                        }`}
-                      >
-                        <span className="truncate">{row.orgType || "-"}</span>
-                      </span>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        <span className={`${BADGE_BASE} ${toneOf(row.status).badge}`}>
-                          {row.status || "-"}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span className="tabular-nums">
-                        <strong className="font-semibold">
-                          {(row.jobs ?? []).filter((j) => j.status === "Open").length}
-                        </strong>
-                        <span className="text-[#6b7a88]"> open / {(row.jobs ?? []).length}</span>
-                      </span>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      {row.email ? (
-                        <span className="text-[15px] truncate block" title={row.email}>
-                          {row.email}
-                        </span>
-                      ) : (
-                        <span className="text-[#9aa5b1]">-</span>
-                      )}
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      {row.mobile ? (
-                        <span className="text-[15px] tabular-nums">{row.mobile}</span>
-                      ) : (
-                        <span className="text-[#9aa5b1]">-</span>
-                      )}
-                    </td>
-
-                    <td className={`${td} ${stickyActionsCol} text-center`}>
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          title={`View ${row.companyName || "Employer"}`}
-                          aria-label={`View ${row.companyName || "Employer"}`}
-                          onClick={() => navigate(`/admin/Employers/${row.id}`)}
-                          className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                        >
-                          <ChevronsRight size={14} strokeWidth={2.2} />
-                        </button>
-
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={row.status === "Active"}
-                          aria-label={
-                            row.status === "Active"
-                              ? `Deactivate ${row.companyName || "Employer"}`
-                              : `Activate ${row.companyName || "Employer"}`
-                          }
-                          title={
-                            row.status === "Active"
-                              ? "Active. Click to deactivate"
-                              : "Not active. Click to activate"
-                          }
-                          onClick={() => askToggle(row)}
-                          className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
-                            row.status === "Active"
-                              ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                              : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                          }`}
-                        >
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-12 text-center">
+                        <div className="flex flex-col items-center">
                           <span
-                            className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                              row.status === "Active" ? "translate-x-[18px]" : "translate-x-0"
-                            }`}
-                          >
-                            {row.status === "Active" ? (
-                              <UserRoundCheck size={13} strokeWidth={2.7} className="text-emerald-700" />
-                            ) : (
-                              <UserRoundX size={13} strokeWidth={2.7} className="text-rose-700" />
+                            aria-hidden="true"
+                            className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
+                          />
+                          <p className="mt-3 text-[15px] text-[#6b7a88]">
+                            Loading...
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : pageRows.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={9}
+                        className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+                      >
+                        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                          <Inbox size={22} />
+                        </div>
+                        <p className="mt-3 text-[15px] text-[#1e2b36]">
+                          No employers yet
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    pageRows.map((row, index) => (
+                      <tr
+                        key={row.id ?? index}
+                        style={{
+                          animationDelay: `${Math.min(index, 12) * 35}ms`,
+                        }}
+                        className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                      >
+                        <td className={`${td} tabular-nums`}>
+                          {start + index + 1}
+                        </td>
+
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="flex flex-col min-w-0">
+                            <span className="font-medium text-slate-900 truncate">
+                              {row.companyName || "-"}
+                            </span>
+                            {[row.city, row.state].filter(Boolean).length >
+                              0 && (
+                              <span className="text-[12px] text-[#6b7a88] truncate">
+                                {[row.city, row.state]
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </span>
                             )}
                           </span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                        </td>
+
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="flex flex-col min-w-0">
+                            <span className="font-medium text-slate-900 truncate">
+                              {row.contactPerson || "-"}
+                            </span>
+                            {row.designation && (
+                              <span className="text-[12px] text-[#6b7a88] truncate">
+                                {row.designation}
+                              </span>
+                            )}
+                          </span>
+                        </td>
+
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span
+                            title={row.orgType}
+                            className={`inline-flex h-7 w-[140px] items-center justify-center rounded-md px-2.5 text-[15px] ring-1 ring-inset whitespace-nowrap shadow-sm ${
+                              ORG_TYPE_STYLE[row.orgType] ||
+                              "bg-gray-600 text-white ring-gray-700"
+                            }`}
+                          >
+                            <span className="truncate">
+                              {row.orgType || "-"}
+                            </span>
+                          </span>
+                        </td>
+
+                        <td className={`${td} whitespace-nowrap`}>
+                          <div className="w-full min-w-0 truncate">
+                            <span
+                              className={`${BADGE_BASE} ${
+                                toneOf(row.status).badge
+                              }`}
+                            >
+                              {row.status || "-"}
+                            </span>
+                          </div>
+                        </td>
+
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="tabular-nums">
+                            <strong className="font-semibold">
+                              {
+                                (row.jobs ?? []).filter(
+                                  (j) => j.status === "Open",
+                                ).length
+                              }
+                            </strong>
+                            <span className="text-[#6b7a88]">
+                              {" "}
+                              open / {(row.jobs ?? []).length}
+                            </span>
+                          </span>
+                        </td>
+
+                        <td className={`${td} whitespace-nowrap`}>
+                          {row.email ? (
+                            <span
+                              className="text-[15px] truncate block"
+                              title={row.email}
+                            >
+                              {row.email}
+                            </span>
+                          ) : (
+                            <span className="text-[#9aa5b1]">-</span>
+                          )}
+                        </td>
+
+                        <td className={`${td} whitespace-nowrap`}>
+                          {row.mobile ? (
+                            <span className="text-[15px] tabular-nums">
+                              {row.mobile}
+                            </span>
+                          ) : (
+                            <span className="text-[#9aa5b1]">-</span>
+                          )}
+                        </td>
+
+                        <td
+                          className={`${td} ${stickyActionsCell} text-center`}
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              title={`View ${
+                                row.companyName || "Employer"
+                              }`}
+                              aria-label={`View ${
+                                row.companyName || "Employer"
+                              }`}
+                              onClick={() =>
+                                navigate(`/admin/Employers/${row.id}`)
+                              }
+                              className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                            >
+                              <ChevronsRight size={14} strokeWidth={2.2} />
+                            </button>
+
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={row.status === "Active"}
+                              aria-label={
+                                row.status === "Active"
+                                  ? `Deactivate ${
+                                      row.companyName || "Employer"
+                                    }`
+                                  : `Activate ${
+                                      row.companyName || "Employer"
+                                    }`
+                              }
+                              title={
+                                row.status === "Active"
+                                  ? "Active. Click to deactivate"
+                                  : "Not active. Click to activate"
+                              }
+                              onClick={() => askToggle(row)}
+                              className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
+                                row.status === "Active"
+                                  ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                                  : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
+                              }`}
+                            >
+                              <span
+                                className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                                  row.status === "Active"
+                                    ? "translate-x-[18px]"
+                                    : "translate-x-0"
+                                }`}
+                              >
+                                {row.status === "Active" ? (
+                                  <UserRoundCheck
+                                    size={13}
+                                    strokeWidth={2.7}
+                                    className="text-emerald-700"
+                                  />
+                                ) : (
+                                  <UserRoundX
+                                    size={13}
+                                    strokeWidth={2.7}
+                                    className="text-rose-700"
+                                  />
+                                )}
+                              </span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         {/* PAGINATION */}
@@ -640,7 +801,10 @@ const EmployerList = () => {
               <strong className="font-semibold text-[#53677f]">
                 {Math.min(start + pageSize, count)}
               </strong>{" "}
-              of <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
+              of{" "}
+              <strong className="font-semibold text-[#53677f]">
+                {count}
+              </strong>{" "}
               entries
             </span>
             <label className="flex items-center gap-1.5">
@@ -662,7 +826,10 @@ const EmployerList = () => {
             </label>
           </div>
 
-          <nav aria-label="Pagination" className="flex flex-wrap items-center gap-1">
+          <nav
+            aria-label="Pagination"
+            className="flex flex-wrap items-center gap-1"
+          >
             <button
               type="button"
               onClick={() => setPage(currentPage - 1)}
@@ -703,7 +870,13 @@ const EmployerList = () => {
             isOpen
             type="confirm"
             title={`Set status to ${confirm.next}?`}
-            message={`Are you sure you want to set ${confirm.row.name ?? confirm.row.fullName ?? confirm.row.position ?? confirm.row.organizationName ?? "this record"} to ${confirm.next.toLowerCase()}?`}
+            message={`Are you sure you want to set ${
+              confirm.row.name ??
+              confirm.row.fullName ??
+              confirm.row.position ??
+              confirm.row.organizationName ??
+              "this record"
+            } to ${confirm.next.toLowerCase()}?`}
             showCancel
             busy={busy}
             confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
@@ -712,7 +885,7 @@ const EmployerList = () => {
           />
         )}
 
-        {/* TOAST */}{/* TOAST */}
+        {/* TOAST */}
         {toast && (
           <div
             key={toast.id}

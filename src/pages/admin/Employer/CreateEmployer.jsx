@@ -1,18 +1,40 @@
 import React, { useEffect, useState } from "react";
-import { ChevronDown, ChevronsLeft } from "lucide-react";
+import { ChevronDown, ChevronsLeft, Eye, EyeOff } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import employerApi from "../../../api/Services/adminemployeelistApi";
-// import employerApi from "../../../api/Services/employerApi";
 import instituteTypeApi from "../../../api/Services/instituteTypeApi";
 import countryMasterApi from "../../../api/Services/countryMasterApi";
 import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
+import StatusModal from "../../../components/common/StatusModal";
 
+/* ---------- shared input/select styles ---------- */
 const selectClass =
-  "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+  "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
 const inputClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+
+/* ---------- field row: label : input ---------- */
+const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
+
+const FieldRow = ({ label, required, error, children, fullWidth }) => (
+  <div
+    className={`grid grid-cols-[160px_1fr] items-start gap-3 ${
+      fullWidth ? "md:col-span-2" : ""
+    }`}
+  >
+    <label className={`${FIELD_LABEL} pt-2`}>
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <div className="min-w-0">
+      {children}
+      {error && (
+        <span className="mt-1 block text-xs text-red-500">{error}</span>
+      )}
+    </div>
+  </div>
+);
 
 /* ----------------------------- CONFIG ----------------------------- */
 
@@ -101,7 +123,7 @@ const CreateEmployer = ({ mode }) => {
   const [isView, setIsView] = useState(mode === "view");
   const [isEdit, setIsEdit] = useState(mode === "edit");
 
-  // The 13 fields, exactly as the API expects
+  // Form state (13 fields)
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mobile, setMobile] = useState("");
@@ -115,6 +137,9 @@ const CreateEmployer = ({ mode }) => {
   const [cityId, setCityId] = useState("");
   const [website, setWebsite] = useState("");
   const [consentGiven, setConsentGiven] = useState(false);
+
+  // Password visibility toggle
+  const [showPassword, setShowPassword] = useState(false);
 
   // Dropdown sources
   const [instituteTypes, setInstituteTypes] = useState([]);
@@ -130,6 +155,52 @@ const CreateEmployer = ({ mode }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [modal, setModal] = useState(null);
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      title: extra.title,
+      message,
+      confirmText: extra.confirmText || "OK",
+      cancelText: extra.cancelText || "Cancel",
+      showCancel: false,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        extra.onCancel?.();
+      },
+    });
+  };
+
+  const openConfirm = ({
+    title,
+    message,
+    confirmText,
+    cancelText,
+    onConfirm,
+    onCancel,
+  }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: cancelText || "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        onCancel?.();
+      },
+    });
+  };
 
   /* --------------------------- LOOKUPS --------------------------- */
 
@@ -141,13 +212,19 @@ const CreateEmployer = ({ mode }) => {
         const r = await instituteTypeApi.getAllList();
         if (!cancelled) setInstituteTypes(extractList(r));
       } catch (err) {
-        if (!cancelled) console.error("institute types:", err);
+        if (!cancelled) {
+          setError(
+            getErrorMessage(err, "Unable to load institute types."),
+          );
+        }
       } finally {
         if (!cancelled) setLoadingInstituteTypes(false);
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -158,13 +235,17 @@ const CreateEmployer = ({ mode }) => {
         const r = await countryMasterApi.getAllList();
         if (!cancelled) setCountries(extractList(r));
       } catch (err) {
-        if (!cancelled) console.error("countries:", err);
+        if (!cancelled) {
+          setError(getErrorMessage(err, "Unable to load countries."));
+        }
       } finally {
         if (!cancelled) setLoadingCountries(false);
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -175,13 +256,17 @@ const CreateEmployer = ({ mode }) => {
         const r = await stateMasterApi.getAllList();
         if (!cancelled) setStates(extractList(r));
       } catch (err) {
-        if (!cancelled) console.error("states:", err);
+        if (!cancelled) {
+          setError(getErrorMessage(err, "Unable to load states."));
+        }
       } finally {
         if (!cancelled) setLoadingStates(false);
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -192,13 +277,17 @@ const CreateEmployer = ({ mode }) => {
         const r = await cityMasterApi.getAllList();
         if (!cancelled) setCities(extractList(r));
       } catch (err) {
-        if (!cancelled) console.error("cities:", err);
+        if (!cancelled) {
+          setError(getErrorMessage(err, "Unable to load cities."));
+        }
       } finally {
         if (!cancelled) setLoadingCities(false);
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /* --------------------------- RECORD LOAD --------------------------- */
@@ -276,37 +365,12 @@ const CreateEmployer = ({ mode }) => {
 
   /* --------------------------- SUBMIT --------------------------- */
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    if (saving) return;
-
-    
-    if (!EMAIL_RE.test(email.trim()))
-      return setError("Enter a valid email address.");
-    if (!MOBILE_RE.test(mobile.trim()))
-      return setError("Mobile must be exactly 10 digits.");
-
-    if (isCreate && password.trim().length < 6)
-      return setError("Password must be at least 6 characters.");
-
-    if (!organizationName.trim())
-      return setError("Organization Name is required.");
-    if (!instituteTypeId) return setError("Institute Type is required.");
-    if (!contactPerson.trim()) return setError("Contact Person is required.");
-    if (!countryId) return setError("Country is required.");
-    if (!stateId) return setError("State is required.");
-    if (!cityId) return setError("City is required.");
-
-    if (!consentGiven)
-      return setError("Please provide consent before submitting.");
-
+  const save = async () => {
     setSaving(true);
     setError("");
-
     try {
+      let response;
       if (isCreate) {
-        // POST /api/Employer — exactly the 13 fields.
         const payload = {
           email: email.trim(),
           password,
@@ -323,9 +387,8 @@ const CreateEmployer = ({ mode }) => {
           [config.consentField]: Boolean(consentGiven),
         };
 
-        await config.api.create(payload);
+        response = await config.api.create(payload);
       } else {
-        // PUT /api/Employer — same shape minus password, id in the body.
         const payload = {
           [config.idField]: Number(id),
           email: email.trim(),
@@ -342,20 +405,93 @@ const CreateEmployer = ({ mode }) => {
           [config.consentField]: Boolean(consentGiven),
         };
 
-        await config.api.update(id, payload);
+        response = await config.api.update(id, payload);
       }
 
-      navigate(listPath);
-    } catch (err) {
-      setError(
-        getErrorMessage(
-          err,
-          `Failed to ${isCreate ? "create" : "update"} employer.`,
-        ),
+      const responseMessage =
+        response?.data?.message || response?.data?.Message;
+      openStatus(
+        isCreate ? "success" : "update",
+        responseMessage ||
+          `Employer ${isCreate ? "created" : "updated"} successfully.`,
+        {
+          confirmText: "Continue",
+          onConfirm: () => navigate(listPath),
+        },
       );
+    } catch (err) {
+      const message = getErrorMessage(
+        err,
+        `Failed to ${isCreate ? "create" : "update"} employer.`,
+      );
+      setError(message);
+      openStatus("error", message);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (saving) return;
+
+    let validationMessage = "";
+    if (!organizationName.trim()) {
+      validationMessage = "Organization Name is required.";
+    } else if (!instituteTypeId) {
+      validationMessage = "Organization Type is required.";
+    } else if (!contactPerson.trim()) {
+      validationMessage = "Contact Person is required.";
+    } else if (!MOBILE_RE.test(mobile.trim())) {
+      validationMessage = "Mobile must be exactly 10 digits.";
+    } else if (!EMAIL_RE.test(email.trim())) {
+      validationMessage = "Enter a valid email address.";
+    } else if (isCreate && password.trim().length < 6) {
+      validationMessage = "Password must be at least 6 characters.";
+    } else if (!countryId) {
+      validationMessage = "Country is required.";
+    } else if (!stateId) {
+      validationMessage = "State is required.";
+    } else if (!cityId) {
+      validationMessage = "City is required.";
+    } else if (!consentGiven) {
+      validationMessage = "Please provide consent before submitting.";
+    } else if (
+      !instituteTypes.some(
+        (item) => String(item.iT_institute_type_id) === String(instituteTypeId),
+      )
+    ) {
+      validationMessage = "Select a valid Organization Type.";
+    } else if (
+      !countries.some((item) => String(item.cM_Id) === String(countryId))
+    ) {
+      validationMessage = "Select a valid Country.";
+    } else if (
+      !filteredStates.some((item) => String(item.sM_Id) === String(stateId))
+    ) {
+      validationMessage = "Select a State for the selected Country.";
+    } else if (
+      !filteredCities.some((item) => String(item.ctM_Id) === String(cityId))
+    ) {
+      validationMessage = "Select a City for the selected State.";
+    }
+
+    if (validationMessage) {
+      setError(validationMessage);
+      openStatus("warning", validationMessage);
+      return;
+    }
+
+    if (!isCreate) {
+      openConfirm({
+        title: "Confirm update",
+        message: "Are you sure you want to update this employer?",
+        confirmText: "Update",
+        onConfirm: save,
+      });
+      return;
+    }
+    await save();
   };
 
   const handleEditClick = () => {
@@ -388,7 +524,7 @@ const CreateEmployer = ({ mode }) => {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => navigate("/admin/employer")}
+                onClick={() => navigate(listPath)}
                 title="Back"
                 aria-label="Back"
                 className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
@@ -407,43 +543,22 @@ const CreateEmployer = ({ mode }) => {
           )}
 
           <form onSubmit={handleSubmit} className="p-4">
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-
-              {/* Full Name */}
-              {/* <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Full Name
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  disabled={disabled}
-                  required={!isView}
-                  className={inputClass}
-                />
-              </div> */}
-               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Organization Name
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+            <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+              {/* Organization Name */}
+              <FieldRow label="Organization Name" required>
                 <input
                   type="text"
                   value={organizationName}
                   onChange={(e) => setOrganizationName(e.target.value)}
                   disabled={disabled}
                   required={!isView}
+                  placeholder="Enter organization name"
                   className={inputClass}
                 />
-              </div>
-              {/* Institute Type */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Institute Type
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+              </FieldRow>
+
+              {/* Organization Type (Institute Type) */}
+              <FieldRow label="Organization Type" required>
                 <div className="relative">
                   <select
                     value={instituteTypeId}
@@ -455,7 +570,7 @@ const CreateEmployer = ({ mode }) => {
                     <option value="">
                       {loadingInstituteTypes
                         ? "Loading..."
-                        : "Select Institute Type"}
+                        : "Select Organization Type"}
                     </option>
                     {instituteTypes.map((t) => (
                       <option
@@ -467,63 +582,39 @@ const CreateEmployer = ({ mode }) => {
                     ))}
                   </select>
                   <ChevronDown
-                    size={17}
+                    size={16}
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                   />
                 </div>
-              </div>
-                 {/* Contact Person — single instance */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Contact Person
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+              </FieldRow>
+
+              {/* Contact Person */}
+              <FieldRow label="Contact Person" required>
                 <input
                   type="text"
                   value={contactPerson}
                   onChange={(e) => setContactPerson(e.target.value)}
                   disabled={disabled}
                   required={!isView}
+                  placeholder="Full name of contact person"
                   className={inputClass}
                 />
-              </div>
+              </FieldRow>
 
               {/* Designation */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Designation
-                </label>
+              <FieldRow label="Designation">
                 <input
                   type="text"
                   value={designation}
                   onChange={(e) => setDesignation(e.target.value)}
                   disabled={disabled}
+                  placeholder="e.g. HR Manager"
                   className={inputClass}
                 />
-              </div>
+              </FieldRow>
 
-              {/* Email */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Email
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={disabled}
-                  required={!isView}
-                  className={inputClass}
-                />
-              </div>
-
-              {/* Mobile */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Mobile
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+              {/* Mobile Number */}
+              <FieldRow label="Mobile Number" required>
                 <input
                   type="tel"
                   value={mobile}
@@ -533,42 +624,60 @@ const CreateEmployer = ({ mode }) => {
                   disabled={disabled}
                   required={!isView}
                   inputMode="numeric"
+                  placeholder="10-digit mobile number"
                   className={inputClass}
                 />
-              </div>
+              </FieldRow>
 
-              {/* Password — create only */}
+              {/* Email Address */}
+              <FieldRow label="Email Address" required>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={disabled}
+                  required={!isView}
+                  placeholder="Enter your email"
+                  className={inputClass}
+                />
+              </FieldRow>
+
+              {/* Password — create only, with show/hide toggle */}
               {isCreate && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Password
-                    <span className="ml-1 text-red-500">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={disabled}
-                    required
-                    autoComplete="new-password"
-                    className={inputClass}
-                  />
-                </div>
+                <FieldRow label="Password" required>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      disabled={disabled}
+                      required
+                      autoComplete="new-password"
+                      placeholder="Minimum 6 characters"
+                      className={`${inputClass} pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      disabled={disabled}
+                      title={showPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
+                      className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {showPassword ? (
+                        <EyeOff size={16} strokeWidth={2} />
+                      ) : (
+                        <Eye size={16} strokeWidth={2} />
+                      )}
+                    </button>
+                  </div>
+                </FieldRow>
               )}
 
-              {/* Organization Name */}
-             
-
-              
-
-           
-
               {/* Country */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Country
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+              <FieldRow label="Country" required>
                 <div className="relative">
                   <select
                     value={countryId}
@@ -591,18 +700,14 @@ const CreateEmployer = ({ mode }) => {
                     ))}
                   </select>
                   <ChevronDown
-                    size={17}
+                    size={16}
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                   />
                 </div>
-              </div>
+              </FieldRow>
 
               {/* State */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  State
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+              <FieldRow label="State" required>
                 <div className="relative">
                   <select
                     value={stateId}
@@ -628,18 +733,14 @@ const CreateEmployer = ({ mode }) => {
                     ))}
                   </select>
                   <ChevronDown
-                    size={17}
+                    size={16}
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                   />
                 </div>
-              </div>
+              </FieldRow>
 
               {/* City */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  City
-                  {!isView && <span className="ml-1 text-red-500">*</span>}
-                </label>
+              <FieldRow label="City" required>
                 <div className="relative">
                   <select
                     value={cityId}
@@ -662,48 +763,49 @@ const CreateEmployer = ({ mode }) => {
                     ))}
                   </select>
                   <ChevronDown
-                    size={17}
+                    size={16}
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                   />
                 </div>
-              </div>
+              </FieldRow>
 
               {/* Website */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Website
-                </label>
+              <FieldRow label="Website">
                 <input
                   type="text"
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
                   disabled={disabled}
-                  placeholder="example.com"
+                  placeholder="example.com (optional)"
                   className={inputClass}
                 />
-              </div>
+              </FieldRow>
 
               {/* Consent */}
-              <div className="md:col-span-2">
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={consentGiven}
-                    onChange={(e) => setConsentGiven(e.target.checked)}
-                    disabled={disabled}
-                    required={!isView}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#2f6b8a] focus:ring-[#2f6b8a]"
-                  />
-                  <span className="text-sm text-slate-700">
-                    I confirm that the above information is accurate and I
-                    consent to it being stored.
-                    {!isView && <span className="ml-1 text-red-500">*</span>}
-                  </span>
-                </label>
+              <div className="grid grid-cols-[160px_1fr] items-start gap-3 md:col-span-2">
+                <label className={`${FIELD_LABEL} pt-2`}>Consent</label>
+                <div>
+                  <label className="flex items-start gap-2 text-[13px] text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={consentGiven}
+                      onChange={(e) => setConsentGiven(e.target.checked)}
+                      disabled={disabled}
+                      required={!isView}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#2f6b8a] focus:ring-[#2f6b8a]"
+                    />
+                    <span>
+                      I agree to the Privacy Policy and Terms of Service of
+                      Ishraq HR.
+                      {!isView && <span className="ml-1 text-red-500">*</span>}
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
 
-            <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
+            {/* Footer */}
+            <div className="mt-6 flex justify-between gap-3 border-t border-slate-100 pt-4">
               <button
                 type="button"
                 onClick={() => navigate(listPath)}
@@ -735,6 +837,18 @@ const CreateEmployer = ({ mode }) => {
           </form>
         </div>
       </div>
+      <StatusModal
+        isOpen={Boolean(modal)}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
     </div>
   );
 };

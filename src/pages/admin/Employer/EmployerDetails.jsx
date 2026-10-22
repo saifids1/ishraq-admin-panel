@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ChevronsLeft, Building2, BriefcaseBusiness,
-  Pencil,
+  ChevronsLeft,
+  Building2,
+  BriefcaseBusiness,
   ExternalLink,
   Inbox,
   ChevronsRight,
+  UserRound,
+  MapPin,
+  Globe,
+  FileCheck2,
+  ShieldCheck,
 } from "lucide-react";
 import { getEmployerById } from "../../../api/employerApi";
 import { getJobRequirementsByEmployer } from "../../../api/jobRequirementApi";
@@ -19,12 +25,13 @@ const T = {
   surface: "bg-white",
   text: "text-[#1a2b3c]",
   textMuted: "text-[#5b6b7c]",
-  textFaint: "text-[#8895a4]",
+  textFaint: "text-black",
   accent: "text-[#1e5a7a]",
   hover: "hover:bg-[#f3f6f9]",
 };
 
-const val = (v) => (v && String(v).trim() ? v : "—");
+const val = (v) =>
+  v === null || v === undefined || String(v).trim() === "" ? "—" : v;
 
 const BADGE =
   "inline-flex h-6 items-center rounded-md px-2 text-[11.5px] font-semibold tracking-wide whitespace-nowrap ring-1 ring-inset";
@@ -51,17 +58,26 @@ const CARD_STATUS_DOT = {
 };
 
 /* ---------------- Shared class strings ---------------- */
-const FIELD_LABEL = `text-[11.5px] font-semibold uppercase tracking-wide ${T.textFaint}`;
+const FIELD_LABEL = `text-[13px] font-semibold tracking-wide ${T.textFaint}`;
 const FIELD_BOX = (mono) =>
-  `flex h-9 items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
+  `flex h-9 w-full items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
     mono ? "font-mono text-[12.5px]" : ""
   }`;
 
 const BTN_PRIMARY =
   "inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
 
-const BTN_OUTLINE =
-  "rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50";
+/* ---------------- Reusable row: label : value ---------------- */
+const FieldRow = ({ label, value, mono = false, children }) => (
+  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+    <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
+    <div className={FIELD_BOX(mono)}>
+      <span className="min-w-0 flex-1 truncate">
+        {children ?? val(value)}
+      </span>
+    </div>
+  </div>
+);
 
 /* ---------------- Nav ---------------- */
 const NAV = [
@@ -70,6 +86,8 @@ const NAV = [
 ];
 
 /* ---------------- Helpers ---------------- */
+
+// dd-mm-yyyy
 const formatDate = (iso) => {
   if (!iso) return "—";
   try {
@@ -83,18 +101,26 @@ const formatDate = (iso) => {
   }
 };
 
+// dd-mm-yyyy hh:mm AM/PM
 const formatDateTime = (iso) => {
   if (!iso) return "—";
   try {
     const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
     const dd = String(d.getDate()).padStart(2, "0");
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const yyyy = d.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
+    const timePart = d.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `${dd}-${mm}-${yyyy} ${timePart}`;
   } catch {
     return "—";
   }
 };
+
+const formatUser = (v) => val(v);
 
 /* ---------------- Page ---------------- */
 const EmployerProfile = () => {
@@ -128,13 +154,11 @@ const EmployerProfile = () => {
             ? jobResponse
             : jobResponse?.data ?? jobResponse?.Data ?? [];
         } catch {
-          // Keep the employer profile usable if its job requirements fail.
           jobRequirements = [];
         }
 
         if (!cancelled) {
           setEmp(json.data);
-          // Jobs not provided by this endpoint — keep empty for now
           setJobs(
             jobRequirements.map((job) => ({
               id: job.jQ_job_requirement_id,
@@ -166,11 +190,7 @@ const EmployerProfile = () => {
   }, [id]);
 
   /* ------------------- Navigation helpers ------------------- */
-  const goToEditProfile = () =>
-    navigate(`/admin/employers/${id}/edit`);
-
-  const goToViewJob = (jobId) =>
-    navigate(`/admin/settings/master/jobRequirement/${jobId}`);
+  const goToEditProfile = () => navigate(`/admin/employers/${id}/edit`);
 
   const pageTitle = emp?.eM_organization_name || "Employer";
 
@@ -208,11 +228,12 @@ const EmployerProfile = () => {
     );
   }
 
+  const active = emp.eM_is_active === true;
+
   return (
     <div className={`min-h-full ${T.bg}`}>
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-
           {/* MAIN HEADER */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
             <div className="flex items-center gap-3">
@@ -230,13 +251,6 @@ const EmployerProfile = () => {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* <button
-                type="button"
-                onClick={() => navigate(-1)}
-                className={BTN_OUTLINE}
-              >
-                Cancel
-              </button> */}
               <button
                 type="button"
                 onClick={goToEditProfile}
@@ -249,8 +263,7 @@ const EmployerProfile = () => {
 
           {/* BODY */}
           <div className="p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[170px_1fr]">
-
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
               {/* LEFT: vertical nav */}
               <aside className="md:sticky md:top-4 md:h-fit w-[11rem]">
                 <nav
@@ -275,7 +288,11 @@ const EmployerProfile = () => {
                         <span className="flex items-center gap-2.5">
                           <Icon
                             size={15}
-                            className={on ? "text-[#1e5a7a]" : "text-[#8895a4] group-hover:text-[#5b6b7c]"}
+                            className={
+                              on
+                                ? "text-[#1e5a7a]"
+                                : "text-[#8895a4] group-hover:text-[#5b6b7c]"
+                            }
                           />
                           {n.label}
                         </span>
@@ -287,161 +304,137 @@ const EmployerProfile = () => {
 
               {/* RIGHT: detail panel */}
               <main className="min-w-0">
-
                 {/* -------- Overview -------- */}
                 {tab === "overview" && (
-                  <section className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
-                    <div className="p-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Request No.</label>
-                          <div className={FIELD_BOX(true)}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.eM_request_no)}</span>
-                          </div>
+                  <section
+                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                  >
+                    <div className="space-y-6 p-4">
+                      {/* Organization */}
+                      <div>
+                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                          Organization Details
+                        </h3>
+                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        
+                          <FieldRow
+                            label="Organization Name"
+                            value={emp.eM_organization_name}
+                          />
+                          <FieldRow
+                            label="Organization Type"
+                            value={emp.instituteTypeName}
+                          />
+                          <FieldRow label="Website">
+                            {emp.eM_website ? (
+                              <a
+                                href={
+                                  /^https?:\/\//i.test(emp.eM_website)
+                                    ? emp.eM_website
+                                    : `https://${emp.eM_website}`
+                                }
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex min-w-0 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
+                              >
+                                <span className="truncate">
+                                  {emp.eM_website}
+                                </span>
+                                <ExternalLink size={11} />
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </FieldRow>
+                        
+                          <FieldRow label="Email / Username" value={emp.userName} />
+                            <FieldRow
+                            label="Status"
+                            value={active ? "Active" : "Inactive"}
+                          />
                         </div>
+                      </div>
 
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Organization Name</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.eM_organization_name)}</span>
-                          </div>
+                      {/* Contact Person */}
+                      <div>
+                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                          Contact Person
+                        </h3>
+                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                          <FieldRow
+                            label="Contact Person"
+                            value={emp.eM_contact_person}
+                          />
+                          <FieldRow
+                            label="Designation"
+                            value={emp.eM_designation}
+                          />
+                          <FieldRow
+                            label="Mobile"
+                            value={emp.mobile}
+                            mono
+                          />
+                          
+                          
                         </div>
+                      </div>
 
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Organization Type</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.instituteTypeName)}</span>
-                          </div>
+                      {/* Location */}
+                      <div>
+                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                          Location
+                        </h3>
+                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                          <FieldRow label="Country" value={emp.countryName} />
+                          <FieldRow label="State" value={emp.stateName} />
+                          <FieldRow label="City" value={emp.cityName} />
+                          
                         </div>
+                      </div>
 
-                        {/* <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Full Name</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.fullName)}</span>
-                          </div>
-                        </div> */}
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Username</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.userName)}</span>
-                          </div>
+                      {/* Consent */}
+                      <div>
+                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                          Consent
+                        </h3>
+                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                          <FieldRow
+                            label="Consent Given"
+                            value={emp.eM_consent_given ? "Yes" : "No"}
+                          />
+                          <FieldRow
+                            label="Consent At"
+                            value={formatDateTime(emp.eM_consent_at)}
+                          />
                         </div>
+                      </div>
 
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Website</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {emp.eM_website ? (
-                                <a
-                                  href={`https://${emp.eM_website.replace(/^https?:\/\//, "")}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
-                                >
-                                  {emp.eM_website} <ExternalLink size={11} />
-                                </a>
-                              ) : (
-                                "—"
-                              )}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Contact Person</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.eM_contact_person)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Designation</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.eM_designation)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Email</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.email)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Mobile</label>
-                          <div className={FIELD_BOX(true)}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.mobile)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>City</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.cityName)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>State</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.stateName)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Country</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{val(emp.countryName)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Consent Given</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {emp.eM_consent_given ? "Yes" : "No"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Consent At</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{formatDateTime(emp.eM_consent_at)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Created At</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{formatDateTime(emp.eM_created_at)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Updated At</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{formatDateTime(emp.eM_updated_at)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Activated At</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">{formatDateTime(emp.eM_activated_at)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className={FIELD_LABEL}>Status</label>
-                          <div className={FIELD_BOX()}>
-                            <span className="min-w-0 flex-1 truncate">
-                              {emp.eM_is_active ? "Active" : "Inactive"}
-                            </span>
-                          </div>
+                      {/* Audit Trail */}
+                      <div>
+                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                          Audit Trail
+                        </h3>
+                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                            <FieldRow
+                            label="Request No."
+                            value={emp.eM_request_no}
+                            mono
+                          />
+                          <FieldRow
+                            label="Created At"
+                            value={formatDateTime(emp.eM_created_at)}
+                          />
+                       
+                          <FieldRow
+                            label="Updated At"
+                            value={formatDateTime(emp.eM_updated_at)}
+                          />
+                         
+                          <FieldRow
+                            label="Activated At"
+                            value={formatDateTime(emp.eM_activated_at)}
+                          />
+                         
                         </div>
                       </div>
                     </div>
@@ -450,13 +443,17 @@ const EmployerProfile = () => {
 
                 {/* -------- Job Requirements -------- */}
                 {tab === "jobs" && (
-                  <section className={`${T.surface} ${T.radius} border ${T.border}`}>
+                  <section
+                    className={`${T.surface} ${T.radius} border ${T.border}`}
+                  >
                     {jobs.length === 0 ? (
                       <div className="px-4 py-12 text-center">
                         <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                           <Inbox size={22} />
                         </div>
-                        <p className="mt-3 text-[15px] text-[#1e2b36]">No jobs yet</p>
+                        <p className="mt-3 text-[15px] text-[#1e2b36]">
+                          No jobs yet
+                        </p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
@@ -465,9 +462,11 @@ const EmployerProfile = () => {
                             ? Math.round((job.filled / job.vacancies) * 100)
                             : 0;
                           const statusStyle =
-                            CARD_STATUS_STYLE[job.status] || CARD_STATUS_STYLE.Closed;
+                            CARD_STATUS_STYLE[job.status] ||
+                            CARD_STATUS_STYLE.Closed;
                           const statusDot =
-                            CARD_STATUS_DOT[job.status] || CARD_STATUS_DOT.Closed;
+                            CARD_STATUS_DOT[job.status] ||
+                            CARD_STATUS_DOT.Closed;
                           return (
                             <div
                               key={job.id}
@@ -475,22 +474,32 @@ const EmployerProfile = () => {
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                  <p className={`truncate text-[13.5px] font-semibold ${T.text}`}>
+                                  <p
+                                    className={`truncate text-[13.5px] font-semibold ${T.text}`}
+                                  >
                                     {job.title || "-"}
                                   </p>
                                   <p className="mt-0.5 text-[11.5px] text-[#8895a4]">
-                                    Posted {job.postedOn} · Deadline {job.deadline}
+                                    Posted {job.postedOn} · Deadline{" "}
+                                    {job.deadline}
                                   </p>
                                 </div>
-                                <span className={`${BADGE} ${statusStyle} gap-1.5`}>
-                                  <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+                                <span
+                                  className={`${BADGE} ${statusStyle} gap-1.5`}
+                                >
+                                  <span
+                                    className={`h-1.5 w-1.5 rounded-full ${statusDot}`}
+                                  />
                                   {job.status || "-"}
                                 </span>
                               </div>
 
                               <div className="mt-3 flex items-center gap-2">
                                 <span
-                                  className={`${BADGE} ${CATEGORY_STYLE[job.category] || CATEGORY_STYLE.Other}`}
+                                  className={`${BADGE} ${
+                                    CATEGORY_STYLE[job.category] ||
+                                    CATEGORY_STYLE.Other
+                                  }`}
                                 >
                                   {job.category || "-"}
                                 </span>
@@ -519,7 +528,11 @@ const EmployerProfile = () => {
                                   type="button"
                                   title={`View ${job.title || "Job"}`}
                                   aria-label={`View ${job.title || "Job"}`}
-                                  onClick={() => navigate(`/admin/job-requirements/${job.id}`)}
+                                  onClick={() =>
+                                    navigate(
+                                      `/admin/job-requirements/${job.id}`,
+                                    )
+                                  }
                                   className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                                 >
                                   <ChevronsRight size={14} strokeWidth={2.2} />

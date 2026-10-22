@@ -95,8 +95,8 @@ const cfg = {
     { key: "CE_mobile", label: "Mobile" },
     { key: "CE_email", label: "Email" },
     { key: "CE_course_considered", label: "Course / Career" },
-    { key: "CE_question", label: "Question", type: "multiline" },
     { key: "CE_created_at", label: "Submitted", type: "date" },
+    { key: "CE_question", label: "Question", type: "multiline" },
   ],
 };
 
@@ -417,7 +417,7 @@ const CareerEnquiryDetails = ({ formType = "career" }) => {
                   {cfg.detailFields.map((field) => (
                     <div key={field.key} className="flex gap-10">
                       <div className="text-[14px] uppercase tracking-wide mt-1 w-[8rem]">
-                        {field.label} :
+                        {field.label}
                       </div>
                       <div className="text-[15px] font-medium mt-0">
                         {renderValue(field, record[field.key])}

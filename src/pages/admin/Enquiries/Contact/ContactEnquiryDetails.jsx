@@ -93,7 +93,6 @@ const cfg = {
     { key: "CN_email", label: "Email" },
     { key: "UserTypeName", label: "You are" },
     { key: "CN_subject", label: "Subject" },
-    { key: "CN_message", label: "Message", type: "multiline" },
     { key: "CN_created_at", label: "Submitted", type: "date" },
   ],
 };
@@ -105,6 +104,10 @@ const inputClass =
 
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
+
+/* Read-only display input — looks like a normal input but not editable */
+const displayInputClass =
+  "w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition cursor-default";
 
 const statusIdFromName = (value, options) => {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -227,23 +230,33 @@ const ContactEnquiryDetails = ({ formType = "contact" }) => {
     }
   };
 
-  const renderValue = (field, value) => {
-    if (value === null || value === undefined || value === "") {
-      return <span className="text-slate-400">—</span>;
-    }
+  /* ---------- Render the raw display string for a field ---------- */
+  const fieldDisplayValue = (field, value) => {
+    if (value === null || value === undefined || value === "") return "";
 
     switch (field.type) {
       case "date":
         return formatDate(value);
+      default:
+        return String(value);
+    }
+  };
 
-      case "rating":
-        return <Stars value={value} />;
+  /* ---------- Render the field's <input> value block ---------- */
+  const renderFieldInput = (field, value) => {
+    /* Rating → styled stars inside a display box */
+    if (field.type === "rating") {
+      return (
+        <div className={displayInputClass}>
+          {value ? <Stars value={value} /> : <span>—</span>}
+        </div>
+      );
+    }
 
-      case "multiline":
-        return <span className="whitespace-pre-wrap break-words">{value}</span>;
-
-      case "file":
-        return (
+    /* File → button inside a display box */
+    if (field.type === "file") {
+      return (
+        <div className={displayInputClass}>
           <button
             type="button"
             onClick={openFile}
@@ -252,11 +265,31 @@ const ContactEnquiryDetails = ({ formType = "contact" }) => {
             <FileText size={16} />
             View Document
           </button>
-        );
-
-      default:
-        return <span className="break-words">{String(value)}</span>;
+        </div>
+      );
     }
+
+    /* Multiline → textarea-style display */
+    if (field.type === "multiline") {
+      return (
+        <textarea
+          readOnly
+          value={fieldDisplayValue(field, value)}
+          rows={3}
+          className={`${displayInputClass} resize-none`}
+        />
+      );
+    }
+
+    /* Default → single-line read-only input */
+    return (
+      <input
+        type="text"
+        readOnly
+        value={fieldDisplayValue(field, value)}
+        className={displayInputClass}
+      />
+    );
   };
 
   // ---- Submit response ----
@@ -389,19 +422,39 @@ const ContactEnquiryDetails = ({ formType = "contact" }) => {
             </div>
           ) : record ? (
             <div className="p-4">
-              {/* Details list */}
+              {/* Details list — every value lives inside an input box */}
               <div className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
                   {cfg.detailFields.map((field) => (
-                    <div key={field.key} className="flex gap-10">
-                      <div className="text-[14px] uppercase tracking-wide mt-1 w-28">
-                        {field.label} :
-                      </div>
-                      <div className="text-[15px] font-medium mt-0">
-                        {renderValue(field, record[field.key] || "-")}
+                    <div key={field.key} className="grid grid-cols-[120px_1fr] items-center gap-3">
+                      <label
+                        htmlFor={`field-${field.key}`}
+                        className="text-[14px] font-semibold text-black"
+                      >
+                        {field.label}
+                      </label>
+                      <div className="min-w-0">
+                        {renderFieldInput(field, record[field.key])}
                       </div>
                     </div>
                   ))}
+                </div>
+
+                {/* Message — full width, multiline read-only input */}
+                <div className="mt-4 grid grid-cols-[120px_1fr] items-start gap-3">
+                  <label
+                    htmlFor="field-CN_message"
+                    className="pt-2 text-[14px] font-semibold text-black"
+                  >
+                    Message
+                  </label>
+                  <textarea
+                    id="field-CN_message"
+                    readOnly
+                    value={record.CN_message ?? ""}
+                    rows={3}
+                    className={`${displayInputClass} resize-none`}
+                  />
                 </div>
               </div>
 

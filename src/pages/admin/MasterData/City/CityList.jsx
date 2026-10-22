@@ -13,6 +13,7 @@ import {
   UserRoundX,
   ChevronsRight,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 import cityMasterApi from "../../../../api/Services/cityMasterApi";
 import { getApiErrorMessage } from "../../../../api/utils/apiHelpers";
@@ -45,13 +46,12 @@ const formatDate = (value) => {
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
+const TABLE_MIN_WIDTH = 760;
 
 const LIST_COLUMNS = [
-  { key: "ctM_CityName",   label: "City Name",   format: (v) => v ?? "-" },
-  { key: "stateName",      label: "State",       format: (v) => v ?? "-" },
+  { key: "ctM_CityName", label: "City Name", format: (v) => v ?? "-" },
+  { key: "stateName", label: "State", format: (v) => v ?? "-" },
   { key: "ctM_PostalCode", label: "Postal Code", format: (v) => v ?? "-" },
-  // { key: "ctM_CreatedAt",  label: "Created At",  format: (v) => formatDate(v) },
-  // { key: "ctM_UpdatedAt",  label: "Updated At",  format: (v) => formatDate(v) },
 ];
 
 /* ------------------------------ TONES ----------------------------- */
@@ -131,6 +131,7 @@ const CityList = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -146,6 +147,10 @@ const CityList = () => {
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useStatusToast();
+
+  /* refs for horizontal scroll sync */
+  const headerScrollRef = useRef(null);
+  const bodyScrollRef = useRef(null);
 
   /* --------------------------- FETCH --------------------------- */
 
@@ -197,6 +202,37 @@ const CityList = () => {
     }
   }, [page, totalPages]);
 
+  /* sync header & body horizontal scroll */
+  useEffect(() => {
+    const body = bodyScrollRef.current;
+    const header = headerScrollRef.current;
+    if (!body || !header) return undefined;
+
+    const onScroll = () => {
+      header.scrollLeft = body.scrollLeft;
+    };
+    body.addEventListener("scroll", onScroll);
+    return () => body.removeEventListener("scroll", onScroll);
+  }, []);
+
+  /* --------------------------- REFRESH (silent) --------------------------- */
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await load();
+    } catch (err) {
+      setToast({
+        id: Date.now(),
+        tone: "err",
+        msg: err?.message || "Could not refresh",
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, refreshing, setToast]);
+
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
   const handleToggle = async (row) => {
@@ -215,7 +251,7 @@ const CityList = () => {
     setPage(1);
   };
 
-  /* ---------------------------- FILTERED ROWS ---------------------------- */
+  /* ---------------------------- PAGINATION ---------------------------- */
 
   const count = totalRecords;
   const totalPagesLocal = Math.max(1, totalPages);
@@ -274,9 +310,12 @@ const CityList = () => {
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
-  const td = "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
+  const td =
+    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2";
+  const btnRefresh =
+    "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
@@ -324,6 +363,27 @@ const CityList = () => {
             />
           </div>
 
+          {/* Refresh — silent, only reloads table */}
+          <button
+            type="button"
+            title="Refresh table"
+            aria-label="Refresh table"
+            onClick={handleRefresh}
+            disabled={refreshing || loading}
+            className={btnRefresh}
+          >
+            <RefreshCw
+              size={15}
+              strokeWidth={2.2}
+              className={`transition-transform duration-500 ${
+                refreshing ? "animate-spin" : "group-hover:rotate-90"
+              }`}
+            />
+            <span className="hidden sm:inline">
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </span>
+          </button>
+
           <button
             type="button"
             title="Add"
@@ -348,182 +408,222 @@ const CityList = () => {
       {error && (
         <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <span>{error}</span>
-          <button type="button" onClick={load} className="font-semibold underline">
+          <button
+            type="button"
+            onClick={load}
+            className="font-semibold underline"
+          >
             Retry
           </button>
         </div>
       )}
 
-      {/* TABLE — header stays fixed; only body scrolls */}
-      <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] table-fixed border-collapse text-[15px]">
-            <colgroup>
-              <col style={{ width: "60px" }} />
-              <col style={{ width: "auto" }} />
-              <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "130px" }} />
-              <col style={{ width: "160px" }} />
-            </colgroup>
-
-            <thead className="sticky top-0 z-10">
-              <tr>
-                <th scope="col" className={thClass}>Sr.No</th>
-                <th scope="col" className={thClass}>City Name</th>
-                <th scope="col" className={thClass}>State</th>
-                <th scope="col" className={thClass}>Postal Code</th>
-                <th scope="col" className={thClass}>Status</th>
-                <th scope="col" className={thClass}>Actions</th>
-              </tr>
-            </thead>
-          </table>
-        </div>
-
-        {/* Body-only scroll container */}
-        <div
-          className="common-scrollbar max-h-[55vh] overflow-y-auto overflow-x-auto"
-          style={{ scrollbarGutter: "stable" }}
-        >
-          <table className="w-full min-w-[760px] table-fixed border-collapse text-[15px]">
-            <colgroup>
-              <col style={{ width: "60px" }} />
-              <col style={{ width: "auto" }} />
-              <col style={{ width: "auto" }} />
-              <col style={{ width: "170px" }} />
-              <col style={{ width: "130px" }} />
-              <col style={{ width: "160px" }} />
-            </colgroup>
-
-            <tbody>
-              {loading ? (
+      {/* TABLE — fixed 470px height, header fixed, body-only scroll */}
+      <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
+        <div className="flex h-full flex-col">
+          {/* Header strip — fixed, no vertical scrollbar */}
+          <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
+            <table
+              className="w-full table-fixed border-collapse text-[15px]"
+              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+            >
+              <colgroup>
+                <col style={{ width: "60px" }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: "170px" }} />
+                <col style={{ width: "130px" }} />
+                <col style={{ width: "160px" }} />
+              </colgroup>
+              <thead>
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center">
-                      <span
-                        aria-hidden="true"
-                        className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
-                      />
-                      <p className="mt-3 text-[15px] text-[#6b7a88]">Loading...</p>
-                    </div>
-                  </td>
+                  <th scope="col" className={thClass}>
+                    Sr.No
+                  </th>
+                  <th scope="col" className={thClass}>
+                    City Name
+                  </th>
+                  <th scope="col" className={thClass}>
+                    State
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Postal Code
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Status
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Actions
+                  </th>
                 </tr>
-              ) : pageRows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="border-t border-[#e2e8ee] px-4 py-12 text-center">
-                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                      <Inbox size={22} />
-                    </div>
-                    <p className="mt-3 text-[15px] text-[#1e2b36]">
-                      No cities yet
-                    </p>
-                  </td>
-                </tr>
-              ) : (
-                pageRows.map((row, index) => (
-                  <tr
-                    key={row.id ?? index}
-                    style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
-                    className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
-                  >
-                    {/* Sr.No */}
-                    <td className={`${td} tabular-nums`}>
-                      {start + index + 1}
-                    </td>
+              </thead>
+            </table>
+          </div>
 
-                    {/* City Name */}
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row["ctM_CityName"] ?? "-"}
-                      </div>
-                    </td>
+          {/* Body — vertical scrollbar lives here only */}
+          <div
+            ref={bodyScrollRef}
+            className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
+            style={{ scrollbarGutter: "stable" }}
+          >
+            <table
+              className="w-full table-fixed border-collapse text-[15px]"
+              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+            >
+              <colgroup>
+                <col style={{ width: "60px" }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: "170px" }} />
+                <col style={{ width: "130px" }} />
+                <col style={{ width: "160px" }} />
+              </colgroup>
 
-                    {/* State */}
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row["stateName"] ?? "-"}
-                      </div>
-                    </td>
-
-                    {/* Postal Code */}
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        {row["ctM_PostalCode"] ?? "-"}
-                      </div>
-                    </td>
-
-                    {/* Status */}
-                    <td className={`${td} whitespace-nowrap`}>
-                      <div className="w-full min-w-0 truncate">
-                        <span className={`${BADGE_BASE} ${toneOf(row.status).badge}`}>
-                          {row.status || "-"}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Actions */}
-                    <td className={`${td} justify-center text-center`}>
-                      <div className="flex items-center justify-center text-center gap-2">
-                        <button
-                          type="button"
-                          title={`View ${row["ctM_CityName"] || "City"}`}
-                          aria-label={`View ${row["ctM_CityName"] || "City"}`}
-                          onClick={() => navigate(`/admin/settings/master/cityMaster/${row.id}/view`)}
-                          className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                        >
-                          <ChevronsRight size={14} strokeWidth={2.2} />
-                        </button>
-
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={row.status === "Active"}
-                          aria-label={
-                            row.status === "Active"
-                              ? `Deactivate ${row["ctM_CityName"] || "City"}`
-                              : `Activate ${row["ctM_CityName"] || "City"}`
-                          }
-                          title={
-                            row.status === "Active"
-                              ? "Active. Click to deactivate"
-                              : "Not active. Click to activate"
-                          }
-                          onClick={() => askToggle(row)}
-                          className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
-                            row.status === "Active"
-                              ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                              : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                          }`}
-                        >
-                          <span
-                            className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                              row.status === "Active"
-                                ? "translate-x-[18px]"
-                                : "translate-x-0"
-                            }`}
-                          >
-                            {row.status === "Active" ? (
-                              <UserRoundCheck
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-emerald-700"
-                              />
-                            ) : (
-                              <UserRoundX
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-rose-700"
-                              />
-                            )}
-                          </span>
-                        </button>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center">
+                      <div className="flex flex-col items-center">
+                        <span
+                          aria-hidden="true"
+                          className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
+                        />
+                        <p className="mt-3 text-[15px] text-[#6b7a88]">
+                          Loading...
+                        </p>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : pageRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+                    >
+                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                        <Inbox size={22} />
+                      </div>
+                      <p className="mt-3 text-[15px] text-[#1e2b36]">
+                        No cities yet
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  pageRows.map((row, index) => (
+                    <tr
+                      key={row.id ?? index}
+                      style={{
+                        animationDelay: `${Math.min(index, 12) * 35}ms`,
+                      }}
+                      className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                    >
+                      <td className={`${td} tabular-nums`}>
+                        {start + index + 1}
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row["ctM_CityName"] ?? "-"}
+                        </div>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row["stateName"] ?? "-"}
+                        </div>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row["ctM_PostalCode"] ?? "-"}
+                        </div>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          <span
+                            className={`${BADGE_BASE} ${
+                              toneOf(row.status).badge
+                            }`}
+                          >
+                            {row.status || "-"}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className={`${td} justify-center text-center`}>
+                        <div className="flex items-center justify-center text-center gap-2">
+                          <button
+                            type="button"
+                            title={`View ${
+                              row["ctM_CityName"] || "City"
+                            }`}
+                            aria-label={`View ${
+                              row["ctM_CityName"] || "City"
+                            }`}
+                            onClick={() =>
+                              navigate(
+                                `/admin/settings/master/cityMaster/${row.id}/view`,
+                              )
+                            }
+                            className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                          >
+                            <ChevronsRight size={14} strokeWidth={2.2} />
+                          </button>
+
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={row.status === "Active"}
+                            aria-label={
+                              row.status === "Active"
+                                ? `Deactivate ${
+                                    row["ctM_CityName"] || "City"
+                                  }`
+                                : `Activate ${row["ctM_CityName"] || "City"}`
+                            }
+                            title={
+                              row.status === "Active"
+                                ? "Active. Click to deactivate"
+                                : "Not active. Click to activate"
+                            }
+                            onClick={() => askToggle(row)}
+                            className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
+                              row.status === "Active"
+                                ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                                : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
+                            }`}
+                          >
+                            <span
+                              className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                                row.status === "Active"
+                                  ? "translate-x-[18px]"
+                                  : "translate-x-0"
+                              }`}
+                            >
+                              {row.status === "Active" ? (
+                                <UserRoundCheck
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-emerald-700"
+                                />
+                              ) : (
+                                <UserRoundX
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-rose-700"
+                                />
+                              )}
+                            </span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -561,7 +661,10 @@ const CityList = () => {
           </label>
         </div>
 
-        <nav aria-label="Pagination" className="flex flex-wrap items-center gap-1">
+        <nav
+          aria-label="Pagination"
+          className="flex flex-wrap items-center gap-1"
+        >
           <button
             type="button"
             onClick={() => setPage(currentPage - 1)}
@@ -602,7 +705,16 @@ const CityList = () => {
           isOpen
           type="confirm"
           title={`Set status to ${confirm.next}?`}
-          message={`Are you sure you want to set ${confirm.row.name ?? confirm.row.fullName ?? confirm.row.organizationName ?? confirm.row.companyName ?? confirm.row.jobCategory ?? confirm.row["ctM_CityName"] ?? confirm.row["ctM_CountryName"] ?? "this record"} to ${confirm.next.toLowerCase()}?`}
+          message={`Are you sure you want to set ${
+            confirm.row.name ??
+            confirm.row.fullName ??
+            confirm.row.organizationName ??
+            confirm.row.companyName ??
+            confirm.row.jobCategory ??
+            confirm.row["ctM_CityName"] ??
+            confirm.row["ctM_CountryName"] ??
+            "this record"
+          } to ${confirm.next.toLowerCase()}?`}
           showCancel
           busy={busy}
           confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
@@ -611,7 +723,7 @@ const CityList = () => {
         />
       )}
 
-      {/* TOAST */}{/* TOAST */}
+      {/* TOAST */}
       {toast && (
         <div
           key={toast.id}
