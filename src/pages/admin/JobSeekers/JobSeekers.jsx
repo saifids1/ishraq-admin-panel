@@ -39,14 +39,14 @@ const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
 const TABLE_MIN_WIDTH = 1000;
 
 const COLUMNS = [
-  { key: "srNo", width: "60px" },
-  { key: "fullName", width: "230px" },
-  { key: "jobCategory", width: "180px" },
-  { key: "status", width: "130px" },
-  { key: "experience", width: "120px" },
-  { key: "email", width: "auto" },
-  { key: "mobile", width: "160px" },
-  { key: "actions", width: "160px" },
+  { key: "srNo", width: "60px", minWidth: "50px" },
+  { key: "fullName", width: "230px", minWidth: "150px" },
+  { key: "jobCategory", width: "180px", minWidth: "130px" },
+  { key: "status", width: "130px", minWidth: "100px" },
+  { key: "experience", width: "120px", minWidth: "90px" },
+  { key: "email", width: "auto", minWidth: "170px" },
+  { key: "mobile", width: "160px", minWidth: "120px" },
+  { key: "actions", width: "160px", minWidth: "120px" },
 ];
 
 /* ------------------------------ TONES ----------------------------- */
@@ -98,8 +98,7 @@ const toListRow = (item, srNo) => ({
     item["jobseeker_id"] ??
     item["jS_id"] ??
     item.id,
-  fullName:
-    item["fullName"] ?? item["jS_full_name"] ?? item["jS_name"] ?? "",
+  fullName: item["fullName"] ?? item["jS_full_name"] ?? item["jS_name"] ?? "",
   email: item["email"] ?? item["jS_email"] ?? "",
   mobile: item["mobile"] ?? item["jS_mobile"] ?? "",
   city: item["cityName"] ?? item["city"] ?? "",
@@ -125,7 +124,7 @@ const toListRow = (item, srNo) => ({
           ? item.isActive
             ? "Active"
             : "Inactive"
-        : item.status ?? "Inactive",
+          : (item.status ?? "Inactive"),
   srNo,
 });
 
@@ -181,8 +180,11 @@ const JobSeekerList = () => {
     setError("");
     try {
       const response = await jobseekerApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
+      const {
+        list,
+        totalRecords: total,
+        totalPages: pages,
+      } = parseListResponse(response, pageSize);
 
       setRows(
         list.map((item, index) =>
@@ -291,8 +293,11 @@ const JobSeekerList = () => {
       await jobseekerApi.toggleActive(row.id, isActive);
 
       const response = await jobseekerApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
+      const {
+        list,
+        totalRecords: total,
+        totalPages: pages,
+      } = parseListResponse(response, pageSize);
 
       setRows(
         list.map((item, index) =>
@@ -327,7 +332,10 @@ const JobSeekerList = () => {
       if (
         q &&
         !["fullName", "email", "mobile", "jobCategory", "city", "state"].some(
-          (k) => String(u[k] ?? "").toLowerCase().includes(q),
+          (k) =>
+            String(u[k] ?? "")
+              .toLowerCase()
+              .includes(q),
         )
       )
         return false;
@@ -509,23 +517,23 @@ const JobSeekerList = () => {
           - Body wrapper: overflow-y-auto with scrollbarGutter: "stable"
             so header width = body content width exactly
         */}
+        {/* TABLE */}
         <div className="mt-4 h-[370px] overflow-hidden rounded-lg border border-[#cbe1f4]">
           <div className="flex h-full flex-col">
-            {/* Header — no vertical scrollbar, no gutter */}
-            <div
-              ref={headerScrollRef}
-              className="shrink-0 overflow-hidden"
-            >
+            {/* Header — hidden scrollbar, synced with body */}
+            <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
               <table
-                className="w-full table-fixed border-collapse text-[15px]"
+                className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
                 style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
               >
                 <colgroup>
                   {COLUMNS.map((c) => (
-                    <col key={c.key} style={{ width: c.width }} />
+                    <col
+                      key={c.key}
+                      style={{ width: c.width, minWidth: c.minWidth }}
+                    />
                   ))}
                 </colgroup>
-
                 <thead>
                   <tr>
                     <th scope="col" className={thClass}>
@@ -557,22 +565,24 @@ const JobSeekerList = () => {
               </table>
             </div>
 
-            {/* Body — vertical scrollbar lives here only */}
+            {/* Body — scrolls horizontally on small screens */}
             <div
               ref={bodyScrollRef}
-              className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
+              className="common-scrollbar min-h-0 flex-1 overflow-auto"
               style={{ scrollbarGutter: "stable" }}
             >
               <table
-                className="w-full table-fixed border-collapse text-[15px]"
+                className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
                 style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
               >
                 <colgroup>
                   {COLUMNS.map((c) => (
-                    <col key={c.key} style={{ width: c.width }} />
+                    <col
+                      key={c.key}
+                      style={{ width: c.width, minWidth: c.minWidth }}
+                    />
                   ))}
                 </colgroup>
-
                 <tbody>
                   {loading ? (
                     <tr>
@@ -582,7 +592,7 @@ const JobSeekerList = () => {
                             aria-hidden="true"
                             className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
                           />
-                          <p className="mt-3 text-[15px] text-[#6b7a88]">
+                          <p className="mt-3 text-[14px] text-[#6b7a88] sm:text-[15px]">
                             Loading...
                           </p>
                         </div>
@@ -597,7 +607,7 @@ const JobSeekerList = () => {
                         <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                           <Inbox size={22} />
                         </div>
-                        <p className="mt-3 text-[15px] text-[#1e2b36]">
+                        <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
                           No jobseekers yet
                         </p>
                       </td>
@@ -616,25 +626,18 @@ const JobSeekerList = () => {
                         </td>
 
                         <td className={`${td} whitespace-nowrap`}>
-                          <span className="flex flex-col min-w-0">
-                            <span className="font-medium text-slate-900 truncate">
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium text-slate-900">
                               {row.fullName || "-"}
                             </span>
-                            {[row.city, row.state].filter(Boolean).length >
-                              0 && (
-                              <span className="text-[12px] text-[#6b7a88] truncate">
-                                {[row.city, row.state]
-                                  .filter(Boolean)
-                                  .join(", ")}
-                              </span>
-                            )}
+                           
                           </span>
                         </td>
 
                         <td className={`${td} whitespace-nowrap`}>
                           <span
                             title={row.jobCategory}
-                            className={`inline-flex h-7 w-[140px] items-center justify-center rounded-md px-2.5 text-[15px] ring-1 ring-inset whitespace-nowrap shadow-sm ${
+                            className={`inline-flex h-7 max-w-[140px] items-center justify-center truncate rounded-md px-2 text-[12px] ring-1 ring-inset shadow-sm sm:text-[14px] ${
                               CATEGORY_STYLE[row.jobCategory] ||
                               CATEGORY_STYLE.Other
                             }`}
@@ -646,20 +649,16 @@ const JobSeekerList = () => {
                         </td>
 
                         <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            <span
-                              className={`${BADGE_BASE} ${
-                                toneOf(row.status).badge
-                              }`}
-                            >
-                              {row.status || "-"}
-                            </span>
-                          </div>
+                          <span
+                            className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${
+                              toneOf(row.status).badge
+                            }`}
+                          >
+                            {row.status || "-"}
+                          </span>
                         </td>
 
-                        <td
-                          className={`${td} whitespace-nowrap tabular-nums`}
-                        >
+                        <td className={`${td} whitespace-nowrap tabular-nums`}>
                           <strong className="font-semibold">
                             {row.experience ?? 0}
                           </strong>
@@ -669,7 +668,7 @@ const JobSeekerList = () => {
                         <td className={`${td} whitespace-nowrap`}>
                           {row.email ? (
                             <span
-                              className="text-[15px] truncate block"
+                              className="block truncate text-[12px] sm:text-[14px]"
                               title={row.email}
                             >
                               {row.email}
@@ -681,7 +680,7 @@ const JobSeekerList = () => {
 
                         <td className={`${td} whitespace-nowrap`}>
                           {row.mobile ? (
-                            <span className="text-[15px] tabular-nums">
+                            <span className="text-[12px] tabular-nums sm:text-[14px]">
                               {row.mobile}
                             </span>
                           ) : (
@@ -689,14 +688,12 @@ const JobSeekerList = () => {
                           )}
                         </td>
 
-                        <td className={`${td} justify-center text-center`}>
-                          <div className="flex items-center justify-center gap-2">
+                        <td className={`${td} text-center`}>
+                          <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                             <button
                               type="button"
                               title={`View ${row.fullName || "Jobseeker"}`}
-                              aria-label={`View ${
-                                row.fullName || "Jobseeker"
-                              }`}
+                              aria-label={`View ${row.fullName || "Jobseeker"}`}
                               onClick={() =>
                                 navigate(`/admin/jobseekers/${row.id}`)
                               }
@@ -711,9 +708,7 @@ const JobSeekerList = () => {
                               aria-checked={row.status === "Active"}
                               aria-label={
                                 row.status === "Active"
-                                  ? `Deactivate ${
-                                      row.fullName || "Jobseeker"
-                                    }`
+                                  ? `Deactivate ${row.fullName || "Jobseeker"}`
                                   : `Activate ${row.fullName || "Jobseeker"}`
                               }
                               title={
@@ -760,7 +755,6 @@ const JobSeekerList = () => {
             </div>
           </div>
         </div>
-
         {/* PAGINATION */}
         <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
@@ -835,32 +829,32 @@ const JobSeekerList = () => {
         </div>
 
         {/* DIALOG */}
-       {/* DIALOG */}
-{confirm && (
-  <StatusModal
-    isOpen
-    type="confirm"
-    title={`Set status to ${confirm.next}?`}
-    message={
-      <>
-        Are you sure you want to set{" "}
-        <strong className="font-semibold text-slate-900">
-          {confirm.row.fullName ||
-            confirm.row.name ||
-            confirm.row.position ||
-            confirm.row.organizationName ||
-            "this record"}
-        </strong>{" "}
-        to {confirm.next.toLowerCase()}?
-      </>
-    }
-    showCancel
-    busy={busy}
-    confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
-    onCancel={() => setConfirm(null)}
-    onConfirm={confirmToggle}
-  />
-)}
+        {/* DIALOG */}
+        {confirm && (
+          <StatusModal
+            isOpen
+            type="confirm"
+            title={`Set status to ${confirm.next}?`}
+            message={
+              <>
+                Are you sure you want to set{" "}
+                <strong className="font-semibold text-slate-900">
+                  {confirm.row.fullName ||
+                    confirm.row.name ||
+                    confirm.row.position ||
+                    confirm.row.organizationName ||
+                    "this record"}
+                </strong>{" "}
+                to {confirm.next.toLowerCase()}?
+              </>
+            }
+            showCancel
+            busy={busy}
+            confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+            onCancel={() => setConfirm(null)}
+            onConfirm={confirmToggle}
+          />
+        )}
 
         {/* TOAST */}
         {toast && (
