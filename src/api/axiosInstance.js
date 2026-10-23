@@ -10,13 +10,13 @@ const axiosInstance = axios.create({
   // },
    baseURL:
     process.env.REACT_APP_API_BASE_URL ||
-    "https://localhost:44367/api",
+    "https://ishraqhr-api.ishraqhr.com/api",
   headers: {
     "Content-Type": "application/json",
   },
   
   
-  timeout: 60000,
+  // timeout: 60000,
 });
 
 axiosInstance.interceptors.response.use(

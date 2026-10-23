@@ -290,7 +290,7 @@ const JobSeekerDashboard = () => {
   },
   {
     title: "Feedback",
-    value: toCount(FEEDBACK_SUMMARY.feedback),
+    value: 0,
     note: "received",
     icon: MessageSquareText,
     color: "#10b981",
@@ -298,7 +298,7 @@ const JobSeekerDashboard = () => {
   },
   {
     title: "Complaints",
-    value: toCount(FEEDBACK_SUMMARY.complaints),
+    value: 0,
     note: "raised",
     icon: CircleAlert,
     color: "#f59e0b",

@@ -313,7 +313,7 @@ const OrganizationDetails = () => {
 
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
-            <p className="font-semibold text-slate-800">{employer.EM_request_no}</p>
+            {/* <p className="font-semibold text-slate-800">{employer.EM_request_no}</p> */}
             
 
             <div className="flex items-center gap-3">
@@ -386,6 +386,10 @@ const OrganizationDetails = () => {
                           Organization Details
                         </h3>
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                          <FieldRow
+                            label="Employer Id"
+                            value={employer.EM_request_no}
+                          />
                           <FieldRow
                             label="Organization Name"
                             value={employer.EM_organization_name}
@@ -479,26 +483,27 @@ const OrganizationDetails = () => {
 
                       {/* Audit Trail */}
                       <div>
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Audit Trail
-                        </h3>
+                       
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          {/* <FieldRow
-                            label="Request No."
-                            value={employer.EM_request_no}
-                            mono
-                          /> */}
                           <FieldRow
                             label="Created At"
-                            value={formatDateTime(employer.EM_created_at)}
+                            value={employer.eM_created_at}
+                          />
+                          <FieldRow
+                            label="Created By"
+                            value={employer.createdByName}
                           />
                           <FieldRow
                             label="Updated At"
-                            value={formatDateTime(employer.EM_updated_at)}
+                            value={employer.eM_updated_at}
+                          />
+                          <FieldRow
+                            label="Updated By"
+                            value={employer.updatedByName}
                           />
                           <FieldRow
                             label="Activated At"
-                            value={formatDateTime(employer.EM_activated_at)}
+                            value={employer.eM_activated_at}
                           />
                         </div>
                       </div>

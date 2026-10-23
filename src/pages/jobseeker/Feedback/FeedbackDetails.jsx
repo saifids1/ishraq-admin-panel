@@ -1,180 +1,126 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import {
-  ChevronsLeft,
-  Clock3,
-  Loader2,
-  LoaderCircle,
-  PauseCircle,
-  CheckCircle2,
-  ShieldAlert,Star,
-} from "lucide-react";
-
+import { useNavigate, useParams } from "react-router-dom";
+import { ChevronsLeft, LoaderCircle } from "lucide-react";
 import { getFeedbackById } from "../../../api/feedbackApi";
 
-const ACCENT = "#2f6b8a";
-
-/* ------------------------- STATUS TONES ------------------------- */
-/* Mirrors ComplaintDetails / CareerEnquiryList palette. */
-
-const REQUEST_STATUS_TONES = {
-  new: {
-    badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20",
-    icon: Clock3,
-  },
-  inprogress: {
-    badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20",
-    icon: Loader2,
-  },
-  hold: {
-    badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-    icon: PauseCircle,
-  },
-  closed: {
-    badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20",
-    icon: CheckCircle2,
-  },
-};
-
-const NEUTRAL_TONE = {
-  badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20",
-  icon: ShieldAlert,
-};
-
-const BADGE_BASE =
-  "inline-flex h-7 min-w-[110px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
-
-const normalizeRequestStatus = (value) => {
-  const raw = String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_-]+/g, "");
-  if (!raw) return null;
-  if (raw === "new") return "new";
-  if (
-    ["open", "inprogress", "inprocess", "processing", "ongoing"].includes(raw)
-  )
-    return "inprogress";
-  if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
-  if (["closed", "close", "completed", "done", "resolved"].includes(raw))
-    return "closed";
-  return null;
-};
-
-const requestToneOf = (value) => {
-  const key = normalizeRequestStatus(value);
-  if (!key) return { ...NEUTRAL_TONE, key: null };
-  return { ...REQUEST_STATUS_TONES[key], key };
-};
-
-/* ------------------------- HELPERS ------------------------- */
-
-const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
+/* ------------------------------ HELPERS ------------------------------ */
 
 const formatDate = (value) => {
-  if (!value) return "—";
-  const normalized = String(value).replace(/(\.\d{3})\d+/, "$1");
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (!value) return "-";
+  const s = String(value).trim();
+  if (s.startsWith("0001-01-01")) return "-";
 
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "-";
 
-  return `${day}-${month}-${year}, ${hours}:${minutes}`;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
 };
 
-const viewValue = (value) =>
-  value === null || value === undefined || String(value).trim() === ""
-    ? "—"
-    : value;
+const displayText = (value) =>
+  value !== null && value !== undefined && String(value).trim() !== ""
+    ? String(value)
+    : "";
 
-/* ------------------------- FIELD COMPONENTS ------------------------- */
+/* ---------- STATUS (same colors as the feedback list) ---------- */
 
-const FieldRow = ({ label, children, fullWidth }) => (
-  <div
-    className={`grid grid-cols-[160px_1fr] items-start gap-3 ${
-      fullWidth ? "md:col-span-2" : ""
-    }`}
-  >
-    <span className={`${FIELD_LABEL} pt-2`}>{label}</span>
-    <div className="min-w-0">{children}</div>
-  </div>
+const STATUS_BADGE = {
+  open: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
+  active: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
+  new: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
+  hold: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+  paused: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+  pending: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+  closed: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
+  resolved: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
+};
+
+const statusBadgeClass = (value) =>
+  STATUS_BADGE[String(value ?? "").trim().toLowerCase()] ??
+  "bg-slate-500 ring-slate-600 shadow-slate-500/20";
+
+/* ------------------------------ STYLES ------------------------------ */
+
+const displayInputClass =
+  "w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition cursor-default";
+
+const Stars = ({ value }) => (
+  <span className="inline-flex items-center gap-2">
+    <span className="text-lg leading-none">
+      <span className="text-yellow-400">{"★".repeat(Number(value))}</span>
+      <span className="text-slate-300">{"★".repeat(5 - Number(value))}</span>
+    </span>
+    <span className="text-sm text-slate-500">({value}/5)</span>
+  </span>
 );
 
-const ValueBox = ({ children, multiline }) => (
-  <div
-    className={`flex ${
-      multiline ? "min-h-[72px] items-start" : "min-h-9 items-center"
-    } rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 py-2 text-[13px] font-medium text-[#1a2b3c]`}
-  >
-    <span className="min-w-0 flex-1 break-words">{children}</span>
-  </div>
-);
+/* Field definitions. Rendering type decides how each value is shown. */
+const FIELDS = [
+  { key: "fB_feedback_id", label: "Feedback ID" },
+  { key: "fB_request_no", label: "Request No." },
+  { key: "fB_name", label: "Organization Name" },
+  { key: "userTypeName", label: "User Type" },
+  { key: "fB_contact", label: "Contact / Email" },
+  { key: "fB_created_at", label: "Submitted", type: "date" },
+  { key: "fB_rating", label: "Rating", type: "rating" },
+  {
+    key: "fB_overall_experience",
+    label: "Overall Experience",
+    type: "multiline",
+  },
+  { key: "fB_useful_text", label: "What Was Useful", type: "multiline" },
+  {
+    key: "fB_improve_text",
+    label: "What Can Be Improved",
+    type: "multiline",
+  },
+  { key: "fB_suggestions", label: "Suggestions", type: "multiline" },
+];
 
-/* ------------------------- COMPONENT ------------------------- */
+/* ------------------------------ COMPONENT ------------------------------ */
 
 const FeedbackDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [feedback, setFeedback] = useState(null);
+  const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
-    const fetchFeedback = async () => {
-      try {
-        setLoading(true);
-        setError("");
-        setFeedback(null);
+    const load = async () => {
+      setLoading(true);
+      setError("");
+      setRecord(null);
 
+      try {
         if (!id) throw new Error("Feedback ID is missing.");
 
         const response = await getFeedbackById(id);
-        const apiResponse = response?.data ?? response;
+
+        if (response?.success === false || response?.Success === false) {
+          throw new Error(
+            response?.message || response?.Message || "Failed to load feedback.",
+          );
+        }
+
+        // Handles { success, data: record } and { data: { data: record } }.
+        const payload = response?.data ?? response;
+        const data = payload?.data ?? payload;
 
         if (
-          apiResponse?.success === false ||
-          apiResponse?.Success === false
+          !data ||
+          typeof data !== "object" ||
+          Array.isArray(data) ||
+          data.fB_feedback_id == null
         ) {
-          throw new Error(
-            apiResponse.message ||
-              apiResponse.Message ||
-              "Failed to load feedback details.",
-          );
+          throw new Error("Feedback record not found.");
         }
 
-        const payload = apiResponse?.data ?? apiResponse;
-        const records = payload?.data ?? payload;
-
-        let record = null;
-
-        if (Array.isArray(records)) {
-          record = records.find(
-            (item) => String(item?.fB_feedback_id) === String(id),
-          );
-          if (!record && records.length === 1) record = records[0];
-        } else if (
-          records &&
-          typeof records === "object" &&
-          !Array.isArray(records) &&
-          records.fB_feedback_id !== undefined
-        ) {
-          record = records;
-        }
-
-        if (!record) {
-          throw new Error(
-            "Feedback not found. Please check the feedback ID.",
-          );
-        }
-
-        if (!cancelled) setFeedback(record);
+        if (!cancelled) setRecord(data);
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -189,84 +135,67 @@ const FeedbackDetails = () => {
       }
     };
 
-    fetchFeedback();
+    load();
     return () => {
       cancelled = true;
     };
   }, [id]);
 
-  /* ------------------------- LOADING ------------------------- */
+  /* ---------- Derived ---------- */
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center bg-[#f4f8fb] p-6">
-        <div className="flex items-center gap-3 text-sm text-slate-700">
-          <LoaderCircle
-            className="animate-spin"
-            style={{ color: ACCENT }}
-            size={20}
-          />
-          Loading feedback details...
+  const statusLabel = displayText(record?.statusName);
+  const savedResponse = displayText(record?.fb_responseRetun);
+
+  const renderValue = (field, value) => {
+    if (field.type === "rating") {
+      const rating = Math.min(5, Math.max(0, Number(value) || 0));
+      return (
+        <div className={displayInputClass}>
+          {rating > 0 ? <Stars value={rating} /> : <span>—</span>}
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  /* ------------------------- ERROR ------------------------- */
+    if (field.type === "date") {
+      return (
+        <input
+          type="text"
+          readOnly
+          value={formatDate(value)}
+          className={displayInputClass}
+        />
+      );
+    }
 
-  if (error || !feedback) {
+    if (field.type === "multiline") {
+      return (
+        <textarea
+          readOnly
+          value={displayText(value) || "-"}
+          rows={3}
+          className={`${displayInputClass} resize-none`}
+        />
+      );
+    }
+
     return (
-      <div className="min-h-full bg-[#f4f8fb] p-4">
-        <div className="mx-auto">
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex justify-between border-b border-slate-200 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => navigate(-1)}
-                  title="Back"
-                  aria-label="Back"
-                  className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
-                >
-                  <ChevronsLeft size={18} strokeWidth={2} />
-                </button>
-                <h2 className="font-semibold text-slate-800">
-                  Feedback Details
-                </h2>
-              </div>
-            </div>
-
-            <div className="p-4">
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
-                {error || "Feedback not found."}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <input
+        type="text"
+        readOnly
+        value={displayText(value) || "-"}
+        className={displayInputClass}
+      />
     );
-  }
+  };
 
-  /* ------------------------- DERIVED ------------------------- */
-
-  const reqTone = requestToneOf(feedback.statusName);
-  const StatusIcon = reqTone.icon;
-
-  const rating = Math.min(
-    5,
-    Math.max(0, Number(feedback.fB_rating) || 0),
-  );
-
-  const adminResponse = feedback.fb_responseRetun;
-
-  /* ------------------------- RENDER ------------------------- */
+  /* ---------------------------- RENDER ---------------------------- */
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* Header bar */}
-          <div className="flex justify-between border-b border-slate-200 px-6 py-4">
+          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -278,161 +207,85 @@ const FeedbackDetails = () => {
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
 
-              <h2 className="font-semibold text-slate-800">
-                Feedback Details
-              </h2>
+              <h2 className="font-semibold text-slate-800">View Feedback</h2>
             </div>
 
-            <span className={`${BADGE_BASE} ${reqTone.badge}`}>
-              
-              {feedback.statusName || "UNKNOWN"}
-            </span>
-          </div>
-
-          <div className="p-4">
-            <div className="space-y-6 rounded-lg border border-slate-200 bg-white p-4">
-              {/* Summary */}
-              <section>
-                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                  Summary
-                </h3>
-                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
-                
-
-                  <FieldRow label="Request Id">
-                    <ValueBox>{viewValue(feedback.fB_request_no)}</ValueBox>
-                  </FieldRow>
-
-                  <FieldRow label="Submitted On">
-                    <ValueBox>{formatDate(feedback.fB_created_at)}</ValueBox>
-                  </FieldRow>
-                </div>
-              </section>
-
-              {/* Submitter Information */}
-              <section>
-                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                  Submitter Information
-                </h3>
-                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
-                  <FieldRow label="Name ">
-                    <ValueBox>{viewValue(feedback.fB_name)}</ValueBox>
-                  </FieldRow>
-
-                  <FieldRow label="User Type">
-                    <ValueBox>{viewValue(feedback.userTypeName)}</ValueBox>
-                  </FieldRow>
-
-                  <FieldRow label="Contact / Email">
-                    <ValueBox>{viewValue(feedback.fB_contact)}</ValueBox>
-                  </FieldRow>
-                </div>
-              </section>
-
-              {/* Rating */}
-              <section>
-                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                  Rating
-                </h3>
-                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
-                  <FieldRow label="Rating" fullWidth>
-                    <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 py-2">
-                      {[1, 2, 3, 4, 5].map((value) => (
-                        <Star
-                          key={value}
-                          size={18}
-                          className={
-                            value <= rating
-                              ? "fill-amber-400 text-amber-400"
-                              : "text-slate-300"
-                          }
-                        />
-                      ))}
-
-                      <span className="ml-2 text-[13px] font-medium text-[#1a2b3c]">
-                        {rating > 0 ? `${rating}/5` : "No rating"}
-                      </span>
-                    </div>
-                  </FieldRow>
-                </div>
-              </section>
-
-              {/* Feedback Content */}
-              <section>
-                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                  Feedback Content
-                </h3>
-                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
-                  <FieldRow label="Overall Experience" fullWidth>
-                    <ValueBox multiline>
-                      {viewValue(feedback.fB_overall_experience)}
-                    </ValueBox>
-                  </FieldRow>
-
-                  <FieldRow label="What Was Useful" fullWidth>
-                    <ValueBox multiline>
-                      {viewValue(feedback.fB_useful_text)}
-                    </ValueBox>
-                  </FieldRow>
-
-                  <FieldRow label="What Can Be Improved" fullWidth>
-                    <ValueBox multiline>
-                      {viewValue(feedback.fB_improve_text)}
-                    </ValueBox>
-                  </FieldRow>
-
-                  <FieldRow label="Suggestions" fullWidth>
-                    <ValueBox multiline>
-                      {viewValue(feedback.fB_suggestions)}
-                    </ValueBox>
-                  </FieldRow>
-                </div>
-              </section>
-
-              {/* Admin Response */}
-              <section>
-                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                  Admin Response
-                </h3>
-                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
-                  <FieldRow label="Response Status">
-                    <ValueBox>{viewValue(feedback.statusName)}</ValueBox>
-                  </FieldRow>
-
-                  <FieldRow label="Response" fullWidth>
-                    <ValueBox multiline>
-                      {adminResponse?.trim()
-                        ? adminResponse
-                        : "No response has been provided yet."}
-                    </ValueBox>
-                  </FieldRow>
-                </div>
-              </section>
-
-              {/* Record Information */}
-              <section>
-                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                  Record Information
-                </h3>
-                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
-                  <FieldRow label="Created At">
-                    <ValueBox>{formatDate(feedback.fB_created_at)}</ValueBox>
-                  </FieldRow>
-                </div>
-              </section>
-            </div>
-
-            {/* Footer */}
-            <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                onClick={() => navigate(-1)}
-                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+            {record && statusLabel && (
+              <span
+                className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${statusBadgeClass(
+                  statusLabel,
+                )}`}
               >
-                Back
-              </button>
-            </div>
+                {statusLabel}
+              </span>
+            )}
           </div>
+
+          {/* Error banner */}
+          {error && (
+            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+              {error}
+            </div>
+          )}
+
+          {/* Loading */}
+          {loading ? (
+            <div className="flex min-h-[300px] items-center justify-center gap-3 p-6 text-sm text-slate-500">
+              <LoaderCircle size={18} className="animate-spin text-[#2f6b8a]" />
+              Loading details...
+            </div>
+          ) : record ? (
+            <div
+              className="common-scrollbar overflow-y-auto p-4"
+              style={{ scrollbarGutter: "stable" }}
+            >
+              {/* Details */}
+              <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
+                  {FIELDS.map((field) => (
+                    <div
+                      key={field.key}
+                      className={`grid grid-cols-[130px_1fr] items-center gap-3 ${
+                        field.type === "multiline" ? "md:col-span-2" : ""
+                      }`}
+                    >
+                      <span className="text-[14px] font-semibold text-black">
+                        {field.label}
+                      </span>
+                      <div className="min-w-0">
+                        {renderValue(field, record[field.key])}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Response (read-only) */}
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+                <p className="mb-1.5 text-sm font-medium text-slate-700">
+                  Response
+                </p>
+                <div className="w-full whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+                  {savedResponse || (
+                    <span className="text-slate-400">
+                      No response has been provided yet.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
