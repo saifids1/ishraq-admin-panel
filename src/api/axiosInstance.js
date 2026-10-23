@@ -10,7 +10,7 @@ const axiosInstance = axios.create({
   // },
    baseURL:
     process.env.REACT_APP_API_BASE_URL ||
-    "https://ishraqhr-api.ishraqhr.com/api",
+    "/api",
   headers: {
     "Content-Type": "application/json",
   },
