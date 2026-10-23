@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronDown, ChevronsLeft, FileText, Eye } from "lucide-react";
+import { ChevronsLeft, FileText, Eye } from "lucide-react";
 import { adminEnquiryService } from "../../../api/Services/adminEnquiryService";
-import { getCurrentUserId } from "../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -32,13 +31,13 @@ const toAbsoluteUrl = (url) => {
 
   const raw = String(url).trim();
 
-  // Already absolute (http/https) — return as-is
+  // Already absolute (http/https): return as-is
   if (/^https?:\/\//i.test(raw)) return raw;
 
   // Normalize the path
   let clean = raw.replace(/\\/g, "/").replace(/^\/+/, "");
-  clean = clean.replace(/^wwwroot\//i, "");  // strip "wwwroot/"
-  clean = clean.replace(/^api\//i, "");      // strip accidental "api/"
+  clean = clean.replace(/^wwwroot\//i, ""); // strip "wwwroot/"
+  clean = clean.replace(/^api\//i, ""); // strip accidental "api/"
   clean = clean.replace(/^\/+/, "");
 
   // No base configured → fall back to root-relative path (works same-origin)
@@ -124,22 +123,9 @@ const cfg = {
 
 /* ------------------------------ STYLES ------------------------------ */
 
-const inputClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
-
-const selectClass =
-  "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
-
-/* Read-only display input — looks like a normal input but not editable */
+/* Read-only display input: looks like a normal input but not editable */
 const displayInputClass =
   "w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition cursor-default";
-
-const statusIdFromName = (value, options) => {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  return options.find(
-    (option) => option.label.toLowerCase() === normalized,
-  )?.value;
-};
 
 const Stars = ({ value }) => (
   <span className="inline-flex items-center gap-2">
@@ -160,16 +146,7 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  // ---- Response + Status state ----
   const [responseText, setResponseText] = useState("");
-  const [status, setStatus] = useState("1");
-  const [savingResponse, setSavingResponse] = useState(false);
-  const [savingStatus, setSavingStatus] = useState(false);
-  const [responseSaved, setResponseSaved] = useState(false);
-  const [statusOptions, setStatusOptions] = useState([]);
-  const [statusLoading, setStatusLoading] = useState(true);
-  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -179,64 +156,32 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
       setError("");
 
       try {
-        const [data, loadedStatuses] = await Promise.all([
-          adminEnquiryService.getById(formType, id),
-          adminEnquiryService.getRequestStatuses().catch((err) => {
-            if (!cancelled)
-              setError(err?.message || "Unable to load request statuses.");
-            return [];
-          }),
-        ]);
+        const data = await adminEnquiryService.getById(formType, id);
 
-        if (!cancelled) {
-          setStatusOptions(loadedStatuses);
-          setRecord(data);
-          if (!data) {
-            setError("Record not found.");
-          } else {
-            /* ---- Response: include the API's actual key `cP_responseRetun` ---- */
-            const savedResponse =
-              data?.cP_responseRetun ??   // API key (note spelling)
-              data?.responseRetun ??
-              data?.responseReturn ??
-              data?.response ??
-              data?.admin_response ??
-              "";
-            setResponseText(savedResponse);
-            setResponseSaved(Boolean(String(savedResponse).trim()));
+        if (cancelled) return;
 
-            const existingStatusId =
-              data?.requestStatusId ??
-              data?.RequestStatusId ??
-              data?.statusId ??
-              data?.CP_status_id ??
-              data?.cP_status_id ??
-              data?.enquiry_status_id;
-            const existingStatusName =
-              data?.requestStatusName ??
-              data?.RequestStatusName ??
-              data?.statusName ??
-              data?.status ??
-              data?.enquiry_status;
-            setStatus(
-              String(
-                existingStatusId ??
-                  statusIdFromName(existingStatusName, loadedStatuses) ??
-                  loadedStatuses[0]?.value ??
-                  "",
-              ),
-            );
-          }
+        setRecord(data);
+
+        if (!data) {
+          setError("Record not found.");
+          return;
         }
+
+        // API key is `cP_responseRetun` (note the spelling).
+        const savedResponse =
+          data?.cP_responseRetun ??
+          data?.responseRetun ??
+          data?.responseReturn ??
+          data?.response ??
+          data?.admin_response ??
+          "";
+        setResponseText(String(savedResponse ?? ""));
       } catch (err) {
         if (!cancelled) {
           setError(err?.message || "Unable to load this record.");
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setStatusLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -293,7 +238,6 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
     if (field.type === "file") {
       const url = value ? toAbsoluteUrl(value) : resolveDocumentUrl();
 
-      // When we have a raw file path → build a clickable link (JobSeekerDetails pattern)
       if (url) {
         return (
           <a
@@ -344,93 +288,13 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
     );
   };
 
-  // ---- Submit response ----
-  const handleSubmitResponse = async () => {
-    if (savingResponse || responseSaved) return;
-
-    const trimmed = responseText.trim();
-    if (!trimmed) {
-      setError("Response cannot be empty.");
-      return;
-    }
-
-    setSavingResponse(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const userId = Number(getCurrentUserId()) || 0;
-      await adminEnquiryService.updateEnquiryResponse(
-        formType,
-        id,
-        trimmed,
-        userId,
-      );
-      setNotice("Response submitted successfully.");
-      setResponseSaved(true);
-      setRecord((prev) =>
-        prev
-          ? { ...prev, cP_responseRetun: trimmed, response: trimmed }
-          : prev,
-      );
-    } catch (err) {
-      setError(err?.message || "Failed to submit response.");
-    } finally {
-      setSavingResponse(false);
-    }
-  };
-
-  // ---- Update status ----
-  const handleSaveStatus = async () => {
-    // Locked once the request is Closed.
-    if (savingStatus || isClosed) return;
-
-    setSavingStatus(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const userId = getCurrentUserId();
-      await adminEnquiryService.updateEnquiryStatus(formType, id, {
-        statusId: Number(status),
-        userId: Number(userId) || 0,
-        changedAt: new Date().toISOString(),
-      });
-      setNotice("Status updated successfully.");
-      const newLabel =
-        statusOptions.find((o) => String(o.value) === String(status))?.label ??
-        null;
-      setRecord((prev) =>
-        prev
-          ? {
-              ...prev,
-              statusId: Number(status),
-              // keep header badge / isClosed in sync immediately
-              statusName: newLabel ?? prev.statusName,
-              requestStatusName: newLabel ?? prev.requestStatusName,
-            }
-          : prev,
-      );
-    } catch (err) {
-      setError(err?.message || "Failed to update status.");
-    } finally {
-      setSavingStatus(false);
-    }
-  };
-
   const title = cfg?.singular || cfg?.title || "Enquiry";
   const pageTitle = `View ${title}`;
 
-  /* ---- Header request-status badge (same colors as list) ---- */
+  /* ---- Header request-status badge (display only) ---- */
   const headerStatusLabel = useMemo(() => requestStatusLabel(record), [record]);
   const headerStatusTone = useMemo(
     () => requestToneOf(headerStatusLabel),
-    [headerStatusLabel],
-  );
-
-  /* ---- Lock status editing once the request is Closed. ---- */
-  const isClosed = useMemo(
-    () => normalizeRequestStatus(headerStatusLabel) === "closed",
     [headerStatusLabel],
   );
 
@@ -454,7 +318,6 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
-            {/* Request Status badge — same colors as the list, no icon */}
             {record && headerStatusLabel && (
               <span
                 className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${headerStatusTone.badge}`}
@@ -471,23 +334,14 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
             </div>
           )}
 
-          {/* Success notice */}
-          {notice && (
-            <div className="mx-4 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
-              {notice}
-            </div>
-          )}
-
           {/* Loading state */}
           {loading ? (
             <div className="flex min-h-[300px] items-center justify-center p-6 text-slate-500">
               Loading details...
             </div>
           ) : record ? (
-            /* ── Scrollable content wrapper — `common-scrollbar` styles the
-               vertical scrollbar when the content exceeds 65vh ── */
             <div
-              className="common-scrollbar  overflow-y-auto p-4"
+              className="common-scrollbar overflow-y-auto p-4"
               style={{ scrollbarGutter: "stable" }}
             >
               {/* Details list */}
@@ -514,116 +368,17 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
                 </div>
               </div>
 
-              {/* ---- Merged Response + Status section ---- */}
+              {/* Response (read-only) */}
               <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                  {/* Response — read-only if already saved */}
-                  <div className="md:col-span-2">
-                    <label
-                      htmlFor="admin-response"
-                      className="mb-1.5 block text-sm font-medium text-slate-700"
-                    >
-                      Response
-                    </label>
-
-                    {responseSaved ? (
-                      <div
-                        id="admin-response"
-                        className="w-full whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700"
-                      >
-                        {responseText || (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </div>
-                    ) : (
-                      <textarea
-                        id="admin-response"
-                        value={responseText}
-                        onChange={(event) =>
-                          setResponseText(event.target.value)
-                        }
-                        rows={4}
-                        placeholder="Type your response to this enquiry..."
-                        className={inputClass}
-                        disabled={savingResponse || savingStatus}
-                      />
-                    )}
-                  </div>
-
-                  {/* Status — disabled when request is Closed */}
-                  <div>
-                    <label
-                      htmlFor="status-select"
-                      className="mb-1.5 block text-sm font-medium text-slate-700"
-                    >
-                      Status
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="status-select"
-                        value={status}
-                        onChange={(event) => setStatus(event.target.value)}
-                        className={selectClass}
-                        disabled={
-                          statusLoading ||
-                          savingResponse ||
-                          savingStatus ||
-                          isClosed
-                        }
-                      >
-                        {statusLoading ? (
-                          <option value="">Loading statuses...</option>
-                        ) : statusOptions.length === 0 ? (
-                          <option value="">No statuses available</option>
-                        ) : (
-                          statusOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                      <ChevronDown
-                        size={17}
-                        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                      />
-                    </div>
-                    {isClosed && (
-                      <p className="mt-1.5 text-xs text-slate-500">
-                        This complaint is closed — status can no longer be
-                        changed.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Buttons */}
-                  <div className="flex items-end justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={handleSaveStatus}
-                      disabled={savingStatus || savingResponse || isClosed}
-                      className="inline-flex items-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-5 py-2.5 text-sm font-semibold text-[#2f6b8a] transition hover:bg-[#e9f4f7] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {savingStatus
-                        ? "Saving..."
-                        : isClosed
-                          ? "Status Locked"
-                          : "Save Status"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleSubmitResponse}
-                      disabled={savingResponse || savingStatus || responseSaved}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {savingResponse
-                        ? "Submitting..."
-                        : responseSaved
-                          ? "Response Saved"
-                          : "Submit Response"}
-                    </button>
-                  </div>
+                <p className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Response
+                </p>
+                <div className="w-full whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+                  {responseText.trim() ? (
+                    responseText
+                  ) : (
+                    <span className="text-slate-400">No response yet.</span>
+                  )}
                 </div>
               </div>
 
