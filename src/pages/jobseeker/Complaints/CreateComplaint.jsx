@@ -25,7 +25,7 @@ import {
   submitComplaint,
 } from "../../../api/complaintApi";
 
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId, getCurrentUserId2  } from "../../../utils/authUtils";
 
 const ACCENT = "#2f6b8a";
 
@@ -345,7 +345,7 @@ const CreateComplaint = () => {
 
     if (Object.keys(validationErrors).length > 0) return;
 
-    const rawUserId = getCurrentUserId();
+    const rawUserId = getCurrentUserId2();
     const userId = Number(rawUserId);
 
     if (!rawUserId || !Number.isInteger(userId) || userId <= 0) {

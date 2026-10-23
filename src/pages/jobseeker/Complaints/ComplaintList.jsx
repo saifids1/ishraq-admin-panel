@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 
 import { getComplaintsByUserId } from "../../../api/complaintApi";
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
@@ -196,7 +196,7 @@ const ComplaintList = () => {
   const navigate = useNavigate();
 
   // Read the current user once for this mounted page.
-  const userId = getCurrentUserId();
+  const userId = getCurrentUserId2();
 
   const [complaints, setComplaints] = useState([]);
   const [search, setSearch] = useState("");

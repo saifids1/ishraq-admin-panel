@@ -13,7 +13,7 @@ import {
 
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
 import { getFeedbackByUserId } from "../../../api/feedbackApi";
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
@@ -88,7 +88,7 @@ const statusBadgeClass = (value) =>
 
 const FeedbackList = () => {
   const navigate = useNavigate();
-  const userId = getCurrentUserId();
+  const userId = getCurrentUserId2();
 
   const [feedback, setFeedback] = useState([]);
   const [search, setSearch] = useState("");
