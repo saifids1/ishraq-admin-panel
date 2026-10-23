@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ChevronDown, ChevronsLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
+import { getCurrentUserId2 } from "../../../../utils/authUtils";
 import StatusModal from "../../../../components/common/StatusModal";
 import cityMasterApi from "../../../../api/Services/cityMasterApi";
 import countryMasterApi from "../../../../api/Services/countryMasterApi";
@@ -109,70 +110,6 @@ const pickUserDisplay = (item, nameKey, idKey) => {
   const id = item?.[idKey];
   if (id === undefined || id === null || id === "") return "";
   return String(id);
-};
-
-/* ─────────────────────────────────────────────────────────────────
-   Resolve current logged-in user ID from login response
-   (falls back to JWT decode if the user object isn't present).
-   Login response shape: { token, userId, email, fullName, roles }
-   ───────────────────────────────────────────────────────────────── */
-const AUTH_USER_KEY = "user"; // localStorage key holding login response
-const AUTH_TOKEN_KEY = "token"; // localStorage key holding JWT
-
-const getUserIdFromStorage = () => {
-  try {
-    const raw = localStorage.getItem(AUTH_USER_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const id = parsed?.userId ?? parsed?.user?.userId ?? parsed?.id ?? null;
-    return id === null || id === undefined ? null : Number(id) || null;
-  } catch {
-    return null;
-  }
-};
-
-const getUserIdFromToken = () => {
-  try {
-    const token = localStorage.getItem(AUTH_TOKEN_KEY);
-    if (!token) return null;
-    const payloadPart = token.split(".")[1];
-    if (!payloadPart) return null;
-    const json = JSON.parse(
-      decodeURIComponent(
-        atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/"))
-          .split("")
-          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-          .join(""),
-      ),
-    );
-    // Claim used in the token: nameidentifier
-    const raw =
-      json["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] ??
-      json.nameid ??
-      json.userId ??
-      json.sub;
-    return raw === null || raw === undefined ? null : Number(raw) || null;
-  } catch {
-    return null;
-  }
-};
-
-const getCurrentUserId = () => {
-  // 1. Try storage "user" object from login response
-  const fromStorage = getUserIdFromStorage();
-  if (fromStorage) return fromStorage;
-
-  // 2. Fallback: decode JWT
-  const fromToken = getUserIdFromToken();
-  if (fromToken) return fromToken;
-
-  // 3. Legacy keys (kept for backward compat)
-  const raw =
-    localStorage.getItem("userId") ??
-    localStorage.getItem("user_id") ??
-    localStorage.getItem("id");
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
 
 const CreateCity = ({ mode }) => {
@@ -402,7 +339,7 @@ const CreateCity = ({ mode }) => {
 
     const trimmedName = name.trim();
     // Current logged-in user id — used for both CreatedBy (create) and UpdatedBy (edit)
-    const currentUserId = getCurrentUserId();
+    const currentUserId = getCurrentUserId2();
 
     try {
       if (isCreate) {

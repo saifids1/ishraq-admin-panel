@@ -10,7 +10,7 @@ import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 import StatusModal from "../../../components/common/StatusModal";
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
@@ -583,8 +583,8 @@ const AddJobSeeker = ({ mode }) => {
 
       // Resolve the currently logged-in user id.
       // Login response: { userId: 1, ... } → persistLoginUser writes { id: 1, userId: 1, ... }
-      // getCurrentUserId() reads user.id ?? user.userId.
-      const currentUserId = Number(getCurrentUserId());
+      // getCurrentUserId2() reads user.id ?? user.userId.
+      const currentUserId = Number(getCurrentUserId2());
       if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
         // Diagnostic: tell the developer exactly what's wrong
         // (visible in DevTools → Console during testing)
