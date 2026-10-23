@@ -14,11 +14,10 @@ import {
   Check,
   ShieldCheck,
   Loader2,
-  CheckCircle2,
   AlertCircle,
-  Users,
 } from "lucide-react";
 
+import StatusModal from "../../../components/common/StatusModal";
 import { updatePasswordByEmailApi } from "../../../api/authApi";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import { getAllEmployers } from "../../../api/employerApi";
@@ -247,10 +246,14 @@ const ResetPassword = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
+
+  /* ---- modal state ---- */
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [changedName, setChangedName] = useState("");
 
   /* LOAD USERS FROM API */
 
@@ -340,18 +343,11 @@ const ResetPassword = () => {
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
-  useEffect(() => {
-    if (!success) return undefined;
-    const t = setTimeout(() => setSuccess(null), 5000);
-    return () => clearTimeout(t);
-  }, [success]);
-
   const pick = (user) => {
     setSelected(user);
     setOpen(false);
     setQuery("");
     setError("");
-    setSuccess(null);
   };
 
   const clearSelected = () => {
@@ -388,18 +384,31 @@ const ResetPassword = () => {
   const matches = confirmPassword.length > 0 && newPassword === confirmPassword;
   const canSubmit = !!selected && allRules && matches && !submitting;
 
-  const onSubmit = async (e) => {
+  /* SUBMIT → opens confirmation modal first */
+  const onSubmit = (e) => {
     e.preventDefault();
     if (!canSubmit) return;
+    setConfirmOpen(true);
+  };
+
+  /* Actual API call — runs when user confirms in the modal */
+  const performReset = async () => {
+    if (!selected) return;
     setSubmitting(true);
     setError("");
+    const name = selected.name;
     try {
       await updatePasswordByEmailApi(selected.email, newPassword);
-      setSuccess(selected);
+
+      setChangedName(name);
+      setConfirmOpen(false);
+      setSuccessOpen(true);
+
       setSelected(null);
       setNewPassword("");
       setConfirmPassword("");
     } catch (err) {
+      setConfirmOpen(false);
       setError(
         "We couldn't change the password. Check your connection and try again.",
       );
@@ -441,36 +450,6 @@ const ResetPassword = () => {
             </p>
           </div>
         </div>
-
-        {/* SUCCESS BANNER */}
-        {success && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="rp-pop mx-5 mt-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 sm:mx-6"
-          >
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#1f9d63] to-[#3ccf8e] text-white">
-              <CheckCircle2 size={17} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-semibold text-emerald-800">
-                Password changed
-              </p>
-              <p className="text-[13px] text-emerald-700">
-                The password for <strong>{success.name}</strong> has been
-                updated. Share the new password with them securely.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSuccess(null)}
-              aria-label="Dismiss"
-              className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-            >
-              <X size={15} />
-            </button>
-          </div>
-        )}
 
         <form onSubmit={onSubmit} className="space-y-6 px-5 py-4 sm:px-4 sm:py-4">
           {/* STEP 1 — FIND USER */}
@@ -685,7 +664,6 @@ const ResetPassword = () => {
               </p>
             )}
 
-            {/* Both password fields in the SAME row on desktop */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <PasswordField
                 id="new-password"
@@ -721,7 +699,6 @@ const ResetPassword = () => {
               />
             </div>
 
-            {/* Strength + rules */}
             {selected && newPassword && (
               <div className="rp-pop mt-3 rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] p-3.5">
                 <div className="mb-2.5 flex items-center justify-between text-[12.5px]">
@@ -806,6 +783,58 @@ const ResetPassword = () => {
           </div>
         </form>
       </div>
+
+      {/* ============================================================ */}
+      {/* 1. CONFIRMATION MODAL                                          */}
+      {/* ============================================================ */}
+      <StatusModal
+        isOpen={confirmOpen}
+        type="confirm"
+        title="Change password?"
+        message={
+          <>
+            Are you sure you want to change the password for{" "}
+            <strong className="font-semibold text-slate-900">
+              {selected?.name || "this user"}
+            </strong>
+            ?
+            <br />
+            <span className="mt-2 inline-block text-[13px] text-slate-500">
+              Their current password will stop working immediately.
+            </span>
+          </>
+        }
+        showCancel
+        busy={submitting}
+        confirmText="Yes, change password"
+        cancelText="No, go back"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={performReset}
+      />
+
+      {/* ============================================================ */}
+      {/* 2. SUCCESS MODAL                                              */}
+      {/* ============================================================ */}
+      <StatusModal
+        isOpen={successOpen}
+        type="success"
+        title="Password changed"
+        message={
+          <>
+            The password for{" "}
+            <strong className="font-semibold text-slate-900">
+              {changedName || "the user"}
+            </strong>{" "}
+            has been updated successfully.
+            <br />
+            <span className="mt-2 inline-block text-[13px] text-slate-500">
+              Share the new password with them securely.
+            </span>
+          </>
+        }
+        confirmText="Done"
+        onConfirm={() => setSuccessOpen(false)}
+      />
     </div>
   );
 };

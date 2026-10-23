@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+// src/pages/admin/employer/CreateEmployer.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronsLeft, Eye, EyeOff } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import employerApi from "../../../api/Services/adminemployeelistApi";
@@ -7,6 +8,7 @@ import countryMasterApi from "../../../api/Services/countryMasterApi";
 import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import StatusModal from "../../../components/common/StatusModal";
+import { getCurrentUserId } from "../../../utils/authUtils";
 
 /* ---------- shared input/select styles ---------- */
 const selectClass =
@@ -137,6 +139,7 @@ const CreateEmployer = ({ mode }) => {
   const [cityId, setCityId] = useState("");
   const [website, setWebsite] = useState("");
   const [consentGiven, setConsentGiven] = useState(false);
+  const [createdBy, setCreatedBy] = useState(null);
 
   // Password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
@@ -213,9 +216,7 @@ const CreateEmployer = ({ mode }) => {
         if (!cancelled) setInstituteTypes(extractList(r));
       } catch (err) {
         if (!cancelled) {
-          setError(
-            getErrorMessage(err, "Unable to load institute types."),
-          );
+          setError(getErrorMessage(err, "Unable to load institute types."));
         }
       } finally {
         if (!cancelled) setLoadingInstituteTypes(false);
@@ -309,6 +310,7 @@ const CreateEmployer = ({ mode }) => {
       setCityId("");
       setWebsite("");
       setConsentGiven(false);
+      setCreatedBy(null);
 
       setError("");
       setLoading(false);
@@ -347,6 +349,7 @@ const CreateEmployer = ({ mode }) => {
         setCityId(String(item[config.cityField] ?? ""));
         setWebsite(item[config.websiteField] ?? "");
         setConsentGiven(Boolean(item[config.consentField]));
+        setCreatedBy(item.eM_created_by ?? item.EM_created_by ?? null);
       } catch (err) {
         if (!cancelled) {
           setError(getErrorMessage(err, "Failed to load record."));
@@ -369,7 +372,16 @@ const CreateEmployer = ({ mode }) => {
     setSaving(true);
     setError("");
     try {
+      // Resolve the currently logged-in user id (from login response / JWT / storage).
+      const currentUserId = Number(getCurrentUserId());
+      if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
+        throw new Error(
+          "Unable to identify the current user. Please sign in again.",
+        );
+      }
+
       let response;
+
       if (isCreate) {
         const payload = {
           email: email.trim(),
@@ -385,10 +397,15 @@ const CreateEmployer = ({ mode }) => {
           [config.cityField]: Number(cityId),
           [config.websiteField]: website.trim(),
           [config.consentField]: Boolean(consentGiven),
+          // On create, both created/updated by = current user
+          eM_created_by: currentUserId,
+          eM_updated_by: currentUserId,
         };
 
         response = await config.api.create(payload);
       } else {
+        // On update: always set updated_by; only include created_by when it
+        // has a real value, so we don't accidentally wipe the original creator.
         const payload = {
           [config.idField]: Number(id),
           email: email.trim(),
@@ -403,7 +420,12 @@ const CreateEmployer = ({ mode }) => {
           [config.cityField]: Number(cityId),
           [config.websiteField]: website.trim(),
           [config.consentField]: Boolean(consentGiven),
+          eM_updated_by: currentUserId,
         };
+
+        if (createdBy != null && createdBy !== "") {
+          payload.eM_created_by = Number(createdBy);
+        }
 
         response = await config.api.update(id, payload);
       }
@@ -509,11 +531,15 @@ const CreateEmployer = ({ mode }) => {
       ? `Update ${title}`
       : `View ${title}`;
 
-  const filteredStates = states.filter(
-    (s) => String(s.sM_CountryId) === String(countryId),
+  // Derived filtered lists (memoized for stability)
+  const filteredStates = useMemo(
+    () => states.filter((s) => String(s.sM_CountryId) === String(countryId)),
+    [states, countryId],
   );
-  const filteredCities = cities.filter(
-    (c) => String(c.ctM_StateId) === String(stateId),
+
+  const filteredCities = useMemo(
+    () => cities.filter((c) => String(c.ctM_StateId) === String(stateId)),
+    [cities, stateId],
   );
 
   return (
@@ -837,6 +863,7 @@ const CreateEmployer = ({ mode }) => {
           </form>
         </div>
       </div>
+
       <StatusModal
         isOpen={Boolean(modal)}
         type={modal?.type}

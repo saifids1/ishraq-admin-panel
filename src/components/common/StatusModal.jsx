@@ -86,9 +86,12 @@ const StatusModal = ({
   const Icon = config.Icon;
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center p-4" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !busy) onCancel?.();
-    }}>
+    <div
+      className="fixed inset-0 z-[100] grid place-items-center p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onCancel?.();
+      }}
+    >
       <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" />
       <section
         role={showCancel ? "alertdialog" : "dialog"}
@@ -97,32 +100,51 @@ const StatusModal = ({
         aria-describedby="status-modal-message"
         className="relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
       >
-        <div className="h-14" style={{ backgroundColor: config.accent }} />
-        <button
-          type="button"
-          aria-label="Close dialog"
-          disabled={busy}
-          onClick={onCancel ?? onConfirm}
-          className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-lg font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
+        {/* Header bar: icon + heading on left, X button on right */}
+        <div
+          className="flex items-center justify-between gap-3 px-5 h-14"
+          style={{ backgroundColor: config.accent }}
         >
-          <X size={18} />
-        </button>
-        <div className="flex gap-4 p-6 pr-14">
-          <span
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-full"
-            style={{ backgroundColor: config.background, color: config.accent }}
-          >
-            <Icon size={25} strokeWidth={2.2} />
-          </span>
-          <div className="pt-1">
-            <h2 id="status-modal-title" className="text-lg font-bold" style={{ color: config.text }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.2)",
+                color: "#ffffff",
+              }}
+            >
+              <Icon size={18} strokeWidth={2.4} />
+            </span>
+            <h2
+              id="status-modal-title"
+              className="text-lg font-bold text-white truncate"
+            >
               {title || config.title}
             </h2>
-            <p id="status-modal-message" className="mt-1.5 whitespace-pre-line text-sm leading-6 text-slate-600">
+          </div>
+          <button
+            type="button"
+            aria-label="Close dialog"
+            disabled={busy}
+            onClick={onCancel ?? onConfirm}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex gap-4 p-6">
+         
+          <div className="pt-1">
+            <p
+              id="status-modal-message"
+              className="mt-1.5 whitespace-pre-line text-[15px] leading-6 text-slate-600"
+            >
               {message}
             </p>
           </div>
         </div>
+
         <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
           {showCancel && (
             <button

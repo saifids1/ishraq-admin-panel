@@ -56,7 +56,7 @@ export const GradientStatCard = ({ item, index, selected, onSelect }) => {
       <span className="stat-orb stat-orb-a" />
       <span className="stat-orb stat-orb-b" />
       <div className="relative flex items-center justify-between gap-2">
-        <p className="truncate text-[11px] font-semibold text-white/90">
+        <p className="truncate text-[17px] font-semibold text-white">
           {item.title}
         </p>
         <span className="stat-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/20 backdrop-blur-sm">

@@ -36,7 +36,8 @@ export const getCurrentUser = () => {
  * Get the current user's ID.
  */
 export const getCurrentUserId = () => {
-  return getCurrentUser()?.profileId ?? null;
+  const user = getCurrentUser();
+  return user?.id ?? user?.profileId ?? null;
 };
 
 /**

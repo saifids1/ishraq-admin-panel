@@ -10,51 +10,7 @@ import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 import StatusModal from "../../../components/common/StatusModal";
-
-/* ---------- auth storage keys (adjust to match your app) ---------- */
-const AUTH_USER_KEY = "user"; // localStorage key holding the login response
-const AUTH_TOKEN_KEY = "token"; // localStorage key holding the JWT
-
-const getLoggedInUserId = () => {
-  try {
-    const raw = localStorage.getItem(AUTH_USER_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const id = parsed?.userId ?? parsed?.user?.userId ?? parsed?.id ?? null;
-    return id === null || id === undefined ? null : Number(id) || null;
-  } catch {
-    return null;
-  }
-};
-
-/* Also try decoding JWT if user object is unavailable */
-const getUserIdFromToken = () => {
-  try {
-    const token = localStorage.getItem(AUTH_TOKEN_KEY);
-    if (!token) return null;
-    const payloadPart = token.split(".")[1];
-    if (!payloadPart) return null;
-    const json = JSON.parse(
-      decodeURIComponent(
-        atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/"))
-          .split("")
-          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-          .join(""),
-      ),
-    );
-    // Claim used in your token: nameidentifier
-    const raw =
-      json["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] ??
-      json.nameid ??
-      json.userId ??
-      json.sub;
-    return raw === null || raw === undefined ? null : Number(raw) || null;
-  } catch {
-    return null;
-  }
-};
-
-const getCurrentUserId = () => getLoggedInUserId() ?? getUserIdFromToken();
+import { getCurrentUserId } from "../../../utils/authUtils";
 
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
@@ -62,7 +18,6 @@ const selectClass =
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
-/* ---------- field row: label : input ---------- */
 const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
 
 const FieldRow = ({ label, required, error, children, fullWidth }) => (
@@ -83,7 +38,6 @@ const FieldRow = ({ label, required, error, children, fullWidth }) => (
   </div>
 );
 
-/* ---------- API URL Configuration (for CV document view) ---------- */
 const DOCUMENT_BASE_URL = (process.env.REACT_APP_DOCUMENT_BASE_URL || "").trim();
 
 const toAbsoluteUrl = (url) => {
@@ -100,11 +54,8 @@ const toAbsoluteUrl = (url) => {
   return `${DOCUMENT_BASE_URL.replace(/\/+$/, "")}/${clean}`;
 };
 
-/* ---------- helpers ---------- */
-
 const extractList = (response) => {
   const root = response?.data ?? response;
-
   const candidates = [
     root?.data?.data,
     root?.Data?.Data,
@@ -112,13 +63,11 @@ const extractList = (response) => {
     root?.Data,
     root,
   ];
-
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) return candidate;
     if (Array.isArray(candidate?.data)) return candidate.data;
     if (Array.isArray(candidate?.Data)) return candidate.Data;
   }
-
   return [];
 };
 
@@ -134,6 +83,50 @@ const firstValue = (item, ...keys) =>
   keys
     .map((key) => item?.[key])
     .find((value) => value !== undefined && value !== null) ?? "";
+
+const EMPTY_FORM = {
+  fullName: "",
+  email: "",
+  mobile: "",
+  whatsapp: "",
+  password: "",
+  instituteType: "",
+  instituteTypeName: "",
+  jobCategory: "",
+  jobCategoryName: "",
+  jobRole: "",
+  jobRoleName: "",
+  countryId: "",
+  countryName: "",
+  stateId: "",
+  stateName: "",
+  cityId: "",
+  cityName: "",
+  highestQualification: "",
+  speciality: "",
+  registrationNumber: "",
+  totalExperience: "",
+  currentDesignation: "",
+  currentEmployer: "",
+  currentSalary: "",
+  expectedSalary: "",
+  preferredLocation: "",
+  preferredLocationName: "",
+  willingToRelocate: false,
+  availabilityToJoin: "",
+  consentGiven: false,
+  isActive: false,
+  document: null,
+
+  jobseekerNo: "",
+  createdAt: "",
+  createdBy: "",
+  updatedAt: "",
+  updatedBy: "",
+  activatedAt: "",
+  activatedBy: "",
+  consentAt: "",
+};
 
 const toForm = (item) => ({
   ...EMPTY_FORM,
@@ -170,7 +163,6 @@ const toForm = (item) => ({
   consentGiven: item?.jB_consent_given === true,
   isActive: item?.jB_is_active === true,
 
-  // ---------- AUDIT ----------
   jobseekerNo: firstValue(item, "jB_jobseeker_no"),
   createdAt: firstValue(item, "jB_created_at"),
   createdBy: firstValue(item, "jB_created_by"),
@@ -197,53 +189,6 @@ const ALLOWED_TYPES = [
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
-
-const EMPTY_FORM = {
-  fullName: "",
-  email: "",
-  mobile: "",
-  whatsapp: "",
-  password: "",
-  instituteType: "",
-  instituteTypeName: "",
-  jobCategory: "",
-  jobCategoryName: "",
-  jobRole: "",
-  jobRoleName: "",
-  countryId: "",
-  countryName: "",
-  stateId: "",
-  stateName: "",
-  cityId: "",
-  cityName: "",
-  highestQualification: "",
-  speciality: "",
-  registrationNumber: "",
-  totalExperience: "",
-  currentDesignation: "",
-  currentEmployer: "",
-  currentSalary: "",
-  expectedSalary: "",
-  preferredLocation: "",
-  preferredLocationName: "",
-  willingToRelocate: false,
-  availabilityToJoin: "",
-  consentGiven: false,
-  isActive: false,
-  document: null,
-
-  // ---------- AUDIT ----------
-  jobseekerNo: "",
-  createdAt: "",
-  createdBy: "",
-  updatedAt: "",
-  updatedBy: "",
-  activatedAt: "",
-  activatedBy: "",
-  consentAt: "",
-};
-
-/* ---------- validation ---------- */
 
 const validate = (form, requireDocument = true) => {
   const errors = {};
@@ -286,8 +231,6 @@ const validate = (form, requireDocument = true) => {
 
   return errors;
 };
-
-/* ========================================================= */
 
 const AddJobSeeker = ({ mode }) => {
   const navigate = useNavigate();
@@ -356,8 +299,6 @@ const AddJobSeeker = ({ mode }) => {
   useEffect(() => {
     setIsView(mode === "view" || (!mode && Boolean(id)));
   }, [id, mode]);
-
-  /* ---------- dropdown sources ---------- */
 
   const [instituteTypes, setInstituteTypes] = useState([]);
   const [loadingInstituteTypes, setLoadingInstituteTypes] = useState(true);
@@ -553,8 +494,6 @@ const AddJobSeeker = ({ mode }) => {
     };
   }, [id]);
 
-  /* ---------- input handlers ---------- */
-
   const set = (key) => (e) => {
     const value = e?.target ? e.target.value : e;
     setForm((c) => ({ ...c, [key]: value }));
@@ -610,8 +549,6 @@ const AddJobSeeker = ({ mode }) => {
     setForm((c) => ({ ...c, whatsapp: clean }));
   };
 
-  /* ---------- file ---------- */
-
   const onFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -639,15 +576,36 @@ const AddJobSeeker = ({ mode }) => {
     setErrors((c) => ({ ...c, document: undefined }));
   };
 
-  /* ---------- submit ---------- */
-
   const save = async () => {
     setServerError("");
     try {
       setSaving(true);
 
-      // Current logged-in user id (from login response)
-      const currentUserId = getCurrentUserId();
+      // Resolve the currently logged-in user id.
+      // Login response: { userId: 1, ... } → persistLoginUser writes { id: 1, userId: 1, ... }
+      // getCurrentUserId() reads user.id ?? user.userId.
+      const currentUserId = Number(getCurrentUserId());
+      if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
+        // Diagnostic: tell the developer exactly what's wrong
+        // (visible in DevTools → Console during testing)
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[AddJobSeeker] Cannot resolve current user id.",
+          {
+            rawUser: (() => {
+              try {
+                return JSON.parse(localStorage.getItem("user") || "null");
+              } catch {
+                return null;
+              }
+            })(),
+            directUserId: localStorage.getItem("userId"),
+          },
+        );
+        throw new Error(
+          "Unable to identify the current user. Please sign in again.",
+        );
+      }
 
       const payload = {
         JB_jobseeker_id: Number(id) || 0,
@@ -678,11 +636,12 @@ const AddJobSeeker = ({ mode }) => {
         JB_consent_given: Boolean(form.consentGiven),
 
         // ---------- AUDIT ----------
-        ...(currentUserId !== null
-          ? isCreate
-            ? { JB_created_by: currentUserId }
-            : { JB_updated_by: currentUserId }
-          : {}),
+        // NOTE: send BOTH casing variants so the API binder finds one of them
+        // (FormData keys are case-sensitive; GET response uses `jB_*`).
+        JB_created_by: currentUserId,
+        JB_updated_by: currentUserId,
+        jB_created_by: currentUserId,
+        jB_updated_by: currentUserId,
       };
 
       const formData = new FormData();
@@ -794,8 +753,9 @@ const AddJobSeeker = ({ mode }) => {
   const filteredCities = cities.filter(
     (city) => String(city.ctM_StateId) === String(form.stateId),
   );
-  const lookupName = (items, id, idKey, nameKey) =>
-    items.find((item) => String(item[idKey]) === String(id))?.[nameKey] || "";
+  const lookupName = (items, idValue, idKey, nameKey) =>
+    items.find((item) => String(item[idKey]) === String(idValue))?.[nameKey] ||
+    "";
 
   const viewValue = (value) =>
     value === null || value === undefined || String(value).trim() === ""
@@ -822,13 +782,10 @@ const AddJobSeeker = ({ mode }) => {
       ? "—"
       : String(v);
 
-  /* ========================================================= */
-
   return (
     <div className="min-h-full bg-[#f4f8fb]">
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          {/* HEADER */}
           <div className="flex justify-between border-b border-slate-200 px-6 py-4">
             <div className="flex items-center gap-3">
               <button
@@ -862,7 +819,6 @@ const AddJobSeeker = ({ mode }) => {
               Loading jobseeker details...
             </div>
           ) : isView ? (
-            /* ================= VIEW MODE ================= */
             <div className="p-4">
               <div className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
@@ -923,37 +879,6 @@ const AddJobSeeker = ({ mode }) => {
                       )}
                     </div>
                   </div>
-
-                  {/* ---------- AUDIT TRAIL (view) ---------- */}
-                  {/* <div className="col-span-full mt-2">
-                    <h4 className="mb-3 border-t border-slate-100 pt-4 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                      Audit Trail
-                    </h4>
-                    <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                      {[
-                        ["Jobseeker No", form.jobseekerNo],
-                        ["Created At", formatDateTime(form.createdAt)],
-                        ["Created By", formatUser(form.createdBy)],
-                        ["Updated At", formatDateTime(form.updatedAt)],
-                        ["Updated By", formatUser(form.updatedBy)],
-                        ["Activated At", formatDateTime(form.activatedAt)],
-                        ["Activated By", formatUser(form.activatedBy)],
-                        ["Consent At", formatDateTime(form.consentAt)],
-                      ].map(([label, value]) => (
-                        <div
-                          key={label}
-                          className="grid grid-cols-[160px_1fr] items-center gap-3"
-                        >
-                          <label className={FIELD_LABEL}>{label}</label>
-                          <div className="flex min-h-9 items-center rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 text-[13px] font-medium text-[#1a2b3c]">
-                            <span className="min-w-0 flex-1 truncate">
-                              {viewValue(value)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div> */}
                 </div>
               </div>
 
@@ -978,9 +903,7 @@ const AddJobSeeker = ({ mode }) => {
               </div>
             </div>
           ) : (
-            /* ================= FORM (CREATE / EDIT) ================= */
             <form onSubmit={submit} noValidate className="p-4 space-y-6">
-              {/* ---------- PERSONAL DETAILS ---------- */}
               <section>
                 <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                   Personal Details
@@ -1067,7 +990,6 @@ const AddJobSeeker = ({ mode }) => {
                 </div>
               </section>
 
-              {/* ---------- PROFESSIONAL DETAILS ---------- */}
               <section>
                 <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                   Professional Details
@@ -1268,7 +1190,6 @@ const AddJobSeeker = ({ mode }) => {
                 </div>
               </section>
 
-              {/* ---------- LOCATION ---------- */}
               <section>
                 <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                   Location
@@ -1368,7 +1289,6 @@ const AddJobSeeker = ({ mode }) => {
                 </div>
               </section>
 
-              {/* ---------- DOCUMENT ---------- */}
               <section>
                 <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                   Document Upload
@@ -1408,7 +1328,6 @@ const AddJobSeeker = ({ mode }) => {
                 </div>
               </section>
 
-              {/* ---------- CONSENT ---------- */}
               <section>
                 <div className="grid grid-cols-[160px_1fr] items-start gap-3">
                   <label className={FIELD_LABEL}>Consent</label>
@@ -1441,82 +1360,6 @@ const AddJobSeeker = ({ mode }) => {
                 </div>
               </section>
 
-              {/* ---------- AUDIT TRAIL (edit - read-only) ---------- */}
-              {/* {!isCreate && (
-                <section>
-                  <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                    Audit Trail
-                  </h3>
-                  <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
-                    <FieldRow label="Jobseeker No">
-                      <input
-                        type="text"
-                        value={form.jobseekerNo || "—"}
-                        disabled
-                        className={inputClass}
-                      />
-                    </FieldRow>
-                    <FieldRow label="Created At">
-                      <input
-                        type="text"
-                        value={formatDateTime(form.createdAt)}
-                        disabled
-                        className={inputClass}
-                      />
-                    </FieldRow>
-                    <FieldRow label="Created By">
-                      <input
-                        type="text"
-                        value={formatUser(form.createdBy)}
-                        disabled
-                        className={inputClass}
-                      />
-                    </FieldRow>
-                    <FieldRow label="Updated At">
-                      <input
-                        type="text"
-                        value={formatDateTime(form.updatedAt)}
-                        disabled
-                        className={inputClass}
-                      />
-                    </FieldRow>
-                    <FieldRow label="Updated By">
-                      <input
-                        type="text"
-                        value={formatUser(form.updatedBy)}
-                        disabled
-                        className={inputClass}
-                      />
-                    </FieldRow>
-                    <FieldRow label="Activated At">
-                      <input
-                        type="text"
-                        value={formatDateTime(form.activatedAt)}
-                        disabled
-                        className={inputClass}
-                      />
-                    </FieldRow>
-                    <FieldRow label="Activated By">
-                      <input
-                        type="text"
-                        value={formatUser(form.activatedBy)}
-                        disabled
-                        className={inputClass}
-                      />
-                    </FieldRow>
-                    <FieldRow label="Consent At">
-                      <input
-                        type="text"
-                        value={formatDateTime(form.consentAt)}
-                        disabled
-                        className={inputClass}
-                      />
-                    </FieldRow>
-                  </div>
-                </section>
-              )} */}
-
-              {/* FOOTER */}
               <div className="flex justify-between gap-3 border-t border-slate-100 pt-4">
                 <button
                   type="button"

@@ -33,6 +33,13 @@ const T = {
 const val = (v) =>
   v === null || v === undefined || String(v).trim() === "" ? "—" : v;
 
+/** Tolerant Yes/No/— mapper for boolean-ish API fields */
+const toYesNo = (v) => {
+  if (v === true || v === 1 || v === "1" || v === "true") return "Yes";
+  if (v === false || v === 0 || v === "0" || v === "false") return "No";
+  return "—";
+};
+
 const BADGE =
   "inline-flex h-6 items-center rounded-md px-2 text-[11.5px] font-semibold tracking-wide whitespace-nowrap ring-1 ring-inset";
 
@@ -72,7 +79,10 @@ const FieldRow = ({ label, value, mono = false, children }) => (
   <div className="grid grid-cols-[160px_1fr] items-center gap-3">
     <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
     <div className={FIELD_BOX(mono)}>
-      <span className="min-w-0 flex-1 truncate">
+      <span
+        className="min-w-0 flex-1 truncate"
+        title={String(children ?? val(value))}
+      >
         {children ?? val(value)}
       </span>
     </div>
@@ -87,37 +97,47 @@ const NAV = [
 
 /* ---------------- Helpers ---------------- */
 
+/**
+ * Parse a date string safely.
+ * - Trims fractional seconds to max 3 digits (V8 handles 7, Safari may not).
+ * - Parses bare "YYYY-MM-DD" as local date (avoids UTC off-by-one).
+ */
+const parseDate = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "")
+    return null;
+  let s = String(value).trim();
+  s = s.replace(/(\.\d{3})\d+/, "$1");
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 // dd-mm-yyyy
 const formatDate = (iso) => {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const yyyy = d.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
-  } catch {
-    return "—";
-  }
+  const d = parseDate(iso);
+  if (!d) return "—";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 };
 
 // dd-mm-yyyy hh:mm AM/PM
 const formatDateTime = (iso) => {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "—";
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const yyyy = d.getFullYear();
-    const timePart = d.toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    return `${dd}-${mm}-${yyyy} ${timePart}`;
-  } catch {
-    return "—";
-  }
+  const d = parseDate(iso);
+  if (!d) return "—";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const timePart = d.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${dd}-${mm}-${yyyy} ${timePart}`;
 };
 
 const formatUser = (v) => val(v);
@@ -316,7 +336,11 @@ const EmployerProfile = () => {
                           Organization Details
                         </h3>
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                        
+                          <FieldRow
+                            label="Employer ID"
+                            value={emp.eM_request_no}
+                            mono
+                          />
                           <FieldRow
                             label="Organization Name"
                             value={emp.eM_organization_name}
@@ -346,11 +370,22 @@ const EmployerProfile = () => {
                               "—"
                             )}
                           </FieldRow>
-                        
-                          <FieldRow label="Email / Username" value={emp.userName} />
-                            <FieldRow
+
+                          <FieldRow
+                            label="Email / Username"
+                            value={emp.userName}
+                          />
+                          <FieldRow
                             label="Status"
                             value={active ? "Active" : "Inactive"}
+                          />
+                          <FieldRow
+                            label="Consent Given"
+                            value={toYesNo(emp.eM_consent_given)}
+                          />
+                          <FieldRow
+                            label="Consent At"
+                            value={formatDateTime(emp.eM_consent_at)}
                           />
                         </div>
                       </div>
@@ -369,13 +404,7 @@ const EmployerProfile = () => {
                             label="Designation"
                             value={emp.eM_designation}
                           />
-                          <FieldRow
-                            label="Mobile"
-                            value={emp.mobile}
-                            mono
-                          />
-                          
-                          
+                          <FieldRow label="Mobile" value={emp.mobile} mono />
                         </div>
                       </div>
 
@@ -388,53 +417,33 @@ const EmployerProfile = () => {
                           <FieldRow label="Country" value={emp.countryName} />
                           <FieldRow label="State" value={emp.stateName} />
                           <FieldRow label="City" value={emp.cityName} />
-                          
-                        </div>
-                      </div>
-
-                      {/* Consent */}
-                      <div>
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Consent
-                        </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Consent Given"
-                            value={emp.eM_consent_given ? "Yes" : "No"}
-                          />
-                          <FieldRow
-                            label="Consent At"
-                            value={formatDateTime(emp.eM_consent_at)}
-                          />
                         </div>
                       </div>
 
                       {/* Audit Trail */}
                       <div>
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Audit Trail
-                        </h3>
+                      
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                            <FieldRow
-                            label="Request No."
-                            value={emp.eM_request_no}
-                            mono
-                          />
                           <FieldRow
                             label="Created At"
                             value={formatDateTime(emp.eM_created_at)}
                           />
-                       
+                          <FieldRow
+                            label="Created By"
+                            value={formatUser(emp.createdByName)}
+                          />
                           <FieldRow
                             label="Updated At"
                             value={formatDateTime(emp.eM_updated_at)}
                           />
-                         
+                          <FieldRow
+                            label="Updated By"
+                            value={formatUser(emp.updatedByName)}
+                          />
                           <FieldRow
                             label="Activated At"
                             value={formatDateTime(emp.eM_activated_at)}
                           />
-                         
                         </div>
                       </div>
                     </div>

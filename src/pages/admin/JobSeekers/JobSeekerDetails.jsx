@@ -36,6 +36,22 @@ const T = {
 
 const val = (v) => (v && String(v).trim() ? v : "—");
 
+/** Tolerant Yes/No/— mapper for boolean-ish API fields */
+const toYesNo = (v) => {
+  if (v === true || v === 1 || v === "1" || v === "true") return "Yes";
+  if (v === false || v === 0 || v === "0" || v === "false") return "No";
+  return "—";
+};
+
+/** Tolerant boolean check (true/1/"true"/"yes" → true) */
+const truthy = (v) => {
+  if (v === true) return true;
+  if (v === false || v === null || v === undefined) return false;
+  if (typeof v === "number") return v === 1;
+  const s = String(v).trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes" || s === "y";
+};
+
 const FIELD_LABEL = `text-[13px] font-semibold tracking-wide ${T.textFaint}`;
 const FIELD_BOX = (mono) =>
   `flex h-9 w-full items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
@@ -58,14 +74,20 @@ const FieldRow = ({ label, value, mono = false, children }) => (
   <div className="grid grid-cols-[160px_1fr] items-center gap-3">
     <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
     <div className={FIELD_BOX(mono)}>
-      <span className="min-w-0 flex-1 truncate">{children ?? val(value)}</span>
+      <span
+        className="min-w-0 flex-1 truncate"
+        title={String(children ?? val(value))}
+      >
+        {children ?? val(value)}
+      </span>
     </div>
   </div>
 );
 
 /* ---------------- API URL Configuration ---------------- */
-
-const DOCUMENT_BASE_URL = (process.env.REACT_APP_DOCUMENT_BASE_URL || "").trim();
+const DOCUMENT_BASE_URL = (
+  process.env.REACT_APP_DOCUMENT_BASE_URL || ""
+).trim();
 
 const toAbsoluteUrl = (url) => {
   if (!url) return url;
@@ -83,6 +105,57 @@ const toAbsoluteUrl = (url) => {
 
   return `${DOCUMENT_BASE_URL.replace(/\/+$/, "")}/${clean}`;
 };
+
+/* ---------------- Date parsing helpers ---------------- */
+
+/**
+ * Parse a date string safely.
+ * - Trims fractional seconds to max 3 digits (V8 handles 7, Safari may not).
+ * - Parses bare "YYYY-MM-DD" as local date (avoids UTC off-by-one).
+ */
+const parseDate = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "")
+    return null;
+  let s = String(value).trim();
+  s = s.replace(/(\.\d{3})\d+/, "$1");
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const hasValue = (value) =>
+  value !== undefined && value !== null && String(value).trim() !== "";
+
+// "22-10-2026"
+const formatDate = (value) => {
+  const d = parseDate(value);
+  if (!d) return "-";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+};
+
+// "22-10-2026 11:08 AM"
+const formatDateTime = (value) => {
+  const d = parseDate(value);
+  if (!d) return "—";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const timePart = d.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${dd}-${mm}-${yyyy} ${timePart}`;
+};
+
+const formatUser = (v) =>
+  v === null || v === undefined || String(v).trim() === "" ? "—" : String(v);
 
 /* ---------------- Data helpers ---------------- */
 const STORAGE_KEY = "ishraq_jobseekers";
@@ -116,12 +189,15 @@ const EMPTY_FORM = {
   employmentPreference: "",
   availabilityToJoin: "",
   resume: null,
+  consentGiven: "",
   // ---------- AUDIT ----------
   jobseekerNo: "",
   createdAt: "",
   createdBy: "",
+  CreatedByName: "",
   updatedAt: "",
   updatedBy: "",
+  UpdatedByName: "",
   activatedAt: "",
   activatedBy: "",
   consentAt: "",
@@ -142,10 +218,9 @@ const extractRecord = (response) => {
 
 /**
  * Map the GET /jobseeker/:id response (jB_* fields) into the view model.
- * Only real API fields are used — no duplicated guessed keys.
  */
 const toJobseekerView = (item, id) => {
-  const active = item?.jB_is_active === true || item?.jB_is_active === 1;
+  const active = truthy(item?.jB_is_active);
 
   return {
     id: item?.jB_jobseeker_id ?? id,
@@ -166,6 +241,7 @@ const toJobseekerView = (item, id) => {
     professionalRegistrationNumber: item?.jB_registration_number ?? "",
     totalExperience: item?.jB_total_experience ?? "",
     currentDesignation: item?.jB_current_designation ?? "",
+    consentGiven: toYesNo(item?.jB_consent_given),
 
     currentCountry: item?.countryName ?? "",
     currentState: item?.stateName ?? "",
@@ -181,7 +257,7 @@ const toJobseekerView = (item, id) => {
     preferredState: "", // not returned by this API
     preferredCity: item?.jB_preferred_locationName ?? "",
     preferredJobLocation: item?.jB_preferred_locationName ?? "",
-    willingToRelocate: item?.jB_willing_to_relocate === true ? "Yes" : "No",
+    willingToRelocate: toYesNo(item?.jB_willing_to_relocate),
     employmentPreference: "", // not returned by this API
     availabilityToJoin: item?.jB_availability_to_join ?? "",
 
@@ -189,8 +265,10 @@ const toJobseekerView = (item, id) => {
     jobseekerNo: item?.jB_jobseeker_no ?? "",
     createdAt: item?.jB_created_at ?? "",
     createdBy: item?.jB_created_by ?? "",
+    CreatedByName: item?.createdByName ?? "",
     updatedAt: item?.jB_updated_at ?? "",
     updatedBy: item?.jB_updated_by ?? "",
+    UpdatedByName: item?.updatedByName ?? "",
     activatedAt: item?.jB_activated_at ?? "",
     activatedBy: item?.jB_activated_by ?? "",
     consentAt: item?.jB_consent_at ?? "",
@@ -205,17 +283,11 @@ const toJobseekerView = (item, id) => {
 };
 
 /* ---------------- Applied jobs helpers ---------------- */
-const hasValue = (value) =>
-  value !== undefined && value !== null && String(value).trim() !== "";
-
 const text = (value) => (hasValue(value) ? String(value).trim() : "-");
 
 const lowerKeys = (value) =>
   Object.fromEntries(
-    Object.entries(value ?? {}).map(([key, item]) => [
-      key.toLowerCase(),
-      item,
-    ]),
+    Object.entries(value ?? {}).map(([key, item]) => [key.toLowerCase(), item]),
   );
 
 const unwrapPage = (response) => {
@@ -266,49 +338,15 @@ const normalizeApplication = (raw) => {
       job.employmenttypename ??
       job.jq_employment_type_name,
 
-    jobStatus:
-      requirementActive === true || requirementActive === 1
-        ? "Open"
-        : requirementActive === false || requirementActive === 0
-          ? "Closed"
-          : "-",
+    jobStatus: truthy(requirementActive)
+      ? "Open"
+      : requirementActive === false || requirementActive === 0
+        ? "Closed"
+        : "-",
 
     isActive: app.ap_is_active,
   };
 };
-
-/* ---------- Date formatters (dd-mm-yyyy) ---------- */
-
-// "22-10-2026"
-const formatDate = (value) => {
-  if (!hasValue(value)) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = date.getFullYear();
-  return `${dd}-${mm}-${yyyy}`;
-};
-
-// "22-10-2026 11:08 AM"
-const formatDateTime = (value) => {
-  if (!hasValue(value)) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = date.getFullYear();
-  const timePart = date.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${dd}-${mm}-${yyyy} ${timePart}`;
-};
-
-const formatUser = (v) =>
-  v === null || v === undefined || String(v).trim() === ""
-    ? "—"
-    : String(v);
 
 /* ---------------- Documents tab helper ---------------- */
 const DocumentBox = ({ doc }) => {
@@ -327,7 +365,10 @@ const DocumentBox = ({ doc }) => {
           <FileIcon size={16} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-[#1a2b3c]">
+          <p
+            className="truncate text-[13px] font-semibold text-[#1a2b3c]"
+            title={doc.name || "Resume / CV"}
+          >
             {doc.name || "Resume / CV"}
           </p>
           <p className="text-[11.5px] text-[#8895a4]">Resume / CV</p>
@@ -343,6 +384,13 @@ const DocumentBox = ({ doc }) => {
             className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50"
           >
             <Eye size={13} /> View
+          </a>
+          <a
+            href={doc.url}
+            download
+            className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            <Download size={13} /> Download
           </a>
         </div>
       ) : (
@@ -418,7 +466,11 @@ const JobSeekerDetails = () => {
       setJobsLoading(true);
       setJobsError(null);
       try {
-        const response = await applicationApi.getAppliedJobs(id, page, pageSize);
+        const response = await applicationApi.getAppliedJobs(
+          id,
+          page,
+          pageSize,
+        );
         const result = unwrapPage(response);
         if (!cancelled) {
           setAppliedJobs(result.rows.map(normalizeApplication));
@@ -474,7 +526,10 @@ const JobSeekerDetails = () => {
           <p className={`mt-1 text-[13px] ${T.textMuted}`}>
             The record you're looking for doesn't exist or was removed.
           </p>
-          <button onClick={() => navigate(-1)} className={`mt-4 ${BTN_PRIMARY}`}>
+          <button
+            onClick={() => navigate(-1)}
+            className={`mt-4 ${BTN_PRIMARY}`}
+          >
             Go back
           </button>
         </div>
@@ -564,7 +619,7 @@ const JobSeekerDetails = () => {
 
               {/* RIGHT: detail panel */}
               <main className="min-w-0">
-                {/* -------- Overview (includes Current Location + Audit) -------- */}
+                {/* -------- Overview -------- */}
                 {tab === "overview" && (
                   <section
                     className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
@@ -576,6 +631,11 @@ const JobSeekerDetails = () => {
                           Personal & Professional Details
                         </h3>
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                          <FieldRow
+                            label="Jobseeker ID"
+                            value={form.jobseekerNo}
+                          />
+
                           <FieldRow label="Full Name" value={form.fullName} />
                           <FieldRow
                             label="Mobile Number"
@@ -610,7 +670,10 @@ const JobSeekerDetails = () => {
                             </div>
                           </div>
 
-                          <FieldRow label="Institute Type" value={form.jobType} />
+                          <FieldRow
+                            label="Institute Type"
+                            value={form.jobType}
+                          />
                           <FieldRow
                             label="Job Category"
                             value={form.jobCategory}
@@ -641,6 +704,10 @@ const JobSeekerDetails = () => {
                             label="Status"
                             value={active ? "Active" : "Inactive"}
                           />
+                          <FieldRow
+                            label="Consent Given"
+                            value={form.consentGiven}
+                          />
                         </div>
                       </div>
 
@@ -654,52 +721,38 @@ const JobSeekerDetails = () => {
                             label="Country"
                             value={form.currentCountry}
                           />
-                          <FieldRow
-                            label="State"
-                            value={form.currentState}
-                          />
+                          <FieldRow label="State" value={form.currentState} />
                           <FieldRow label="City" value={form.currentCity} />
                         </div>
                       </div>
 
                       {/* ---------- Audit Trail ---------- */}
                       <div>
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Audit Trail
-                        </h3>
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Jobseeker No"
-                            value={form.jobseekerNo}
-                          />
                           <FieldRow
                             label="Created At"
                             value={formatDateTime(form.createdAt)}
                           />
-                          {/* <FieldRow
+                          <FieldRow
                             label="Created By"
-                            value={formatUser(form.createdBy)}
-                          /> */}
+                            value={formatUser(form.CreatedByName)}
+                          />
                           <FieldRow
                             label="Updated At"
                             value={formatDateTime(form.updatedAt)}
                           />
-                          {/* <FieldRow
+                          <FieldRow
                             label="Updated By"
-                            value={formatUser(form.updatedBy)}
-                          /> */}
+                            value={formatUser(form.UpdatedByName)}
+                          />
                           <FieldRow
                             label="Activated At"
                             value={formatDateTime(form.activatedAt)}
                           />
                           {/* <FieldRow
-                            label="Activated By"
-                            value={formatUser(form.activatedBy)}
-                          /> */}
-                          <FieldRow
                             label="Consent At"
                             value={formatDateTime(form.consentAt)}
-                          />
+                          /> */}
                         </div>
                       </div>
                     </div>
@@ -762,9 +815,16 @@ const JobSeekerDetails = () => {
                         />
                         <FieldRow
                           label="Availability to Join"
-                          value={form.availabilityToJoin ? formatDate(form.availabilityToJoin) : form.availabilityToJoin}
+                          value={
+                            form.availabilityToJoin
+                              ? formatDate(form.availabilityToJoin)
+                              : form.availabilityToJoin
+                          }
                         />
-                        <FieldRow label="Job Category" value={form.jobCategory} />
+                        <FieldRow
+                          label="Job Category"
+                          value={form.jobCategory}
+                        />
                       </div>
                     </div>
                   </section>
@@ -820,16 +880,18 @@ const JobSeekerDetails = () => {
                         </div>
                       )}
 
-                      {!jobsLoading && !jobsError && appliedJobs.length === 0 && (
-                        <div className="px-4 py-12 text-center">
-                          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                            <Inbox size={22} />
+                      {!jobsLoading &&
+                        !jobsError &&
+                        appliedJobs.length === 0 && (
+                          <div className="px-4 py-12 text-center">
+                            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                              <Inbox size={22} />
+                            </div>
+                            <p className="mt-3 text-[15px] text-[#1e2b3c]">
+                              No applied jobs yet
+                            </p>
                           </div>
-                          <p className="mt-3 text-[15px] text-[#1e2b3c]">
-                            No applied jobs yet
-                          </p>
-                        </div>
-                      )}
+                        )}
 
                       {!jobsLoading && !jobsError && appliedJobs.length > 0 && (
                         <div className="overflow-x-auto">

@@ -19,6 +19,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
+import { getCurrentUserId } from "../../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -84,12 +85,30 @@ const REQUEST_STATUS_LABELS = {
   3: "Closed",
 };
 
-const requestStatusOf = (item) => {
-  const statusId =
+const requestStatusIdOf = (item) => {
+  const knownStatusId =
+    readField(item, "requestStatusId") ??
     readField(item, "statusId") ??
+    readField(item, "RequestStatusId") ??
     readField(item, "CE_status_id") ??
     readField(item, "cE_status_id") ??
     readField(item, "enquiry_status_id");
+  if (knownStatusId != null) return knownStatusId;
+
+  const statusIdEntry = Object.entries(item ?? {}).find(([key, value]) => {
+    const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    return (
+      /^(?:ce)?(?:request|enquiry)?statusid$/.test(normalizedKey) &&
+      value != null &&
+      String(value).trim() !== "" &&
+      Number.isFinite(Number(value))
+    );
+  });
+  return statusIdEntry?.[1];
+};
+
+const requestStatusOf = (item) => {
+  const statusId = requestStatusIdOf(item);
   const statusName =
     readField(item, "statusName") ??
     readField(item, "status") ??
@@ -240,6 +259,10 @@ const CareerEnquiryList = ({ formType = "career" }) => {
   /* refs for horizontal scroll sync */
   const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
+
+  /* Track successful and in-flight status updates to avoid duplicate PUTs. */
+  const statusPushedRef = useRef(new Set());
+  const statusUpdateInProgressRef = useRef(new Set());
 
   /* --------------------------- FETCH --------------------------- */
 
@@ -407,6 +430,60 @@ const CareerEnquiryList = ({ formType = "career" }) => {
       setConfirm(null);
     }
   };
+
+  /* --------------------------- VIEW --------------------------- */
+
+  const handleView = useCallback(
+    async (row) => {
+      const enquiryId = row.id;
+      const isNew = Number(requestStatusIdOf(row)) === 1;
+
+      if (isNew && enquiryId != null) {
+        if (statusUpdateInProgressRef.current.has(enquiryId)) return;
+        if (statusPushedRef.current.has(enquiryId)) {
+          navigate(`${cfg.detailPath}/${enquiryId}`);
+          return;
+        }
+        const userId = Number(getCurrentUserId());
+        if (!Number.isInteger(userId) || userId <= 0) {
+          setToast({
+            id: Date.now(),
+            tone: "err",
+            msg: "Unable to identify the current user. Please sign in again.",
+          });
+          return;
+        }
+        statusUpdateInProgressRef.current.add(enquiryId);
+        try {
+          await adminEnquiryService.updateCareerStatus(enquiryId, {
+            statusId: 2,
+            userId,
+            changedAt: new Date().toISOString(),
+          });
+          statusPushedRef.current.add(enquiryId);
+          setRows((prev) =>
+            prev.map((r) =>
+              r.id === enquiryId
+                ? { ...r, statusId: 2, statusName: "Open" }
+                : r,
+            ),
+          );
+        } catch (err) {
+          setToast({
+            id: Date.now(),
+            tone: "err",
+            msg: err?.message || "Could not update enquiry status",
+          });
+          return;
+        } finally {
+          statusUpdateInProgressRef.current.delete(enquiryId);
+        }
+      }
+
+      navigate(`${cfg.detailPath}/${enquiryId}`);
+    },
+    [cfg.detailPath, navigate, setToast],
+  );
 
   /* --------------------------- EXPORT --------------------------- */
 
@@ -744,9 +821,7 @@ const CareerEnquiryList = ({ formType = "career" }) => {
                               aria-label={`View ${
                                 row[cfg.titleField] || "Record"
                               }`}
-                              onClick={() =>
-                                navigate(`${cfg.detailPath}/${row.id}`)
-                              }
+                              onClick={() => handleView(row)}
                               className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                             >
                               <ChevronsRight size={14} strokeWidth={2.2} />

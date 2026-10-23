@@ -866,23 +866,29 @@ const EmployerList = () => {
 
         {/* DIALOG */}
         {confirm && (
-          <StatusModal
-            isOpen
-            type="confirm"
-            title={`Set status to ${confirm.next}?`}
-            message={`Are you sure you want to set ${
-              confirm.row.name ??
-              confirm.row.fullName ??
-              confirm.row.position ??
-              confirm.row.organizationName ??
-              "this record"
-            } to ${confirm.next.toLowerCase()}?`}
-            showCancel
-            busy={busy}
-            confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
-            onCancel={() => setConfirm(null)}
-            onConfirm={confirmToggle}
-          />
+         <StatusModal
+  isOpen
+  type="confirm"
+  title={`Set status to ${confirm.next}?`}
+  message={
+    <>
+      Are you sure you want to set{" "}
+      <strong className="font-semibold text-slate-900">
+        {confirm.row.companyName ||
+          confirm.row.name ||
+          confirm.row.fullName ||
+          confirm.row.organizationName ||
+          "this record"}
+      </strong>{" "}
+      to {confirm.next.toLowerCase()}?
+    </>
+  }
+  showCancel
+  busy={busy}
+  confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+  onCancel={() => setConfirm(null)}
+  onConfirm={confirmToggle}
+/>
         )}
 
         {/* TOAST */}
