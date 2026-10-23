@@ -378,7 +378,16 @@ const FeedbackList = ({ formType = "feedback" }) => {
   const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = rows;
+  const searchText = query.search.trim().toLowerCase();
+  const pageRows = searchText
+    ? rows.filter((row) =>
+        Object.values(row).some(
+          (value) =>
+            (typeof value === "string" || typeof value === "number") &&
+            String(value).toLowerCase().includes(searchText),
+        ),
+      )
+    : rows;
 
   const pageNumbers = useMemo(() => {
     const win = 5;

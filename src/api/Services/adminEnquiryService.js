@@ -168,7 +168,7 @@ export const adminEnquiryService = {
       pageNo: page,
       pageSize: limit,
     };
-    if (search?.trim()) params.search = search.trim();
+    if (search?.trim()) params.Search = search.trim();
 
     const res = await axiosInstance.get(list, {
       params,
