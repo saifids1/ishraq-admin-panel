@@ -125,6 +125,10 @@ const inputClass =
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
+/* Read-only display input — looks like a normal input but not editable */
+const displayInputClass =
+  "w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition cursor-default";
+
 const statusIdFromName = (value, options) => {
   const normalized = String(value ?? "").trim().toLowerCase();
   return options.find(
@@ -188,7 +192,7 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
           } else {
             /* ---- Response: include the API's actual key `fb_responseRetun` ---- */
             const savedResponse =
-              data?.fb_responseRetun ??   // API key (note spelling)
+              data?.fb_responseRetun ?? // API key (note spelling)
               data?.responseRetun ??
               data?.responseReturn ??
               data?.response ??
@@ -247,23 +251,37 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
     }
   };
 
-  const renderValue = (field, value) => {
-    if (value === null || value === undefined || value === "") {
-      return <span className="text-slate-400">—</span>;
-    }
+  /* ---------- Render the raw display string for a field ---------- */
+  const fieldDisplayValue = (field, value) => {
+    if (value === null || value === undefined || value === "") return "";
 
     switch (field.type) {
       case "date":
         return formatDate(value);
+      default:
+        return String(value);
+    }
+  };
 
-      case "rating":
-        return <Stars value={value} />;
+  /* ---------- Render the field's read-only display block ---------- */
+  const renderFieldInput = (field, value) => {
+    /* Rating → styled stars inside a display box */
+    if (field.type === "rating") {
+      return (
+        <div className={displayInputClass}>
+          {value ? (
+            <Stars value={value} />
+          ) : (
+            <span className="text-slate-400">—</span>
+          )}
+        </div>
+      );
+    }
 
-      case "multiline":
-        return <span className="whitespace-pre-wrap break-words">{value}</span>;
-
-      case "file":
-        return (
+    /* File → button inside a display box */
+    if (field.type === "file") {
+      return (
+        <div className={displayInputClass}>
           <button
             type="button"
             onClick={openFile}
@@ -272,11 +290,31 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
             <FileText size={16} />
             View Document
           </button>
-        );
-
-      default:
-        return <span className="break-words">{String(value)}</span>;
+        </div>
+      );
     }
+
+    /* Multiline → textarea-style display */
+    if (field.type === "multiline") {
+      return (
+        <textarea
+          readOnly
+          value={fieldDisplayValue(field, value)}
+          rows={3}
+          className={`${displayInputClass} resize-none`}
+        />
+      );
+    }
+
+    /* Default → single-line read-only input */
+    return (
+      <input
+        type="text"
+        readOnly
+        value={fieldDisplayValue(field, value)}
+        className={displayInputClass}
+      />
+    );
   };
 
   // ---- Submit response ----
@@ -297,7 +335,9 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
     try {
       const userId = Number(getCurrentUserId2());
       if (!Number.isInteger(userId) || userId <= 0) {
-        throw new Error("Unable to identify the current user. Please sign in again.");
+        throw new Error(
+          "Unable to identify the current user. Please sign in again.",
+        );
       }
       await adminEnquiryService.updateEnquiryResponse(
         formType,
@@ -325,7 +365,7 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
   // ---- Update status ----
   const handleSaveStatus = async () => {
     // Locked once the request is Closed.
-    if (savingStatus || isClosed) return;
+    if (savingStatus || savingResponse || isClosed) return;
 
     setSavingStatus(true);
     setError("");
@@ -334,7 +374,9 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
     try {
       const userId = Number(getCurrentUserId2());
       if (!Number.isInteger(userId) || userId <= 0) {
-        throw new Error("Unable to identify the current user. Please sign in again.");
+        throw new Error(
+          "Unable to identify the current user. Please sign in again.",
+        );
       }
       await adminEnquiryService.updateEnquiryStatus(formType, id, {
         statusId: Number(status),
@@ -433,16 +475,24 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
             </div>
           ) : record ? (
             <div className="p-4">
-              {/* Details list */}
+              {/* Details list — every value lives inside a display box */}
               <div className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
                   {cfg.detailFields.map((field) => (
-                    <div key={field.key} className="flex gap-10">
-                      <div className="text-[14px] uppercase tracking-wide mt-1 w-[13rem]">
-                        {field.label} :
-                      </div>
-                      <div className="text-[15px] font-medium mt-0">
-                        {renderValue(field, record[field.key])}
+                    <div
+                      key={field.key}
+                      className={`grid grid-cols-[140px_1fr] items-start gap-3 ${
+                        field.type === "multiline" ? "md:col-span-2" : ""
+                      }`}
+                    >
+                      <label
+                        htmlFor={`field-${field.key}`}
+                        className="pt-2.5 text-[14px] font-semibold text-black"
+                      >
+                        {field.label}
+                      </label>
+                      <div className="min-w-0">
+                        {renderFieldInput(field, record[field.key])}
                       </div>
                     </div>
                   ))}

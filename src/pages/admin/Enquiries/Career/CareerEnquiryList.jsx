@@ -19,7 +19,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
-import { getCurrentUserId } from "../../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -444,7 +444,7 @@ const CareerEnquiryList = ({ formType = "career" }) => {
           navigate(`${cfg.detailPath}/${enquiryId}`);
           return;
         }
-        const userId = Number(getCurrentUserId());
+        const userId = Number(getCurrentUserId2());
         if (!Number.isInteger(userId) || userId <= 0) {
           setToast({
             id: Date.now(),
