@@ -162,14 +162,16 @@ const extractOne = (body) => {
 };
 
 export const adminEnquiryService = {
-  list: async (formType, page = 1, limit = 10) => {
+  list: async (formType, page = 1, limit = 10, search) => {
     const { list } = getEndpoints(formType);
+    const params = {
+      pageNo: page,
+      pageSize: limit,
+    };
+    if (search?.trim()) params.search = search.trim();
 
     const res = await axiosInstance.get(list, {
-      params: {
-        pageNo: page,
-        pageSize: limit,
-      },
+      params,
     });
 
     return extractList(res.data, page, limit);

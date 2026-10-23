@@ -252,7 +252,12 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
     setLoading(true);
     setError("");
     try {
-      const result = await adminEnquiryService.list(formType, page, pageSize);
+      const result = await adminEnquiryService.list(
+        formType,
+        page,
+        pageSize,
+        query.search,
+      );
       const list = result.data ?? [];
       setRows(
         list.map((item, i) =>
@@ -265,7 +270,7 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
     } finally {
       setLoading(false);
     }
-  }, [formType, cfg, page, pageSize]);
+  }, [formType, cfg, page, pageSize, query.search]);
 
   useEffect(() => {
     load();
