@@ -128,12 +128,26 @@ const requestStatusOf = (item) => {
   return "-";
 };
 
-const requestStatusIdOf = (item) =>
-  item?.requestStatusId ??
-  item?.statusId ??
-  item?.CN_status_id ??
-  item?.cN_status_id ??
-  item?.enquiry_status_id;
+const requestStatusIdOf = (item) => {
+  const knownStatusId =
+    item?.requestStatusId ??
+    item?.statusId ??
+    item?.CN_status_id ??
+    item?.cN_status_id ??
+    item?.enquiry_status_id;
+  if (knownStatusId != null) return knownStatusId;
+
+  const statusIdEntry = Object.entries(item ?? {}).find(([key, value]) => {
+    const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    return (
+      /^(?:[a-z]{2})?(?:request|enquiry)?statusid$/.test(normalizedKey) &&
+      value != null &&
+      String(value).trim() !== "" &&
+      Number.isFinite(Number(value))
+    );
+  });
+  return statusIdEntry?.[1];
+};
 
 /* --------------------------- COLUMN DEFINITION --------------------------- */
 /* Used for search only. */

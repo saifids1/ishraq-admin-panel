@@ -152,11 +152,25 @@ const requestStatusOf = (item) => {
   return "-";
 };
 
-const requestStatusIdOf = (item) =>
-  readField(item, "requestStatusId") ??
-  readField(item, "statusId") ??
-  readField(item, "FB_status_id") ??
-  readField(item, "enquiry_status_id");
+const requestStatusIdOf = (item) => {
+  const knownStatusId =
+    readField(item, "requestStatusId") ??
+    readField(item, "statusId") ??
+    readField(item, "FB_status_id") ??
+    readField(item, "enquiry_status_id");
+  if (knownStatusId != null) return knownStatusId;
+
+  const statusIdEntry = Object.entries(item ?? {}).find(([key, value]) => {
+    const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    return (
+      /^(?:[a-z]{2})?(?:request|enquiry)?statusid$/.test(normalizedKey) &&
+      value != null &&
+      String(value).trim() !== "" &&
+      Number.isFinite(Number(value))
+    );
+  });
+  return statusIdEntry?.[1];
+};
 
 /* --------------------------- COLUMN DEFINITION --------------------------- */
 
