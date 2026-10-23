@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronsLeft, FileText, Eye } from "lucide-react";
 import { useStatusToast } from "../../../../components/common/StatusModalProvider";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
-import { getCurrentUserId } from "../../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -362,7 +362,7 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
     setNotice("");
 
     try {
-      const userId = Number(getCurrentUserId());
+      const userId = Number(getCurrentUserId2());
       if (!Number.isInteger(userId) || userId <= 0) {
         throw new Error("Unable to identify the current user. Please sign in again.");
       }
@@ -399,7 +399,7 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
     setNotice("");
 
     try {
-      const userId = Number(getCurrentUserId());
+      const userId = Number(getCurrentUserId2());
       if (!Number.isInteger(userId) || userId <= 0) {
         throw new Error("Unable to identify the current user. Please sign in again.");
       }

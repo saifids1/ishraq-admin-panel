@@ -17,7 +17,7 @@ export const getCurrentUser = () => {
     const user = JSON.parse(userData);
 
     return {
-      id: user.id ?? null,
+      id: user.id ?? user.userId ?? null,
       name: user.name ?? "",
       username: user.username ?? "",
       email: user.email ?? "",
@@ -37,7 +37,7 @@ export const getCurrentUser = () => {
  */
 export const getCurrentUserId = () => {
   const user = getCurrentUser();
-  return user?.id ?? user?.profileId ?? null;
+  return  user?.profileId ?? null;
 };
 export const getCurrentUserId2 = () => {
   const user = getCurrentUser();
