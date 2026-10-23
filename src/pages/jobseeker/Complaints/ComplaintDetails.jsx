@@ -1,73 +1,99 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  Building2,
-  CalendarDays,
-  FileText,
-  LoaderCircle,
-  Mail,
-  Paperclip,
-  Phone,
-  ShieldCheck,
-  Tag,
-  UserRound,
+  ChevronsLeft,
+  Clock3,
+  Loader2,
+  PauseCircle,
+  CheckCircle2,
+  ShieldAlert,
   Download,
+  LoaderCircle,
 } from "lucide-react";
 
 import { getComplaintById } from "../../../api/complaintApi";
 
-import {
-  ACCENT,
-  Card,
-  PageHeader,
-  ReadOnlyValue,
-} from "../../../components/common/FormUi";
+const ACCENT = "#2f6b8a";
 
-const STATUS_STYLES = {
-  NEW: "bg-blue-600 text-white",
-  OPEN: "bg-emerald-600 text-white",
-  "IN-PROGRESS": "bg-amber-500 text-white",
-  HOLD: "bg-violet-600 text-white",
-  CLOSED: "bg-slate-700 text-white",
+/* ------------------------- STATUS TONES ------------------------- */
+/* Mirrors CareerEnquiryList's REQUEST_STATUS_TONES palette. */
+
+const REQUEST_STATUS_TONES = {
+  new: {
+    badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20",
+    icon: Clock3,
+  },
+  inprogress: {
+    badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20",
+    icon: Loader2,
+  },
+  hold: {
+    badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+    icon: PauseCircle,
+  },
+  closed: {
+    badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20",
+    icon: CheckCircle2,
+  },
 };
 
-const DEFAULT_STATUS_STYLE = "bg-gray-300 text-gray-800";
+const NEUTRAL_TONE = {
+  badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20",
+  icon: ShieldAlert,
+};
 
-const LABEL_CLASS =
-  "w-full text-sm font-medium text-black sm:w-48 sm:min-w-48 sm:shrink-0 sm:pt-2";
+const BADGE_BASE =
+  "inline-flex h-7 w-[110px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
-const normalizeStatus = (value = "") =>
-  String(value).trim().toUpperCase().replace(/[\s_]+/g, "-");
+const normalizeRequestStatus = (value) => {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (!raw) return null;
+  if (raw === "new") return "new";
+  if (
+    ["open", "inprogress", "inprocess", "processing", "ongoing"].includes(raw)
+  )
+    return "inprogress";
+  if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
+  if (["closed", "close", "completed", "done", "resolved"].includes(raw))
+    return "closed";
+  return null;
+};
 
-// Converts an ISO-like timestamp into "dd/mm/yyyy, h:mm AM/PM".
+const requestToneOf = (value) => {
+  const key = normalizeRequestStatus(value);
+  if (!key) return { ...NEUTRAL_TONE, key: null };
+  return { ...REQUEST_STATUS_TONES[key], key };
+};
+
+/* ------------------------- HELPERS ------------------------- */
+
+const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
+
 const formatDate = (value) => {
-  if (!value) return "-";
-
-  // Trim fractional seconds beyond milliseconds (e.g. ".6030947")
-  // so the date parser accepts the value consistently.
+  if (!value) return "—";
   const normalized = String(value).replace(/(\.\d{3})\d+/, "$1");
   const date = new Date(normalized);
-
-  if (Number.isNaN(date.getTime())) return "-";
+  if (Number.isNaN(date.getTime())) return "—";
 
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
-
-  const rawHours = date.getHours();
-  const period = rawHours >= 12 ? "PM" : "AM";
-  const hours = rawHours % 12 || 12;
+  const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
 
-  return `${day}/${month}/${year}, ${hours}:${minutes} ${period}`;
+  return `${day}-${month}-${year}, ${hours}:${minutes}`;
 };
 
 const getFileUrl = (path) => {
   if (!path) return "";
 
-  const baseUrl = (
-    process.env.REACT_APP_API_BASE_URL || ""
-  ).replace(/\/api\/?$/, "");
+  const baseUrl = (process.env.REACT_APP_API_BASE_URL || "").replace(
+    /\/api\/?$/,
+    "",
+  );
 
   const normalizedPath = String(path)
     .replace(/^\/+/, "")
@@ -76,23 +102,35 @@ const getFileUrl = (path) => {
   return `${baseUrl}/${normalizedPath}`;
 };
 
-const or = (value) =>
-  value !== null &&
-  value !== undefined &&
-  String(value).trim() !== ""
-    ? value
-    : "-";
+const viewValue = (value) =>
+  value === null || value === undefined || String(value).trim() === ""
+    ? "—"
+    : value;
 
-// Reusable horizontal label and value layout.
-const DetailField = ({ label, children, className = "" }) => (
+/* ------------------------- FIELD COMPONENTS ------------------------- */
+
+const FieldRow = ({ label, children, fullWidth }) => (
   <div
-    className={`flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:gap-5 ${className}`}
+    className={`grid grid-cols-[160px_1fr] items-start gap-3 ${
+      fullWidth ? "md:col-span-2" : ""
+    }`}
   >
-    <span className={LABEL_CLASS}>{label}</span>
-
-    <div className="min-w-0 flex-1">{children}</div>
+    <label className={`${FIELD_LABEL} pt-2`}>{label}</label>
+    <div className="min-w-0">{children}</div>
   </div>
 );
+
+const ValueBox = ({ children, multiline }) => (
+  <div
+    className={`flex ${
+      multiline ? "min-h-[72px] items-start" : "min-h-9 items-center"
+    } rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 py-2 text-[13px] font-medium text-[#1a2b3c]`}
+  >
+    <span className="min-w-0 flex-1 break-words">{children}</span>
+  </div>
+);
+
+/* ------------------------- COMPONENT ------------------------- */
 
 const ComplaintDetails = () => {
   const { id } = useParams();
@@ -111,39 +149,9 @@ const ComplaintDetails = () => {
         setError("");
         setComplaint(null);
 
-        if (!id) {
-          throw new Error("Complaint ID is missing.");
-        }
+        if (!id) throw new Error("Complaint ID is missing.");
 
         const response = await getComplaintById(id);
-
-        if (
-          response?.success === false ||
-          response?.Success === false
-        ) {
-          throw new Error(
-            response.message ||
-              response.Message ||
-              "Failed to load complaint details."
-          );
-        }
-
-        /*
-         * Supports these response formats:
-         *
-         * 1. Paginated API:
-         *    { success: true, data: { data: [...] } }
-         *
-         * 2. Direct array:
-         *    { success: true, data: [...] }
-         *
-         * 3. Single complaint:
-         *    { success: true, data: { cP_complaint_id: 1, ... } }
-         *
-         * 4. Axios response wrapping the API response:
-         *    { data: { success: true, data: { data: [...] } } }
-         */
-
         const apiResponse = response?.data ?? response;
 
         if (
@@ -153,7 +161,7 @@ const ComplaintDetails = () => {
           throw new Error(
             apiResponse.message ||
               apiResponse.Message ||
-              "Failed to load complaint details."
+              "Failed to load complaint details.",
           );
         }
 
@@ -163,16 +171,10 @@ const ComplaintDetails = () => {
         let record = null;
 
         if (Array.isArray(records)) {
-          // Find the complaint matching the route parameter.
           record = records.find(
-            (item) =>
-              String(item?.cP_complaint_id) === String(id)
+            (item) => String(item?.cP_complaint_id) === String(id),
           );
-
-          // Fallback for endpoints that return only one record.
-          if (!record && records.length === 1) {
-            record = records[0];
-          }
+          if (!record && records.length === 1) record = records[0];
         } else if (
           records &&
           typeof records === "object" &&
@@ -184,41 +186,37 @@ const ComplaintDetails = () => {
 
         if (!record) {
           throw new Error(
-            "Complaint not found. Please check the complaint ID."
+            "Complaint not found. Please check the complaint ID.",
           );
         }
 
-        if (!cancelled) {
-          setComplaint(record);
-        }
+        if (!cancelled) setComplaint(record);
       } catch (err) {
         if (!cancelled) {
           setError(
             err?.response?.data?.message ||
               err?.response?.data?.Message ||
               err?.message ||
-              "Failed to load complaint details."
+              "Failed to load complaint details.",
           );
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchComplaint();
-
     return () => {
       cancelled = true;
     };
   }, [id]);
 
-  // Loading state
+  /* ------------------------- LOADING ------------------------- */
+
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center bg-white p-6">
-        <div className="flex items-center gap-3 text-sm text-black">
+      <div className="flex min-h-[50vh] items-center justify-center bg-[#f4f8fb] p-6">
+        <div className="flex items-center gap-3 text-sm text-slate-700">
           <LoaderCircle
             className="animate-spin"
             style={{ color: ACCENT }}
@@ -230,197 +228,220 @@ const ComplaintDetails = () => {
     );
   }
 
-  // Error state
+  /* ------------------------- ERROR ------------------------- */
+
   if (error || !complaint) {
     return (
-      <div className="min-h-full bg-white p-4">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-black transition hover:bg-slate-50"
-        >
-          Go Back
-        </button>
+      <div className="min-h-full bg-[#f4f8fb] p-4">
+        <div className="mx-auto">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex justify-between border-b border-slate-200 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  title="Back"
+                  aria-label="Back"
+                  className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
+                >
+                  <ChevronsLeft size={18} strokeWidth={2} />
+                </button>
+                <h2 className="font-semibold text-slate-800">
+                  Complaint Details
+                </h2>
+              </div>
+            </div>
 
-        <div className="mx-auto max-w-xl rounded-2xl border border-red-200 bg-white p-5 text-red-700 shadow-sm">
-          <h1 className="font-semibold">
-            Could Not Load Complaint
-          </h1>
-
-          <p className="mt-1 text-sm">
-            {error || "Complaint not found."}
-          </p>
+            <div className="p-4">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+                {error || "Complaint not found."}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  const statusKey = normalizeStatus(complaint.statusName);
-  const statusLabel = statusKey || "UNKNOWN";
+  /* ------------------------- DERIVED ------------------------- */
 
-  const statusStyle =
-    STATUS_STYLES[statusKey] ?? DEFAULT_STATUS_STYLE;
+  const reqTone = requestToneOf(complaint.statusName);
+  const StatusIcon = reqTone.icon;
 
   const filePath = complaint.cP_file_path || "";
   const fileUrl = getFileUrl(filePath);
-
-  const fileName = filePath
-    ? filePath.split(/[\\/]/).pop()
-    : "";
-
+  const fileName = filePath ? filePath.split(/[\\/]/).pop() : "";
   const adminResponse = complaint.cP_responseRetun;
 
+  /* ------------------------- RENDER ------------------------- */
+
   return (
-    <div className="min-h-full bg-white text-slate-800">
-      <PageHeader
-        title="Complaint Details"
-        onBack={() => navigate(-1)}
-        right={
-          <span
-            className={`inline-flex w-fit items-center rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider shadow-sm ${statusStyle}`}
-          >
-            {statusLabel}
-          </span>
-        }
-      />
-
-      <div className="grid grid-cols-1 gap-4">
-        {/* Summary */}
-        <Card title="Summary" icon={FileText}>
-          <div className="flex flex-col gap-5">
-            <DetailField label="Complaint ID">
-              <ReadOnlyValue icon={FileText}>
-                {or(complaint.cP_reference_no)}
-              </ReadOnlyValue>
-            </DetailField>
-
-            <DetailField label="Category">
-              <ReadOnlyValue icon={Tag}>
-                {or(complaint.complaintCategoryName)}
-              </ReadOnlyValue>
-            </DetailField>
-
-            <DetailField label="Submitted On">
-              <ReadOnlyValue icon={CalendarDays}>
-                {formatDate(complaint.cP_created_at)}
-              </ReadOnlyValue>
-            </DetailField>
-          </div>
-        </Card>
-
-        {/* Complainant Information */}
-        <Card title="Complainant Information" icon={UserRound}>
-          <div className="flex flex-col gap-5">
-            <DetailField label="Full Name / Organization">
-              <ReadOnlyValue icon={Building2}>
-                {or(complaint.cP_full_name)}
-              </ReadOnlyValue>
-            </DetailField>
-
-            <DetailField label="User Type">
-              <ReadOnlyValue icon={UserRound}>
-                {or(complaint.userTypeName)}
-              </ReadOnlyValue>
-            </DetailField>
-
-            <DetailField label="Mobile Number">
-              <ReadOnlyValue icon={Phone}>
-                {or(complaint.cP_mobile)}
-              </ReadOnlyValue>
-            </DetailField>
-
-            <DetailField label="Email Address">
-              <ReadOnlyValue icon={Mail}>
-                {or(complaint.cP_email)}
-              </ReadOnlyValue>
-            </DetailField>
-
-            <DetailField label="Complaint Category">
-              <ReadOnlyValue icon={Tag}>
-                {or(complaint.complaintCategoryName)}
-              </ReadOnlyValue>
-            </DetailField>
-
-            <DetailField label="Reference Number">
-              <ReadOnlyValue icon={FileText}>
-                {or(complaint.cP_reference_no)}
-              </ReadOnlyValue>
-            </DetailField>
-          </div>
-        </Card>
-
-        {/* Complaint Description */}
-        <Card title="Complaint Description" icon={FileText}>
-          <DetailField label="Complaint Details">
-            <ReadOnlyValue multiline>
-              {complaint.cP_details || "No description provided."}
-            </ReadOnlyValue>
-          </DetailField>
-        </Card>
-
-        {/* Admin Response */}
-        <Card title="Admin Response" icon={ShieldCheck}>
-          <div className="flex flex-col gap-5">
-            <DetailField label="Response Status">
-              <ReadOnlyValue icon={Tag}>
-                {or(complaint.statusName)}
-              </ReadOnlyValue>
-            </DetailField>
-
-            <DetailField label="Response">
-              <ReadOnlyValue multiline>
-                {adminResponse?.trim()
-                  ? adminResponse
-                  : "No response has been provided yet."}
-              </ReadOnlyValue>
-            </DetailField>
-          </div>
-        </Card>
-
-        {/* Supporting Document */}
-        <Card title="Supporting Document" icon={Paperclip}>
-          <DetailField label="Attachment">
-            {filePath ? (
-              <a
-                href={fileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Open document in a new tab"
-                className="flex min-h-[42px] w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-black transition hover:bg-slate-100"
+    <div className="min-h-full bg-[#f4f8fb]">
+      <div className="mx-auto">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* Header bar */}
+          <div className="flex justify-between border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                title="Back"
+                aria-label="Back"
+                className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
               >
-                <span className="min-w-0 break-all">
-                  {fileName}
-                </span>
+                <ChevronsLeft size={18} strokeWidth={2} />
+              </button>
 
-                <Download
-                  size={16}
-                  className="shrink-0 text-black"
-                />
-              </a>
-            ) : (
-              <div className="flex min-h-[42px] w-full items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-black">
-                No supporting document attached.
-              </div>
-            )}
-          </DetailField>
-        </Card>
+              <h2 className="font-semibold text-slate-800">
+                Complaint Details
+              </h2>
+            </div>
 
-        {/* Record Information */}
-        <Card title="Record Information" icon={CalendarDays}>
-          <div className="flex flex-col gap-5">
-            <DetailField label="Created At">
-              <ReadOnlyValue icon={CalendarDays}>
-                {formatDate(complaint.cP_created_at)}
-              </ReadOnlyValue>
-            </DetailField>
-
-            <DetailField label="Last Updated">
-              <ReadOnlyValue icon={CalendarDays}>
-                {formatDate(complaint.cP_updated_at)}
-              </ReadOnlyValue>
-            </DetailField>
+            <span className={`${BADGE_BASE} ${reqTone.badge} gap-1`}>
+              
+              {complaint.statusName || "UNKNOWN"}
+            </span>
           </div>
-        </Card>
+
+          <div className="p-4">
+            <div className="space-y-6 rounded-lg border border-slate-200 bg-white p-4">
+              {/* Complaint Information */}
+              <section>
+                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                  Complaint Information
+                </h3>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                  <FieldRow label="Complaint ID">
+                    <ValueBox>{viewValue(complaint.cP_reference_no)}</ValueBox>
+                  </FieldRow>
+
+                  <FieldRow label="Category">
+                    <ValueBox>
+                      {viewValue(complaint.complaintCategoryName)}
+                    </ValueBox>
+                  </FieldRow>
+
+                  <FieldRow label="Submitted On">
+                    <ValueBox>{formatDate(complaint.cP_created_at)}</ValueBox>
+                  </FieldRow>
+
+                  <FieldRow label="User Type">
+                    <ValueBox>{viewValue(complaint.userTypeName)}</ValueBox>
+                  </FieldRow>
+
+                  <FieldRow label="Full Name ">
+                    <ValueBox>{viewValue(complaint.cP_full_name)}</ValueBox>
+                  </FieldRow>
+
+                  <FieldRow label="Mobile Number">
+                    <ValueBox>{viewValue(complaint.cP_mobile)}</ValueBox>
+                  </FieldRow>
+
+                  <FieldRow label="Email Address">
+                    <ValueBox>{viewValue(complaint.cP_email)}</ValueBox>
+                  </FieldRow>
+
+                  {/* <FieldRow label="Reference Number">
+                    <ValueBox>
+                      {viewValue(complaint.cP_reference_no)}
+                    </ValueBox>
+                  </FieldRow> */}
+                </div>
+              </section>
+
+              {/* Complaint Description */}
+              <section>
+                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                  Complaint Description
+                </h3>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                  <FieldRow label="Complaint Details" fullWidth>
+                    <ValueBox multiline>
+                      {complaint.cP_details || "No description provided."}
+                    </ValueBox>
+                  </FieldRow>
+                </div>
+              </section>
+
+              {/* Admin Response */}
+              <section>
+                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                  Admin Response
+                </h3>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                  <FieldRow label="Response Status">
+                    <ValueBox>{viewValue(complaint.statusName)}</ValueBox>
+                  </FieldRow>
+
+                  <FieldRow label="Response" fullWidth>
+                    <ValueBox multiline>
+                      {adminResponse?.trim()
+                        ? adminResponse
+                        : "No response has been provided yet."}
+                    </ValueBox>
+                  </FieldRow>
+                </div>
+              </section>
+
+              {/* Supporting Document */}
+              <section>
+                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                  Supporting Document
+                </h3>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                  <FieldRow label="Attachment" fullWidth>
+                    {filePath ? (
+                      <a
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Open document in a new tab"
+                        className="flex min-h-9 w-full items-center justify-between gap-3 rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 py-2 text-[13px] font-medium text-[#1a2b3c] transition hover:bg-[#eaf2f7]"
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          {fileName}
+                        </span>
+                        <Download
+                          size={16}
+                          className="shrink-0 text-[#2f6b8a]"
+                        />
+                      </a>
+                    ) : (
+                      <ValueBox>No supporting document attached.</ValueBox>
+                    )}
+                  </FieldRow>
+                </div>
+              </section>
+
+              {/* Record Information */}
+              <section>
+                <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                  Record Information
+                </h3>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                  <FieldRow label="Created At">
+                    <ValueBox>{formatDate(complaint.cP_created_at)}</ValueBox>
+                  </FieldRow>
+
+                  <FieldRow label="Last Updated">
+                    <ValueBox>{formatDate(complaint.cP_updated_at)}</ValueBox>
+                  </FieldRow>
+                </div>
+              </section>
+            </div>
+
+            {/* Footer */}
+            <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
