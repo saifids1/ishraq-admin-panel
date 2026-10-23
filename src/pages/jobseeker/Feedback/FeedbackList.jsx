@@ -315,7 +315,7 @@ const FeedbackList = () => {
 
   return (
     <div>
-      <StatCardGrid items={stats} />
+      {/* <StatCardGrid items={stats} /> */}
 
       <div className="mx-auto max-w-[1400px] rounded-[14px] border border-[#e2e8ee] bg-white p-4 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:px-5">
         {/* HEADER */}
