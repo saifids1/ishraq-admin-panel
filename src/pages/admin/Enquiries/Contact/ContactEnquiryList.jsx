@@ -19,6 +19,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
+import { getCurrentUserId2 } from "../../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -127,6 +128,13 @@ const requestStatusOf = (item) => {
   return "-";
 };
 
+const requestStatusIdOf = (item) =>
+  item?.requestStatusId ??
+  item?.statusId ??
+  item?.CN_status_id ??
+  item?.cN_status_id ??
+  item?.enquiry_status_id;
+
 /* --------------------------- COLUMN DEFINITION --------------------------- */
 /* Used for search only. */
 const COLUMNS = [
@@ -221,6 +229,8 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
   /* refs for horizontal scroll sync */
   const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
+  const statusPushedRef = useRef(new Set());
+  const statusUpdateInProgressRef = useRef(new Set());
 
   /* --------------------------- FETCH --------------------------- */
 
@@ -277,6 +287,51 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
       setRefreshing(false);
     }
   }, [load, refreshing, setToast]);
+
+  const handleView = useCallback(
+    async (row) => {
+      const enquiryId = row.id;
+      if (Number(requestStatusIdOf(row)) === 1 && enquiryId != null) {
+        if (statusUpdateInProgressRef.current.has(enquiryId)) return;
+        if (statusPushedRef.current.has(enquiryId)) {
+          navigate(`${cfg.detailPath}/${enquiryId}`);
+          return;
+        }
+
+        const userId = Number(getCurrentUserId2());
+        if (!Number.isInteger(userId) || userId <= 0) {
+          setToast({
+            id: Date.now(),
+            tone: "err",
+            msg: "Unable to identify the current user. Please sign in again.",
+          });
+          return;
+        }
+
+        statusUpdateInProgressRef.current.add(enquiryId);
+        try {
+          await adminEnquiryService.updateEnquiryStatus(formType, enquiryId, {
+            statusId: 2,
+            userId,
+            changedAt: new Date().toISOString(),
+          });
+          statusPushedRef.current.add(enquiryId);
+        } catch (err) {
+          setToast({
+            id: Date.now(),
+            tone: "err",
+            msg: err?.message || "Could not update enquiry status",
+          });
+          return;
+        } finally {
+          statusUpdateInProgressRef.current.delete(enquiryId);
+        }
+      }
+
+      navigate(`${cfg.detailPath}/${enquiryId}`);
+    },
+    [formType, navigate, setToast],
+  );
 
   /* --------------------------- CATEGORIES --------------------------- */
 
@@ -673,9 +728,7 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
                               aria-label={`View ${
                                 row[cfg.titleField] || "Record"
                               }`}
-                              onClick={() =>
-                                navigate(`${cfg.detailPath}/${row.id}`)
-                              }
+                              onClick={() => handleView(row)}
                               className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                             >
                               <ChevronsRight size={14} strokeWidth={2.2} />
