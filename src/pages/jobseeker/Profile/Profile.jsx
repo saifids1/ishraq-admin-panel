@@ -304,7 +304,7 @@ const JobseekerOverview = () => {
             <h2 className="font-semibold text-slate-800">
               {jobseeker.fullName || "My Profile Details"}
             </h2>
-            <p className="font-semibold text-slate-800">{jobseeker.jB_jobseeker_no}</p>
+            {/* <p className="font-semibold text-slate-800">{jobseeker.jB_jobseeker_no}</p> */}
 
             <div className="flex items-center gap-3">
               <button
@@ -360,6 +360,7 @@ const JobseekerOverview = () => {
                 {tab === "overview" && (
                   <div className="space-y-6">
                     <Section title="Personal & Professional Details">
+                      <FieldRow label="Jobseeker Id" value={jobseeker.jB_jobseeker_no} />
                       <FieldRow label="Full Name" value={jobseeker.fullName} />
                       <FieldRow label="Mobile Number" value={jobseeker.mobile} mono />
                       <FieldRow label="WhatsApp Number" value={jobseeker.jB_whatsapp} mono />
@@ -384,6 +385,29 @@ const JobseekerOverview = () => {
                       <FieldRow label="State" value={jobseeker.stateName} />
                       <FieldRow label="City" value={jobseeker.cityName} />
                       {/* <FieldRow label="Full Location" value={currentLocation} /> */}
+                    </Section>
+
+                    <Section title="">
+                                   <FieldRow
+                            label="Created At"
+                            value={formatDate(jobseeker.jB_created_at)}
+                          />
+                          <FieldRow
+                            label="Created By"
+                            value={jobseeker.createdByName}
+                          />
+                          <FieldRow
+                            label="Updated At"
+                            value={formatDate(jobseeker.jB_updated_at)}
+                          />
+                          <FieldRow
+                            label="Updated By"
+                            value={jobseeker.updatedByName}
+                          />
+                          <FieldRow
+                            label="Activated At"
+                            value={formatDate(jobseeker.JB_activated_at)}
+                          />
                     </Section>
 
                    

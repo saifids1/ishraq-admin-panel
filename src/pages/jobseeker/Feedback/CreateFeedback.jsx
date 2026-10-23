@@ -11,7 +11,7 @@ import {
 
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import { submitFeedback } from "../../../api/feedbackApi";
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId, getCurrentUserId2 } from "../../../utils/authUtils";
 import StatusModal from "../../../components/common/StatusModal.jsx";
 
 import {
@@ -149,7 +149,7 @@ const CreateFeedback = () => {
 
     if (Object.keys(found).length > 0) return;
 
-    const rawUserId = getCurrentUserId();
+    const rawUserId = getCurrentUserId2();
     const userId = Number(rawUserId);
 
     if (!rawUserId || !Number.isInteger(userId) || userId <= 0) {

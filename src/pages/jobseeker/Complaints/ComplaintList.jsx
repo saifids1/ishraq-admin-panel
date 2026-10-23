@@ -9,24 +9,44 @@ import {
 } from "lucide-react";
 
 import { getComplaintsByUserId } from "../../../api/complaintApi";
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const PAGE_SIZES = [10, 25, 50, 100];
-const TABLE_MIN_WIDTH = 1100;
+const TABLE_MIN_WIDTH = 1250;
 
 const TABLE_COLUMNS = [
-  { key: "srNo", label: "Sr.No", width: "70px" },
-  { key: "referenceNo", label: "Request No.", width: "170px" },
-  { key: "fullName", label: "Full Name", width: "200px" },
-  { key: "complaintCategory", label: "Complaint Category", width: "190px" },
-  { key: "details", label: "Complaint Details", width: "300px" },
-  { key: "createdAt", label: "Submit Date", width: "130px" },
-  { key: "actions", label: "Action", width: "110px" },
+  { key: "srNo", width: "70px" },
+  { key: "referenceNo", width: "170px" },
+  { key: "fullName", width: "200px" },
+  { key: "complaintCategory", width: "190px" },
+  { key: "details", width: "280px" },
+  { key: "createdAt", width: "130px" },
+  { key: "status", width: "120px" },
+  { key: "actions", width: "110px" },
 ];
 
-const TABLE_COL_COUNT = TABLE_COLUMNS.length;
+const BADGE_BASE =
+  "inline-flex h-7 min-w-[96px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
+
+const STATUS_BADGE = {
+  open: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
+  active: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
+  new: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
+  hold: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+  paused: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+  pending: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+  closed: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
+  resolved: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
+};
+
+const statusBadgeClass = (value) =>
+  STATUS_BADGE[
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+  ] ?? "bg-slate-500 ring-slate-600 shadow-slate-500/20";
 
 // Deduplicate concurrent requests across component remounts.
 // This also handles React StrictMode's development effect replay.
@@ -123,13 +143,7 @@ const mapComplaint = (item) => ({
 
   fullName: getValue(
     item,
-    [
-      "cP_full_name",
-      "cP_name",
-      "cP_complainer_name",
-      "fullName",
-      "name",
-    ],
+    ["cP_full_name", "cP_name", "cP_complainer_name", "fullName", "name"],
     "-",
   ),
 
@@ -160,7 +174,7 @@ const mapComplaint = (item) => ({
     "-",
   ),
 
-  status: getValue(item, ["statusName", "cP_status_name"], "NEW"),
+  status: getValue(item, ["statusName", "cP_status_name"], "-"),
 
   createdAt: formatDate(
     getValue(item, ["cP_created_at", "cP_created_date", "createdAt"], ""),
@@ -196,7 +210,7 @@ const ComplaintList = () => {
   const navigate = useNavigate();
 
   // Read the current user once for this mounted page.
-  const userId = getCurrentUserId();
+  const userId = getCurrentUserId2();
 
   const [complaints, setComplaints] = useState([]);
   const [search, setSearch] = useState("");
@@ -210,7 +224,7 @@ const ComplaintList = () => {
   // Prevent stale responses from overwriting newer page results.
   const requestSequence = useRef(0);
 
-  /* refs for horizontal scroll sync */
+  // Horizontal scroll sync between header and body.
   const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
 
@@ -246,15 +260,8 @@ const ComplaintList = () => {
       }
 
       // Expected API:
-      // {
-      //   success: true,
-      //   data: {
-      //     pageNo, pageSize, totalRecords, totalPages,
-      //     data: [...]
-      //   }
-      // }
+      // { success: true, data: { pageNo, pageSize, totalRecords, totalPages, data: [...] } }
       const result = body?.data;
-
       const rows = Array.isArray(result?.data) ? result.data : [];
 
       setComplaints(rows.map(mapComplaint));
@@ -299,7 +306,13 @@ const ComplaintList = () => {
     return () => body.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Search filters the complaints on the current page only.
+  /* keep the current page inside the valid range after the total changes */
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  /* --------------------------- SEARCH (current page) --------------------------- */
+
   const filteredComplaints = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -322,50 +335,55 @@ const ComplaintList = () => {
     );
   }, [complaints, search]);
 
+  /* --------------------------- PAGINATION --------------------------- */
+
+  const currentPage = Math.min(page, totalPages);
+  const start = totalRecords === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const end = Math.min(currentPage * pageSize, totalRecords);
+
   const pageNumbers = useMemo(() => {
-    const count = 5;
-
-    let from = Math.max(1, page - Math.floor(count / 2));
-    const to = Math.min(totalPages, from + count - 1);
-
-    from = Math.max(1, to - count + 1);
-
-    return Array.from({ length: to - from + 1 }, (_, index) => from + index);
-  }, [page, totalPages]);
-
-  const start = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, totalRecords);
-
-  const changePageSize = (event) => {
-    setPageSize(Number(event.target.value));
-    setPage(1);
-  };
+    const win = 5;
+    let from = Math.max(1, currentPage - Math.floor(win / 2));
+    const to = Math.min(totalPages, from + win - 1);
+    from = Math.max(1, to - win + 1);
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  }, [currentPage, totalPages]);
 
   const refresh = () => {
     if (!loading) fetchComplaints();
   };
 
-  /* --------------------------- STYLES --------------------------- */
+  /* ---------------------------- STYLES ---------------------------- */
 
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
   const td =
     "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] font-semibold text-black";
-  const thClass =
-    "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
-
   const btnRefresh =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
-
   const btnAdd =
     "inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2";
 
-  /* Sticky actions column — header + cells */
+  const thClass =
+    "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
+
+  /* Sticky actions column: header + cells */
   const stickyActionsHead =
     "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
   const stickyActionsCell =
     "sticky right-0 z-20 bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
+
+  const headers = [
+    { key: "srNo", label: "Sr.No", className: thClass },
+    { key: "referenceNo", label: "Request No.", className: thClass },
+    { key: "fullName", label: "Full Name", className: thClass },
+    { key: "complaintCategory", label: "Complaint Category", className: thClass },
+    { key: "details", label: "Complaint Details", className: thClass },
+    { key: "createdAt", label: "Submit Date", className: thClass },
+    { key: "status", label: "Status", className: thClass },
+    { key: "actions", label: "Action", className: stickyActionsHead },
+  ];
 
   /* --------------------------- RENDER --------------------------- */
 
@@ -377,8 +395,8 @@ const ComplaintList = () => {
           Complaints / Grievances
         </h1>
 
-        <div className="flex w-full flex-wrap items-center gap-2.5 xl:w-auto">
-          <div className="relative min-w-[320px] flex-1 xl:flex-none">
+        <div className="flex w-full flex-wrap items-center gap-2.5 xl:w-auto xl:justify-end">
+          <div className="relative min-w-[280px] flex-1 xl:flex-none">
             <SearchIcon
               size={15}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
@@ -415,6 +433,7 @@ const ComplaintList = () => {
 
           <button
             type="button"
+            title="Raise complaint"
             onClick={() => navigate("/jobseeker/complaint-add")}
             className={btnAdd}
           >
@@ -433,7 +452,7 @@ const ComplaintList = () => {
       {error && (
         <div
           role="alert"
-          className="mb-3 flex flex-col gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between"
+          className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
           <span>{error}</span>
           <button
@@ -447,7 +466,12 @@ const ComplaintList = () => {
         </div>
       )}
 
-      {/* TABLE */}
+      {/*
+        TABLE LAYOUT
+        - Fixed-height body with its own vertical scrollbar
+        - Header strip stays put and scrolls horizontally in sync with body
+        - Actions column is sticky right in BOTH header and body
+      */}
       <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="flex h-full flex-col">
           {/* Header strip */}
@@ -463,15 +487,9 @@ const ComplaintList = () => {
               </colgroup>
               <thead>
                 <tr>
-                  {TABLE_COLUMNS.map((c) => (
-                    <th
-                      key={c.key}
-                      scope="col"
-                      className={
-                        c.key === "actions" ? stickyActionsHead : thClass
-                      }
-                    >
-                      {c.label}
+                  {headers.map((h) => (
+                    <th key={h.key} scope="col" className={h.className}>
+                      {h.label}
                     </th>
                   ))}
                 </tr>
@@ -499,7 +517,7 @@ const ComplaintList = () => {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={TABLE_COL_COUNT}
+                      colSpan={headers.length}
                       className="px-4 py-12 text-center"
                     >
                       <div className="flex flex-col items-center">
@@ -516,7 +534,7 @@ const ComplaintList = () => {
                 ) : filteredComplaints.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={TABLE_COL_COUNT}
+                      colSpan={headers.length}
                       className="border-t border-[#e2e8ee] px-4 py-12 text-center"
                     >
                       <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
@@ -541,31 +559,49 @@ const ComplaintList = () => {
                       <td className={`${td} tabular-nums`}>{start + index}</td>
 
                       <td className={`${td} whitespace-nowrap`}>
-                        <div className="w-full min-w-0 truncate">
+                        <span
+                          className="block truncate font-medium text-slate-900"
+                          title={item.referenceNo}
+                        >
                           {item.referenceNo}
-                        </div>
+                        </span>
                       </td>
 
                       <td className={`${td} whitespace-nowrap`}>
-                        <div className="w-full min-w-0 truncate">
+                        <span
+                          className="block truncate font-medium text-slate-900"
+                          title={item.fullName}
+                        >
                           {item.fullName}
-                        </div>
+                        </span>
                       </td>
 
                       <td className={`${td} whitespace-nowrap`}>
-                        <div className="w-full min-w-0 truncate">
+                        <span
+                          className="block truncate"
+                          title={item.complaintCategory}
+                        >
                           {item.complaintCategory}
-                        </div>
+                        </span>
                       </td>
 
                       <td className={td}>
-                        <div className="w-full min-w-0 truncate" title={item.details}>
+                        <span className="block truncate" title={item.details}>
                           {item.details}
-                        </div>
+                        </span>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap tabular-nums`}>
+                        {item.createdAt}
                       </td>
 
                       <td className={`${td} whitespace-nowrap`}>
-                        {item.createdAt}
+                        <span
+                          title={item.status}
+                          className={`${BADGE_BASE} ${statusBadgeClass(item.status)}`}
+                        >
+                          {item.status || "-"}
+                        </span>
                       </td>
 
                       <td className={`${td} ${stickyActionsCell} text-center`}>
@@ -600,8 +636,7 @@ const ComplaintList = () => {
           <span>
             Showing{" "}
             <strong className="font-semibold text-[#53677f]">{start}</strong>{" "}
-            to{" "}
-            <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
+            to <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
             of{" "}
             <strong className="font-semibold text-[#53677f]">
               {totalRecords}
@@ -613,13 +648,16 @@ const ComplaintList = () => {
             <span>Show:</span>
             <select
               value={pageSize}
-              onChange={changePageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
               disabled={loading}
               className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[13px] text-[#34445a] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {PAGE_SIZES.map((size) => (
-                <option key={size} value={size}>
-                  {size}
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}
                 </option>
               ))}
             </select>
@@ -632,36 +670,34 @@ const ComplaintList = () => {
         >
           <button
             type="button"
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
-            disabled={page <= 1 || loading}
+            onClick={() => setPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage <= 1 || loading}
             className={navBtn}
           >
             Previous
           </button>
 
-          {pageNumbers.map((number) => (
+          {pageNumbers.map((n) => (
             <button
-              key={number}
+              key={n}
               type="button"
-              onClick={() => setPage(number)}
+              onClick={() => setPage(n)}
               disabled={loading}
-              aria-current={number === page ? "page" : undefined}
+              aria-current={n === currentPage ? "page" : undefined}
               className={`${pageBtn} ${
-                number === page
+                n === currentPage
                   ? "bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] font-semibold text-white shadow-[0_2px_6px_rgba(44,107,138,0.45)] ring-2 ring-[#2c6b8a]/25"
                   : "border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a]"
               } disabled:cursor-not-allowed disabled:opacity-60`}
             >
-              {number}
+              {n}
             </button>
           ))}
 
           <button
             type="button"
-            onClick={() =>
-              setPage((current) => Math.min(totalPages, current + 1))
-            }
-            disabled={page >= totalPages || loading}
+            onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage >= totalPages || loading}
             className={navBtn}
           >
             Next

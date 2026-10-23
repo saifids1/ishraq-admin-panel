@@ -39,6 +39,10 @@ export const getCurrentUserId = () => {
   const user = getCurrentUser();
   return user?.id ?? user?.profileId ?? null;
 };
+export const getCurrentUserId2 = () => {
+  const user = getCurrentUser();
+  return user?.id ?? null;
+};
 
 /**
  * Get the current user's authentication token.

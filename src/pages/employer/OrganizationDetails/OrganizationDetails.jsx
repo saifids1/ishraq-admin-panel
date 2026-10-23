@@ -387,12 +387,12 @@ const OrganizationDetails = () => {
                         </h3>
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
                           <FieldRow
-                            label="Employer Id"
-                            value={employer.EM_request_no}
-                          />
-                          <FieldRow
                             label="Organization Name"
                             value={employer.EM_organization_name}
+                          />
+                          <FieldRow
+                            label="Employer Id"
+                            value={employer.EM_request_no}
                           />
                           <FieldRow
                             label="Organization Type"
@@ -503,7 +503,7 @@ const OrganizationDetails = () => {
                           />
                           <FieldRow
                             label="Activated At"
-                            value={employer.eM_activated_at}
+                            value={formatDateTime(employer.eM_activated_at)}
                           />
                         </div>
                       </div>

@@ -14,7 +14,7 @@ import {
   getComplaintCategories,
   submitComplaint,
 } from "../../../api/complaintApi";
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 import StatusModal from "../../../components/common/StatusModal";
 
 const LIST_PATH = "/employer/complaint-list";
@@ -333,7 +333,7 @@ export default function CreateComplaint() {
       return;
     }
 
-    const rawUserId = getCurrentUserId();
+    const rawUserId = getCurrentUserId2();
     const userId = Number(rawUserId);
 
     if (!rawUserId || !Number.isInteger(userId) || userId <= 0) {

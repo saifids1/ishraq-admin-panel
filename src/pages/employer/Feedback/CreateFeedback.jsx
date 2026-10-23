@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ChevronsLeft, LoaderCircle, Plus, Star } from "lucide-react";
 
 import { submitFeedback } from "../../../api/feedbackApi";
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 import StatusModal from "../../../components/common/StatusModal";
 
 const LIST_PATH = "/employer/feedback-list";
@@ -157,7 +157,7 @@ export default function CreateFeedback() {
       return;
     }
 
-    const rawUserId = getCurrentUserId();
+    const rawUserId = getCurrentUserId2();
     const userId = Number(rawUserId);
 
     if (!rawUserId || !Number.isInteger(userId) || userId <= 0) {
