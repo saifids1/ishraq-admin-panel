@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronsLeft, FileText, Eye } from "lucide-react";
+import { useStatusToast } from "../../../../components/common/StatusModalProvider";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
-import { getCurrentUserId } from "../../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -156,6 +157,7 @@ const Stars = ({ value }) => (
 const ComplaintDetails = ({ formType = "complaint" }) => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [, setToast] = useStatusToast();
 
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -351,6 +353,7 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
     const trimmed = responseText.trim();
     if (!trimmed) {
       setError("Response cannot be empty.");
+      setToast({ tone: "err", msg: "Response cannot be empty." });
       return;
     }
 
@@ -359,7 +362,10 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
     setNotice("");
 
     try {
-      const userId = Number(getCurrentUserId()) || 0;
+      const userId = Number(getCurrentUserId2());
+      if (!Number.isInteger(userId) || userId <= 0) {
+        throw new Error("Unable to identify the current user. Please sign in again.");
+      }
       await adminEnquiryService.updateEnquiryResponse(
         formType,
         id,
@@ -367,6 +373,7 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
         userId,
       );
       setNotice("Response submitted successfully.");
+      setToast({ tone: "ok", msg: "Response submitted successfully." });
       setResponseSaved(true);
       setRecord((prev) =>
         prev
@@ -374,7 +381,9 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
           : prev,
       );
     } catch (err) {
-      setError(err?.message || "Failed to submit response.");
+      const message = err?.message || "Failed to submit response.";
+      setError(message);
+      setToast({ tone: "err", msg: message });
     } finally {
       setSavingResponse(false);
     }
@@ -390,13 +399,17 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
     setNotice("");
 
     try {
-      const userId = getCurrentUserId();
+      const userId = Number(getCurrentUserId2());
+      if (!Number.isInteger(userId) || userId <= 0) {
+        throw new Error("Unable to identify the current user. Please sign in again.");
+      }
       await adminEnquiryService.updateEnquiryStatus(formType, id, {
         statusId: Number(status),
-        userId: Number(userId) || 0,
+        userId,
         changedAt: new Date().toISOString(),
       });
       setNotice("Status updated successfully.");
+      setToast({ tone: "ok", msg: "Status updated successfully." });
       const newLabel =
         statusOptions.find((o) => String(o.value) === String(status))?.label ??
         null;
@@ -412,7 +425,9 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
           : prev,
       );
     } catch (err) {
-      setError(err?.message || "Failed to update status.");
+      const message = err?.message || "Failed to update status.";
+      setError(message);
+      setToast({ tone: "err", msg: message });
     } finally {
       setSavingStatus(false);
     }
