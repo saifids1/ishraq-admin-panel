@@ -1,22 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronsLeft, Eye, FileText } from "lucide-react";
+import { ChevronsLeft, Eye } from "lucide-react";
 import { getComplaintById } from "../../../api/complaintApi";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
+const displayText = (value) =>
+  value !== null && value !== undefined && String(value).trim() !== ""
+    ? String(value)
+    : "";
+
 const formatDate = (value) => {
-  if (value === null || value === undefined || value === "") return "-";
+  if (!value) return "-";
   const s = String(value).trim();
   if (s.startsWith("0001-01-01")) return "-";
 
-  let d;
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (plain) {
-    d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
-  } else {
-    d = value instanceof Date ? value : new Date(s);
-  }
+  // Trim fractional seconds to milliseconds: "2026-10-23T14:15:23.1415065"
+  const normalized = s.replace(/(\.\d{3})\d+/, "$1");
+  const d = new Date(normalized);
   if (Number.isNaN(d.getTime())) return "-";
 
   const dd = String(d.getDate()).padStart(2, "0");
@@ -24,11 +25,12 @@ const formatDate = (value) => {
   return `${dd}-${mm}-${d.getFullYear()}`;
 };
 
-/* ---------- DOCUMENT URL Configuration ---------- */
+/* ---------- DOCUMENT URL ---------- */
+
 const DOCUMENT_BASE_URL = (process.env.REACT_APP_DOCUMENT_BASE_URL || "").trim();
 
 const toAbsoluteUrl = (url) => {
-  if (!url) return url;
+  if (!url) return "";
   const raw = String(url).trim();
   if (/^https?:\/\//i.test(raw)) return raw;
 
@@ -41,15 +43,9 @@ const toAbsoluteUrl = (url) => {
   return `${DOCUMENT_BASE_URL.replace(/\/+$/, "")}/${clean}`;
 };
 
-/* ---------- REQUEST STATUS ---------- */
+/* ---------- STATUS ---------- */
 
-const REQUEST_STATUS_LABELS = {
-  1: "In Progress",
-  2: "On Hold",
-  3: "Closed",
-};
-
-const REQUEST_STATUS_TONES = {
+const STATUS_BADGE = {
   new: "bg-sky-600 ring-sky-700 shadow-sky-600/20",
   inprogress: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20",
   hold: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
@@ -58,7 +54,7 @@ const REQUEST_STATUS_TONES = {
 
 const NEUTRAL_BADGE = "bg-slate-500 ring-slate-600 shadow-slate-500/20";
 
-const normalizeRequestStatus = (value) => {
+const normalizeStatus = (value) => {
   const raw = String(value ?? "")
     .trim()
     .toLowerCase()
@@ -72,58 +68,24 @@ const normalizeRequestStatus = (value) => {
   return null;
 };
 
-const requestStatusLabel = (record) => {
-  if (!record) return "";
-  const statusName =
-    record?.requestStatusName ??
-    record?.RequestStatusName ??
-    record?.statusName ??
-    record?.status ??
-    record?.enquiry_status;
-  if (statusName) return String(statusName);
+/* ---------- FIELDS (keys match the API response exactly) ---------- */
 
-  const statusId =
-    record?.requestStatusId ??
-    record?.RequestStatusId ??
-    record?.statusId ??
-    record?.CP_status_id ??
-    record?.cP_status_id ??
-    record?.enquiry_status_id;
-  if (statusId != null && REQUEST_STATUS_LABELS[Number(statusId)])
-    return REQUEST_STATUS_LABELS[Number(statusId)];
-  return "";
-};
-
-const cfg = {
-  title: "Complaints",
-  detailFields: [
-    { key: "CP_reference_no", label: "Request ID" },
-    { key: "CP_full_name", label: "Full Name" },
-    { key: "CP_mobile", label: "Mobile" },
-    { key: "CP_email", label: "Email" },
-    { key: "UserTypeName", label: "User Type" },
-    { key: "ComplaintCategoryName", label: "Category" },
-    { key: "CP_details", label: "Complaint Details", type: "multiline" },
-    { key: "CP_file_path", label: "Supporting Document", type: "file" },
-    { key: "CP_created_at", label: "Submitted", type: "date" },
-  ],
-};
+const FIELDS = [
+  { key: "cP_reference_no", label: "Request ID" },
+  { key: "cP_full_name", label: "Full Name" },
+  { key: "cP_mobile", label: "Mobile" },
+  { key: "cP_email", label: "Email" },
+  { key: "userTypeName", label: "User Type" },
+  { key: "complaintCategoryName", label: "Category" },
+  { key: "cP_created_at", label: "Submitted", type: "date" },
+  { key: "cP_file_path", label: "Supporting Document", type: "file" },
+  { key: "cP_details", label: "Complaint Details", type: "multiline" },
+];
 
 /* ------------------------------ STYLES ------------------------------ */
 
-/* Read-only display input */
 const displayInputClass =
   "w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition cursor-default";
-
-const Stars = ({ value }) => (
-  <span className="inline-flex items-center gap-2">
-    <span className="text-lg leading-none">
-      <span className="text-yellow-400">{"★".repeat(Number(value))}</span>
-      <span className="text-slate-300">{"★".repeat(5 - Number(value))}</span>
-    </span>
-    <span className="text-sm text-slate-500">({value}/5)</span>
-  </span>
-);
 
 /* ------------------------------ COMPONENT ------------------------------ */
 
@@ -141,15 +103,28 @@ const ComplaintDetails = () => {
     const load = async () => {
       setLoading(true);
       setError("");
+      setRecord(null);
 
       try {
-        const response = await getComplaintById(id);
-        const data = response?.data ?? response;
+        if (!id) throw new Error("Complaint ID is missing.");
 
-        if (!cancelled) {
-          if (!data) setError("Record not found.");
-          setRecord(data || null);
+        const response = await getComplaintById(id);
+
+        if (response?.success === false || response?.Success === false) {
+          throw new Error(
+            response?.message || response?.Message || "Unable to load this record.",
+          );
         }
+
+        // Handles { success, data: record } and { data: { data: record } }.
+        const payload = response?.data ?? response;
+        const data = payload?.data ?? payload;
+
+        if (!data || typeof data !== "object" || data.cP_complaint_id == null) {
+          throw new Error("Record not found.");
+        }
+
+        if (!cancelled) setRecord(data);
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -169,45 +144,22 @@ const ComplaintDetails = () => {
     };
   }, [id]);
 
-  /* ---------- Saved response (read-only for employers) ---------- */
-  const savedResponse =
-    record?.cP_responseRetun ??
-    record?.responseRetun ??
-    record?.responseReturn ??
-    record?.response ??
-    record?.admin_response ??
-    "";
+  /* ---------- Derived ---------- */
 
-  /* ---------- Header status ---------- */
-  const headerStatusLabel = useMemo(() => requestStatusLabel(record), [record]);
-  const headerStatusKey = normalizeRequestStatus(headerStatusLabel);
-  const headerStatusBadge =
-    (headerStatusKey && REQUEST_STATUS_TONES[headerStatusKey]) || NEUTRAL_BADGE;
+  const statusLabel = displayText(record?.statusName);
+  const statusBadge =
+    STATUS_BADGE[normalizeStatus(statusLabel)] ?? NEUTRAL_BADGE;
 
-  /* ---------- Helpers ---------- */
-  const resolveDocumentUrl = () => {
-    const path =
-      record?.CP_file_path ??
-      record?.cP_file_path ??
-      record?.filePath ??
-      record?.FilePath ??
-      "";
-    return path ? toAbsoluteUrl(path) : "";
-  };
+  const savedResponse = displayText(record?.cP_responseRetun);
 
-  const fieldDisplayValue = (field, value) => {
-    if (value === null || value === undefined || value === "") return "";
-    return field.type === "date" ? formatDate(value) : String(value);
-  };
+  /* ---------- Field rendering ---------- */
 
-  const renderFieldInput = (field, value) => {
+  const renderValue = (field, value) => {
     if (field.type === "file") {
-      const url = value ? toAbsoluteUrl(value) : resolveDocumentUrl();
-
+      const url = toAbsoluteUrl(value);
       if (!url) {
         return <span className="text-sm text-slate-400">No document</span>;
       }
-
       return (
         <a
           href={url}
@@ -225,7 +177,7 @@ const ComplaintDetails = () => {
       return (
         <textarea
           readOnly
-          value={fieldDisplayValue(field, value)}
+          value={displayText(value) || "-"}
           rows={3}
           className={`${displayInputClass} resize-none`}
         />
@@ -236,7 +188,7 @@ const ComplaintDetails = () => {
       <input
         type="text"
         readOnly
-        value={fieldDisplayValue(field, value)}
+        value={field.type === "date" ? formatDate(value) : displayText(value) || "-"}
         className={displayInputClass}
       />
     );
@@ -261,16 +213,14 @@ const ComplaintDetails = () => {
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
 
-              <h2 className="font-semibold text-slate-800">
-                View {cfg.title}
-              </h2>
+              <h2 className="font-semibold text-slate-800">View Complaint</h2>
             </div>
 
-            {record && headerStatusLabel && (
+            {record && statusLabel && (
               <span
-                className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${headerStatusBadge}`}
+                className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${statusBadge}`}
               >
-                {headerStatusLabel}
+                {statusLabel}
               </span>
             )}
           </div>
@@ -295,7 +245,7 @@ const ComplaintDetails = () => {
               {/* Details */}
               <div className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
-                  {cfg.detailFields.map((field) => (
+                  {FIELDS.map((field) => (
                     <div
                       key={field.key}
                       className={`grid grid-cols-[130px_1fr] items-center gap-3 ${
@@ -306,7 +256,7 @@ const ComplaintDetails = () => {
                         {field.label}
                       </span>
                       <div className="min-w-0">
-                        {renderFieldInput(field, record[field.key])}
+                        {renderValue(field, record[field.key])}
                       </div>
                     </div>
                   ))}
@@ -314,7 +264,7 @@ const ComplaintDetails = () => {
               </div>
 
               {/* Response (read-only) */}
-              {String(savedResponse).trim() && (
+              {savedResponse && (
                 <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
                   <p className="mb-1.5 text-sm font-medium text-slate-700">
                     Response
