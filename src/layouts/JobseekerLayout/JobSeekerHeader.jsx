@@ -15,6 +15,7 @@ import jobseekerApi from "../../api/Services/adjobseekerApi.js";
 
 const PROFILE_CACHE_KEY = "jobseekerProfileCached";
 const PROFILE_CACHE_VERSION = "1";
+import { DashboardTitle } from "./DashboardTitle.jsx";
 
 // Shared across component mounts, including React StrictMode effect reruns.
 let profileRequestPromise = null;
@@ -240,6 +241,7 @@ const JobSeekerHeader = () => {
       flex items-center justify-between px-4 sm:px-6 relative z-40"
     >
       <div />
+      <DashboardTitle />
 
       <div className="flex items-center gap-3 sm:gap-5 ml-3">
         <button

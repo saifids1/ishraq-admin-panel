@@ -111,6 +111,20 @@ export const EmployerSidebar = () => {
       link: "/employer/job-requirement-list",
       tile: "from-cyan-400 to-sky-500",
     },
+
+    {
+      text: "Complaints",
+      icon: ShieldAlert,
+      link: "/employer/complaint-list",
+      tile: "from-rose-400 to-red-500",
+      // alert: true,
+    },
+    {
+      text: "Feedback",
+      icon: MessagesSquare,
+      link: "/employer/feedback-list",
+      tile: "from-pink-400 to-rose-500",
+    },
     // {
     //   text: "General Enquiry",
     //   icon: MessageCircleQuestion,
@@ -275,13 +289,13 @@ export const EmployerSidebar = () => {
         </div>
 
         {/* Bottom Menu */}
-        <div className="px-2 py-3 border-t border-gray-100">
+        {/* <div className="px-2 py-3 border-t border-gray-100">
           <ul className="space-y-1">
             {bottomItems.map((item, i) =>
               renderItem(item, filteredItems.length + i),
             )}
           </ul>
-        </div>
+        </div> */}
       </nav>
     </aside>
   );

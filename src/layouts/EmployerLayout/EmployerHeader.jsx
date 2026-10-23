@@ -17,6 +17,7 @@ import {
   normalizeEmployer,
   getEmployerRequest,
 } from "../../utils/employerProfile";
+import { DashboardTitle } from "./DashboardTitle.jsx";
 
 const EmployeeHeader = () => {
   const navigate = useNavigate();
@@ -111,6 +112,8 @@ const EmployeeHeader = () => {
     >
       {/* LEFT SIDE */}
       <div />
+     < DashboardTitle/>
+
 
       {/* RIGHT SIDE */}
       <div className="flex items-center gap-3 sm:gap-5 ml-3">

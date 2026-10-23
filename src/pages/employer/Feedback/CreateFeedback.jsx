@@ -1,17 +1,20 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, LoaderCircle, Mail, MessageSquareText, Plus, Star } from "lucide-react";
+import { ChevronsLeft, LoaderCircle, Plus, Star } from "lucide-react";
 
 import { submitFeedback } from "../../../api/feedbackApi";
 import { getCurrentUserId } from "../../../utils/authUtils";
-import {
-  ACCENT,
-  Card,
-  Field,
-  IconField,
-  PageHeader,
-  inputClass,
-} from "../../../components/common/FormUi";
+import StatusModal from "../../../components/common/StatusModal";
+
+const LIST_PATH = "/employer/feedback-list";
+const FEEDBACK_USER_TYPE_ID = 2;
+
+const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
+
+const inputClass = (hasError) =>
+  `w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500 ${
+    hasError ? "border-red-400" : "border-slate-300"
+  }`;
 
 const initialForm = {
   rating: 0,
@@ -21,265 +24,353 @@ const initialForm = {
   suggestions: "",
 };
 
-const textareaClass = (errors, field) => `${inputClass(Boolean(errors[field]), false)} resize-y`;
+const getErrorMessage = (error) =>
+  error?.response?.data?.message ||
+  error?.response?.data?.Message ||
+  error?.message ||
+  "Unable to submit feedback. Please try again.";
 
+/* ---------------- Layout helpers (same as EditJobSeeker) ---------------- */
 
-const CreateFeedback = () => {
+const SectionTitle = ({ children }) => (
+  <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+    {children}
+  </h3>
+);
+
+const FieldRow = ({ label, required, error, fullWidth, children }) => (
+  <div
+    className={`grid grid-cols-[160px_1fr] items-start gap-3 ${
+      fullWidth ? "md:col-span-2" : ""
+    }`}
+  >
+    <label className={`${FIELD_LABEL} pt-2`}>
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <div className="min-w-0">
+      {children}
+      {error && <span className="mt-1 block text-xs text-red-500">{error}</span>}
+    </div>
+  </div>
+);
+
+/* ========================================================= */
+
+export default function CreateFeedback() {
   const navigate = useNavigate();
+
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [modal, setModal] = useState(null);
+
   const [organizationName] = useState(
     () => localStorage.getItem("organizationName") || "",
   );
   const [email] = useState(() => localStorage.getItem("employerEmail") || "");
 
-  const update = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
+  /* ---------- modal helpers (same pattern as EditJobSeeker) ---------- */
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      title: extra.title,
+      message,
+      confirmText: extra.confirmText || "OK",
+      showCancel: false,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => setModal(null),
+    });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const openConfirm = ({ title, message, confirmText, onConfirm }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => setModal(null),
+    });
+  };
+
+  /* ---------- field change ---------- */
+
+  const update = (field, value) => {
+    setForm((previous) => ({ ...previous, [field]: value }));
+    setErrors((previous) => ({ ...previous, [field]: undefined }));
+  };
+
+  /* ---------- save ---------- */
+
+  const save = async (payload) => {
+    setSubmitting(true);
+
+    try {
+      const result = await submitFeedback(payload);
+
+      if (result?.success === false || result?.Success === false) {
+        throw new Error(
+          result?.message || result?.Message || "Failed to submit feedback.",
+        );
+      }
+
+      openStatus(
+        "update",
+        result?.message || result?.Message || "Thank you. Your feedback has been submitted.",
+        {
+          confirmText: "Continue",
+          onConfirm: () => navigate(LIST_PATH, { replace: true }),
+        },
+      );
+    } catch (error) {
+      openStatus("error", getErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /* ---------- submit ---------- */
+
+  const submit = (event) => {
+    event.preventDefault();
+    if (submitting) return;
 
     const found = {};
-
     if (!form.rating) found.rating = "Select a rating.";
     if (!form.overallExperience.trim()) {
       found.overallExperience = "Enter your overall experience.";
     }
 
     setErrors(found);
-    if (Object.keys(found).length > 0) return;
+
+    if (Object.keys(found).length > 0) {
+      openStatus("warning", Object.values(found)[0]);
+      return;
+    }
 
     const rawUserId = getCurrentUserId();
     const userId = Number(rawUserId);
 
     if (!rawUserId || !Number.isInteger(userId) || userId <= 0) {
-      setErrors({
-        form: "Unable to identify the logged-in user. Please log in again.",
-      });
+      openStatus(
+        "error",
+        "Unable to identify the logged-in user. Please log in again.",
+      );
       return;
     }
 
-    setSubmitting(true);
+    const payload = {
+      fB_name: organizationName,
+      fB_contact: email,
+      fB_user_type_id: FEEDBACK_USER_TYPE_ID,
+      fB_rating: Number(form.rating),
+      fb_requester_id: userId,
+      fB_overall_experience: form.overallExperience.trim(),
+      fB_useful_text: form.usefulText.trim(),
+      fB_improve_text: form.improveText.trim(),
+      fB_suggestions: form.suggestions.trim(),
+    };
 
-    try {
-      const payload = {
-        fB_name: organizationName,
-        fB_contact: email,
-        fB_user_type_id: 2,
-        fB_rating: Number(form.rating),
-        fb_requester_id: userId,
-        fB_overall_experience: form.overallExperience.trim(),
-        fB_useful_text: form.usefulText.trim(),
-        fB_improve_text: form.improveText.trim(),
-        fB_suggestions: form.suggestions.trim(),
-      };
-
-      const result = await submitFeedback(payload);
-
-      if (result?.success === false || result?.Success === false) {
-        throw new Error(
-          result.message || result.Message || "Failed to submit feedback.",
-        );
-      }
-
-      navigate("/employer/feedback-list", { replace: true });
-    } catch (err) {
-      setErrors({
-        form:
-          err.response?.data?.message ||
-          err.response?.data?.Message ||
-          err.message ||
-          "Unable to submit feedback. Please try again.",
-      });
-    } finally {
-      setSubmitting(false);
-    }
+    openConfirm({
+      title: "Confirm submission",
+      message: "Are you sure you want to send this feedback?",
+      confirmText: "Send",
+      onConfirm: () => save(payload),
+    });
   };
 
-  const reset = () => {
-    setForm(initialForm);
-    setErrors({});
-    setSubmitted(false);
-  };
+  /* ----------------------------- UI ----------------------------- */
 
-  if (submitted) {
-    return (
-      <div className="bg-white text-slate-800">
-        <PageHeader title="Add Your Feedback" onBack={() => navigate(-1)} />
-        <Card title="Thank You" icon={MessageSquareText}>
-          <div className="py-6 text-center">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Thanks for your feedback
-            </h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Your message has been sent to our team.
-            </p>
-            <button
-              type="button"
-              onClick={reset}
-              className="mt-6 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
-              style={{ backgroundColor: ACCENT }}
-            >
-              Send more feedback
-            </button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+  const modalElement = (
+    <StatusModal
+      isOpen={Boolean(modal)}
+      type={modal?.type}
+      title={modal?.title}
+      message={modal?.message}
+      confirmText={modal?.confirmText}
+      cancelText={modal?.cancelText}
+      showCancel={modal?.showCancel}
+      busy={submitting}
+      onConfirm={modal?.onConfirm}
+      onCancel={modal?.onCancel}
+    />
+  );
 
   return (
-    <div className="min-h-full bg-white text-slate-800">
-      <PageHeader title="Add Your Feedback" onBack={() => navigate(-1)} />
+    <div className="min-h-full bg-[#f4f8fb]">
+      <div className="mx-auto">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* HEADER */}
+          <div className="flex justify-between border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                title="Back"
+                aria-label="Back"
+                className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
+              >
+                <ChevronsLeft size={18} strokeWidth={2} />
+              </button>
+              <h2 className="font-semibold text-slate-800">Add Your Feedback</h2>
+            </div>
+          </div>
 
-      <form onSubmit={handleSubmit} noValidate>
-        <div className="grid grid-cols-1 gap-4">
-          <Card title="Organization" icon={Building2}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Organization Name" htmlFor="organizationName">
-                <IconField icon={Building2}>
+          <form
+            onSubmit={submit}
+            noValidate
+            autoComplete="off"
+            className="space-y-6 p-4"
+          >
+            {/* ORGANIZATION */}
+            <section>
+              <SectionTitle>Organization</SectionTitle>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                <FieldRow label="Organization Name">
                   <input
-                    id="organizationName"
+                    type="text"
                     value={organizationName}
                     readOnly
                     className={`${inputClass(false)} bg-slate-50`}
                   />
-                </IconField>
-              </Field>
+                </FieldRow>
 
-              <Field label="Email Address" htmlFor="email">
-                <IconField icon={Mail}>
+                <FieldRow label="Email Address">
                   <input
-                    id="email"
+                    type="text"
                     value={email}
                     readOnly
                     className={`${inputClass(false)} bg-slate-50`}
                   />
-                </IconField>
-              </Field>
-            </div>
-          </Card>
-
-          <Card title="Rating" icon={Star}>
-            <Field label="Overall Rating" required error={errors.rating}>
-              <div
-                className="flex gap-2"
-                role="radiogroup"
-                aria-label="Overall rating"
-              >
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    role="radio"
-                    aria-checked={form.rating === n}
-                    aria-label={`${n} out of 5 stars`}
-                    onClick={() => update("rating", n)}
-                    className={`rounded px-2 py-1 text-2xl ${
-                      n <= form.rating ? "text-amber-400" : "text-gray-300"
-                    }`}
-                  >
-                    ★
-                  </button>
-                ))}
+                </FieldRow>
               </div>
-            </Field>
-          </Card>
+            </section>
 
-          <Card title="Your Feedback" icon={MessageSquareText}>
-            <div className="grid grid-cols-1 gap-4">
-              <Field
-                label="Overall Experience"
-                htmlFor="overallExperience"
-                required
-                error={errors.overallExperience}
+            {/* RATING */}
+            <section>
+              <SectionTitle>Rating</SectionTitle>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                <FieldRow label="Overall Rating" required error={errors.rating}>
+                  <div
+                    className="flex gap-1"
+                    role="radiogroup"
+                    aria-label="Overall rating"
+                  >
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        role="radio"
+                        aria-checked={form.rating === n}
+                        aria-label={`${n} out of 5 stars`}
+                        disabled={submitting}
+                        onClick={() => update("rating", n)}
+                        className="rounded p-1 transition hover:scale-110 disabled:opacity-60"
+                      >
+                        <Star
+                          size={26}
+                          className={
+                            n <= form.rating
+                              ? "fill-amber-400 text-amber-400"
+                              : "text-slate-300"
+                          }
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </FieldRow>
+              </div>
+            </section>
+
+            {/* FEEDBACK */}
+            <section>
+              <SectionTitle>Your Feedback</SectionTitle>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                <FieldRow
+                  label="Overall Experience"
+                  required
+                  error={errors.overallExperience}
+                  fullWidth
+                >
+                  <textarea
+                    rows={3}
+                    value={form.overallExperience}
+                    disabled={submitting}
+                    onChange={(e) => update("overallExperience", e.target.value)}
+                    placeholder="Describe your overall experience"
+                    className={`${inputClass(Boolean(errors.overallExperience))} resize-y`}
+                  />
+                </FieldRow>
+
+                <FieldRow label="What did you find useful?" fullWidth>
+                  <textarea
+                    rows={3}
+                    value={form.usefulText}
+                    disabled={submitting}
+                    onChange={(e) => update("usefulText", e.target.value)}
+                    placeholder="What worked well?"
+                    className={`${inputClass(false)} resize-y`}
+                  />
+                </FieldRow>
+
+                <FieldRow label="What can we improve?" fullWidth>
+                  <textarea
+                    rows={3}
+                    value={form.improveText}
+                    disabled={submitting}
+                    onChange={(e) => update("improveText", e.target.value)}
+                    placeholder="Share your suggestions for improvement"
+                    className={`${inputClass(false)} resize-y`}
+                  />
+                </FieldRow>
+
+                <FieldRow label="Additional Suggestions" fullWidth>
+                  <textarea
+                    rows={3}
+                    value={form.suggestions}
+                    disabled={submitting}
+                    onChange={(e) => update("suggestions", e.target.value)}
+                    placeholder="Any other suggestions?"
+                    className={`${inputClass(false)} resize-y`}
+                  />
+                </FieldRow>
+              </div>
+            </section>
+
+            {/* FOOTER */}
+            <div className="flex justify-between gap-3 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                disabled={submitting}
+                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <textarea
-                  id="overallExperience"
-                  rows={3}
-                  value={form.overallExperience}
-                  onChange={(e) => update("overallExperience", e.target.value)}
-                  placeholder="Describe your overall experience"
-                  className={textareaClass(errors, "overallExperience")}
-                />
-              </Field>
+                Cancel
+              </button>
 
-              <Field label="What did you find useful?" htmlFor="usefulText" error={errors.usefulText}>
-                <textarea
-                  id="usefulText"
-                  rows={3}
-                  value={form.usefulText}
-                  onChange={(e) => update("usefulText", e.target.value)}
-                  placeholder="What worked well?"
-                  className={textareaClass(errors, "usefulText")}
-                />
-              </Field>
-
-              <Field label="What can we improve?" htmlFor="improveText" error={errors.improveText}>
-                <textarea
-                  id="improveText"
-                  rows={3}
-                  value={form.improveText}
-                  onChange={(e) => update("improveText", e.target.value)}
-                  placeholder="Share your suggestions for improvement"
-                  className={textareaClass(errors, "improveText")}
-                />
-              </Field>
-
-              <Field label="Additional Suggestions" htmlFor="suggestions" error={errors.suggestions}>
-                <textarea
-                  id="suggestions"
-                  rows={3}
-                  value={form.suggestions}
-                  onChange={(e) => update("suggestions", e.target.value)}
-                  placeholder="Any other suggestions?"
-                  className={textareaClass(errors, "suggestions")}
-                />
-              </Field>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                
+                {submitting ? "Sending..." : "Send Feedback"}
+              </button>
             </div>
-          </Card>
+          </form>
         </div>
+      </div>
 
-        {errors.form && (
-          <div
-            role="alert"
-            className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700"
-          >
-            {errors.form}
-          </div>
-        )}
-
-        <div className="mt-4 flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-end">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            disabled={submitting}
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ backgroundColor: ACCENT }}
-          >
-            {submitting ? (
-              <LoaderCircle size={15} className="animate-spin" />
-            ) : (
-              <Plus size={15} />
-            )}
-            {submitting ? "Sending..." : "Send Feedback"}
-          </button>
-        </div>
-      </form>
+      {modalElement}
     </div>
   );
-};
-
-export default CreateFeedback;
+}

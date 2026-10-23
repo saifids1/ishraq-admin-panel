@@ -1,47 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  Activity,
-  Briefcase,
-  Building2,
-  CalendarDays,
-  ClipboardList,
-  Clock,
-  FileText,
-  GraduationCap,
-  Hotel,
-  Layers,
-  LoaderCircle,
-  MapPin,
-  Paperclip,
-  Pencil,
-  Tag,
-  Timer,
-  Users,
-  Utensils,
-  Wallet,
-  ExternalLink,
-} from "lucide-react";
+import { ChevronsLeft, ExternalLink, LoaderCircle } from "lucide-react";
 
 import applicationApi from "../../../api/applicationApi";
-import toast from "react-hot-toast";
 import { getJobRequirementById } from "../../../api/jobRequirementApi";
-import {
-  ACCENT,
-  Card,
-  Field,
-  IconField,
-  PageHeader,
-} from "../../../components/common/FormUi";
-
 import { getCurrentUserId } from "../../../utils/authUtils";
+import StatusModal from "../../../components/common/StatusModal";
 
-/* ======================== HELPERS ======================== */
+const JOB_LIST_PATH = "/jobseeker/job-list";
 
 const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || "").replace(
   /\/+$/,
   "",
 );
+
+const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
+
+/* ======================== HELPERS ======================== */
+
+const hasValue = (value) =>
+  value !== undefined && value !== null && String(value).trim() !== "";
+
+const text = (value) => (hasValue(value) ? String(value).trim() : "-");
 
 // Builds a full URL for a stored file path. Absolute URLs are returned unchanged.
 const buildFileUrl = (path) => {
@@ -79,11 +59,6 @@ const unwrap = (response) => {
   return current;
 };
 
-const hasValue = (value) =>
-  value !== undefined && value !== null && String(value).trim() !== "";
-
-const text = (value) => (hasValue(value) ? String(value).trim() : "-");
-
 const yesNo = (value) => {
   if (value === true || value === 1) return "Yes";
   const normalized = String(value ?? "").toLowerCase();
@@ -110,7 +85,7 @@ const formatDate = (value, withTime = false) => {
 };
 
 const fileNameFromPath = (path) =>
-  hasValue(path) ? path.split("/").pop() : "";
+  hasValue(path) ? String(path).split(/[\\/]/).pop() : "";
 
 const normalizeJob = (raw) => {
   const row = toLowerKeys(raw);
@@ -161,37 +136,84 @@ const getStatusStyle = (status = "") =>
   STATUS_STYLES[status.trim().toLowerCase()] ??
   "bg-slate-50 text-slate-600 ring-slate-200";
 
-/* ======================== SUB-COMPONENTS ======================== */
+/* ======================== LAYOUT HELPERS (same as EditJobSeeker) ======================== */
 
-// Read-only value styled like the form inputs, so it looks the same
-// but cannot be edited.
-const ReadOnlyValue = ({ icon: Icon, children, multiline = false }) => {
-  const box = (
-    <div
-      className={`w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 ${
-        Icon ? "pl-10" : ""
-      } ${
-        multiline
-          ? "min-h-[120px] whitespace-pre-line leading-relaxed"
-          : "min-h-[42px] break-words"
-      }`}
-    >
-      {children}
-    </div>
-  );
+const SectionTitle = ({ children }) => (
+  <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+    {children}
+  </h3>
+);
 
-  return Icon ? <IconField icon={Icon}>{box}</IconField> : box;
-};
+const FieldRow = ({ label, fullWidth = false, children }) => (
+  <div
+    className={`grid grid-cols-[160px_1fr] items-start gap-3 ${
+      fullWidth ? "md:col-span-2" : ""
+    }`}
+  >
+    <span className={`${FIELD_LABEL} pt-2`}>{label}</span>
+    <div className="min-w-0">{children}</div>
+  </div>
+);
+
+// Read-only value styled like the form inputs so it reads the same but cannot be edited.
+const ReadOnlyValue = ({ children, multiline = false }) => (
+  <div
+    className={`w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 ${
+      multiline
+        ? "min-h-[120px] whitespace-pre-line leading-relaxed"
+        : "min-h-[38px] break-words"
+    }`}
+  >
+    {children}
+  </div>
+);
 
 /* ======================== PAGE ======================== */
 
-export default function JobRequiremnetDetails() {
+export default function JobRequirementDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [applying, setApplying] = useState(false);
+
   const [raw, setRaw] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [applying, setApplying] = useState(false);
+  const [modal, setModal] = useState(null);
+
+  /* ---------- modal helpers (same pattern as EditJobSeeker) ---------- */
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      title: extra.title,
+      message,
+      confirmText: extra.confirmText || "OK",
+      showCancel: false,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => setModal(null),
+    });
+  };
+
+  const openConfirm = ({ title, message, confirmText, onConfirm }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => setModal(null),
+    });
+  };
+
+  /* ---------- load job requirement ---------- */
 
   useEffect(() => {
     let cancelled = false;
@@ -251,25 +273,14 @@ export default function JobRequiremnetDetails() {
     };
   }, [id]);
 
-  const handleApply = async () => {
-    if (applying) return;
+  const job = useMemo(() => (raw ? normalizeJob(raw) : null), [raw]);
 
-    const jobseekerId = Number(getCurrentUserId());
-    const jobRequirementId = Number(id);
+  /* ---------- apply ---------- */
 
-    if (!Number.isInteger(jobseekerId) || jobseekerId <= 0) {
-      toast.error("Unable to identify your jobseeker profile.");
-      return;
-    }
-
-    if (!Number.isInteger(jobRequirementId) || jobRequirementId <= 0) {
-      toast.error("Invalid job requirement.");
-      return;
-    }
+  const submitApplication = async (jobseekerId, jobRequirementId) => {
+    setApplying(true);
 
     try {
-      setApplying(true);
-
       const response = await applicationApi.applyForJob({
         AP_job_requirement_id: jobRequirementId,
         AP_jobseeker_id: jobseekerId,
@@ -281,20 +292,23 @@ export default function JobRequiremnetDetails() {
       const result = response?.data;
 
       if (result?.success ?? result?.Success) {
-        toast.success(
-          result?.message ||
-            result?.Message ||
-            "Application submitted successfully.",
+        openStatus(
+          "update",
+          result?.message || result?.Message || "Application submitted successfully.",
+          {
+            confirmText: "Continue",
+            onConfirm: () => navigate(JOB_LIST_PATH),
+          },
         );
       } else {
-        toast.error(
+        openStatus(
+          "error",
           result?.message || result?.Message || "Failed to submit application.",
         );
       }
-
-      navigate('/jobseeker/job-list')
     } catch (err) {
-      toast.error(
+      openStatus(
+        "error",
         err?.response?.data?.message ||
           err?.response?.data?.Message ||
           err?.message ||
@@ -305,18 +319,86 @@ export default function JobRequiremnetDetails() {
     }
   };
 
-  const job = useMemo(() => (raw ? normalizeJob(raw) : null), [raw]);
+  const handleApply = () => {
+    if (applying) return;
+
+    const jobseekerId = Number(getCurrentUserId());
+    const jobRequirementId = Number(id);
+
+    if (!Number.isInteger(jobseekerId) || jobseekerId <= 0) {
+      openStatus("error", "Unable to identify your jobseeker profile.");
+      return;
+    }
+
+    if (!Number.isInteger(jobRequirementId) || jobRequirementId <= 0) {
+      openStatus("error", "Invalid job requirement.");
+      return;
+    }
+
+    openConfirm({
+      title: "Confirm application",
+      message: "Are you sure you want to apply for this job?",
+      confirmText: "Apply",
+      onConfirm: () => submitApplication(jobseekerId, jobRequirementId),
+    });
+  };
+
+  /* ---------- shared header and modal ---------- */
+
+  const modalElement = (
+    <StatusModal
+      isOpen={Boolean(modal)}
+      type={modal?.type}
+      title={modal?.title}
+      message={modal?.message}
+      confirmText={modal?.confirmText}
+      cancelText={modal?.cancelText}
+      showCancel={modal?.showCancel}
+      busy={applying}
+      onConfirm={modal?.onConfirm}
+      onCancel={modal?.onCancel}
+    />
+  );
+
+  const header = (
+    <div className="flex flex-wrap justify-between gap-3 border-b border-slate-200 px-6 py-4">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          title="Back"
+          aria-label="Back"
+          className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
+        >
+          <ChevronsLeft size={18} strokeWidth={2} />
+        </button>
+        <h2 className="font-semibold text-slate-800">View Job Requirement</h2>
+      </div>
+
+      {job?.status && (
+        <span
+          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${getStatusStyle(
+            job.status,
+          )}`}
+        >
+          {job.status}
+        </span>
+      )}
+    </div>
+  );
+
+  /* ---------- loading / error states ---------- */
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center bg-white p-6">
-        <div className="flex items-center gap-3 text-sm text-slate-600">
-          <LoaderCircle
-            className="animate-spin"
-            style={{ color: ACCENT }}
-            size={20}
-          />
-          Loading job requirement...
+      <div className="min-h-full bg-[#f4f8fb]">
+        <div className="mx-auto">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            {header}
+            <div className="p-8 text-center text-sm text-slate-500">
+              Loading job requirement...
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -324,19 +406,26 @@ export default function JobRequiremnetDetails() {
 
   if (!job) {
     return (
-      <div className="min-h-full bg-white p-4">
-        <button
-          type="button"
-          onClick={() => navigate("/jobseeker/job-list")}
-          className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Back to list
-        </button>
-        <div className="mx-auto max-w-xl rounded-2xl border border-red-200 bg-white p-5 text-red-700 shadow-sm">
-          <h1 className="font-semibold">Could not load job requirement</h1>
-          <p className="mt-1 text-sm">
-            {error || "Job requirement not found."}
-          </p>
+      <div className="min-h-full bg-[#f4f8fb]">
+        <div className="mx-auto">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            {header}
+            <div className="p-8 text-center">
+              <p className="text-sm font-semibold text-slate-800">
+                Could not load job requirement
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                {error || "Job requirement not found."}
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate(JOB_LIST_PATH)}
+                className="mt-4 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
+              >
+                Back to list
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -345,188 +434,162 @@ export default function JobRequiremnetDetails() {
   const attachmentName = fileNameFromPath(job.attachmentPath);
   const attachmentUrl = buildFileUrl(job.attachmentPath);
 
+  /* ----------------------------- UI ----------------------------- */
+
   return (
-    <div className="min-h-full bg-white text-slate-800">
-      <PageHeader
-        title="View Job Requirement"
-        onBack={() => navigate(-1)}
-        right={
-          <div className="flex items-center gap-2">
-            {job.status && (
-              <span
-                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${getStatusStyle(
-                  job.status,
-                )}`}
+    <div className="min-h-full bg-[#f4f8fb]">
+      <div className="mx-auto">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          {header}
+
+          <div className="space-y-6 p-4">
+            {/* JOB INFORMATION */}
+            <section>
+              <SectionTitle>Job Information</SectionTitle>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                <FieldRow label="Employer">
+                  <ReadOnlyValue>{text(job.employerName)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Job Type">
+                  <ReadOnlyValue>{text(job.instituteType)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Job Category">
+                  <ReadOnlyValue>{text(job.jobCategory)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Job Role">
+                  <ReadOnlyValue>{text(job.jobRole)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Position Title">
+                  <ReadOnlyValue>{text(job.position)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Department / Speciality">
+                  <ReadOnlyValue>{text(job.department)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Number of Vacancies">
+                  <ReadOnlyValue>{text(job.vacancies)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Employment Type">
+                  <ReadOnlyValue>{text(job.employmentType)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Qualification Required">
+                  <ReadOnlyValue>{text(job.qualification)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Experience Required">
+                  <ReadOnlyValue>{text(job.experience)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Salary Range">
+                  <ReadOnlyValue>{text(job.salary)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Duty Hours">
+                  <ReadOnlyValue>{text(job.dutyHours)}</ReadOnlyValue>
+                </FieldRow>
+              </div>
+            </section>
+
+            {/* FACILITIES & DATES */}
+            <section>
+              <SectionTitle>Facilities & Dates</SectionTitle>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                <FieldRow label="Accommodation">
+                  <ReadOnlyValue>{yesNo(job.accommodation)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Food Facility">
+                  <ReadOnlyValue>{yesNo(job.food)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Expected Joining Date">
+                  <ReadOnlyValue>{formatDate(job.joiningDate)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Application Deadline">
+                  <ReadOnlyValue>{formatDate(job.deadline)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Created On">
+                  <ReadOnlyValue>{formatDate(job.createdAt, true)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Last Updated">
+                  <ReadOnlyValue>{formatDate(job.updatedAt, true)}</ReadOnlyValue>
+                </FieldRow>
+              </div>
+            </section>
+
+            {/* LOCATION */}
+            <section>
+              <SectionTitle>Job Location</SectionTitle>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                <FieldRow label="Location">
+                  <ReadOnlyValue>{text(job.location)}</ReadOnlyValue>
+                </FieldRow>
+              </div>
+            </section>
+
+            {/* DESCRIPTION & ATTACHMENT */}
+            <section>
+              <SectionTitle>Description & Attachment</SectionTitle>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                <FieldRow label="Job Description" fullWidth>
+                  <ReadOnlyValue multiline>{text(job.description)}</ReadOnlyValue>
+                </FieldRow>
+
+                <FieldRow label="Attachment" fullWidth>
+                  {attachmentUrl ? (
+                    <a
+                      href={attachmentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open attachment in a new tab"
+                      className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-[#1e5a7a] transition hover:bg-[#eaf3f7]"
+                    >
+                      <span className="min-w-0 break-all">{attachmentName}</span>
+                      <ExternalLink size={14} className="shrink-0" />
+                    </a>
+                  ) : (
+                    <ReadOnlyValue>No attachment uploaded.</ReadOnlyValue>
+                  )}
+                </FieldRow>
+              </div>
+            </section>
+
+            {/* FOOTER */}
+            <div className="flex justify-between gap-3 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => navigate(JOB_LIST_PATH)}
+                disabled={applying}
+                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {job.status}
-              </span>
-            )}
+                Back to List
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApply}
+                disabled={applying}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {applying && <LoaderCircle size={15} className="animate-spin" />}
+                {applying ? "Applying..." : "Apply for Job"}
+              </button>
+            </div>
           </div>
-        }
-      />
-
-      <div className="grid grid-cols-1 gap-4">
-        <Card title="Job Information" icon={Briefcase}>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <Field label="Employer">
-              <ReadOnlyValue icon={Building2}>
-                {text(job.employerName)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Job Type">
-              <ReadOnlyValue icon={Building2}>
-                {text(job.instituteType)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Job Role">
-              <ReadOnlyValue icon={Briefcase}>
-                {text(job.jobRole)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Job Category">
-              <ReadOnlyValue icon={Tag}>{text(job.jobCategory)}</ReadOnlyValue>
-            </Field>
-
-            <Field label="Position Title">
-              <ReadOnlyValue icon={ClipboardList}>
-                {text(job.position)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Department / Speciality">
-              <ReadOnlyValue icon={Layers}>
-                {text(job.department)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Number of Vacancies">
-              <ReadOnlyValue icon={Users}>{text(job.vacancies)}</ReadOnlyValue>
-            </Field>
-
-            <Field label="Employment Type">
-              <ReadOnlyValue icon={Activity}>
-                {text(job.employmentType)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Qualification Required">
-              <ReadOnlyValue icon={GraduationCap}>
-                {text(job.qualification)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Experience Required">
-              <ReadOnlyValue icon={Clock}>{text(job.experience)}</ReadOnlyValue>
-            </Field>
-
-            <Field label="Salary Range">
-              <ReadOnlyValue icon={Wallet}>{text(job.salary)}</ReadOnlyValue>
-            </Field>
-
-            <Field label="Duty Hours">
-              <ReadOnlyValue icon={Timer}>{text(job.dutyHours)}</ReadOnlyValue>
-            </Field>
-          </div>
-        </Card>
-
-        <Card title="Facilities & Dates" icon={CalendarDays}>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <Field label="Accommodation">
-              <ReadOnlyValue icon={Hotel}>
-                {yesNo(job.accommodation)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Food Facility">
-              <ReadOnlyValue icon={Utensils}>{yesNo(job.food)}</ReadOnlyValue>
-            </Field>
-
-            <Field label="Expected Joining Date">
-              <ReadOnlyValue icon={CalendarDays}>
-                {formatDate(job.joiningDate)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Application Deadline">
-              <ReadOnlyValue icon={CalendarDays}>
-                {formatDate(job.deadline)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Created On">
-              <ReadOnlyValue icon={CalendarDays}>
-                {formatDate(job.createdAt, true)}
-              </ReadOnlyValue>
-            </Field>
-
-            <Field label="Last Updated">
-              <ReadOnlyValue icon={CalendarDays}>
-                {formatDate(job.updatedAt, true)}
-              </ReadOnlyValue>
-            </Field>
-          </div>
-        </Card>
-
-        <Card title="Job Location" icon={MapPin}>
-          <Field label="Job Location">
-            <ReadOnlyValue icon={MapPin}>{text(job.location)}</ReadOnlyValue>
-          </Field>
-        </Card>
-
-        <Card title="Description & Attachment" icon={FileText}>
-          <div className="grid grid-cols-1 gap-4">
-            <Field label="Job Description">
-              <ReadOnlyValue multiline>{text(job.description)}</ReadOnlyValue>
-            </Field>
-
-            <Field label="Attachment">
-              <IconField icon={Paperclip}>
-                {attachmentUrl ? (
-                  <a
-                    href={attachmentUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Open attachment in a new tab"
-                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm font-medium transition hover:bg-[#eaf3f7]"
-                    style={{ color: ACCENT }}
-                  >
-                    <span className="min-w-0 break-all">{attachmentName}</span>
-                    <ExternalLink size={14} className="shrink-0" />
-                  </a>
-                ) : (
-                  <div className="min-h-[42px] w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-500">
-                    No attachment uploaded.
-                  </div>
-                )}
-              </IconField>
-            </Field>
-          </div>
-        </Card>
+        </div>
       </div>
 
-      <div className="mt-4 flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-end">
-        <button
-          type="button"
-          onClick={() => navigate("/jobseeker/job-list")}
-          className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-        >
-          Back to List
-        </button>
-
-        <button
-          type="button"
-          onClick={handleApply}
-          disabled={applying}
-          className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-          style={{ backgroundColor: ACCENT }}
-        >
-          {applying && <LoaderCircle size={15} className="animate-spin" />}
-          {applying ? "Applying..." : "Apply for Job"}
-        </button>
-      </div>
+      {modalElement}
     </div>
   );
 }

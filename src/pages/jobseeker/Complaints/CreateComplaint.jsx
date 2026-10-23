@@ -15,17 +15,18 @@ import {
 } from "lucide-react";
 
 import jobseekerApi from "../../../api/Services/adjobseekerApi.js";
+import StatusModal from "../../../components/common/StatusModal.jsx";
 
 import {
   getComplaintCategories,
   submitComplaint,
 } from "../../../api/complaintApi";
+
 import { getCurrentUserId } from "../../../utils/authUtils";
+
 import {
   ACCENT,
   Card,
-  Field,
-  IconField,
   PageHeader,
   inputClass,
 } from "../../../components/common/FormUi";
@@ -39,6 +40,10 @@ const initialForm = {
   categoryId: "",
   details: "",
 };
+
+const LABEL_CLASS =
+  "w-full text-sm font-medium text-black sm:w-48 sm:min-w-48 sm:shrink-0 sm:pt-2";
+
 const getCategoryId = (category) =>
   category.cC_complaint_category_id ??
   category.CC_Complaint_Category_Id ??
@@ -82,6 +87,7 @@ const loadComplaintCategoriesOnce = async () => {
       );
 
       complaintCategoriesCache = activeCategories;
+
       return activeCategories;
     })
     .finally(() => {
@@ -94,6 +100,12 @@ const loadComplaintCategoriesOnce = async () => {
 const CreateComplaint = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const [statusModal, setStatusModal] = useState({
+    isOpen: false,
+    type: "info",
+    title: "",
+    message: "",
+  });
 
   const [form, setForm] = useState(initialForm);
   const [categories, setCategories] = useState([]);
@@ -159,8 +171,6 @@ const CreateComplaint = () => {
         }
 
         const response = await jobseekerApi.getById(userId);
-
-        // Response: { success, message, data: { ...jobseeker } }
         const record = response?.data?.data;
 
         if (!record || cancelled) return;
@@ -172,7 +182,6 @@ const CreateComplaint = () => {
           email: record.email || record.userName || "",
         }));
 
-        // Keep the jobseeker reference available if needed elsewhere.
         localStorage.setItem("jobseekerNumber", record.jB_jobseeker_no || "");
       } catch (error) {
         console.error(
@@ -190,8 +199,16 @@ const CreateComplaint = () => {
   }, []);
 
   const update = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    setErrors((prev) => ({ ...prev, [field]: undefined, form: undefined }));
+    setForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+
+    setErrors((prev) => ({
+      ...prev,
+      [field]: undefined,
+      form: undefined,
+    }));
   };
 
   const onFileChange = (event) => {
@@ -202,28 +219,44 @@ const CreateComplaint = () => {
         ...prev,
         attachment: "The attachment must be 10 MB or smaller.",
       }));
+
       event.target.value = "";
       setAttachment(null);
       return;
     }
 
     setAttachment(selected);
-    setErrors((prev) => ({ ...prev, attachment: undefined, form: undefined }));
+
+    setErrors((prev) => ({
+      ...prev,
+      attachment: undefined,
+      form: undefined,
+    }));
   };
 
   const removeAttachment = () => {
     setAttachment(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    setErrors((prev) => ({
+      ...prev,
+      attachment: undefined,
+    }));
   };
 
   const validate = () => {
     const next = {};
 
-    if (!form.name.trim()) next.name = "Enter your name.";
+    if (!form.name.trim()) {
+      next.name = "Enter your name.";
+    }
 
     if (!form.email.trim()) {
       next.email = "Enter your email address.";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       next.email = "Enter a valid email address.";
     }
 
@@ -231,7 +264,9 @@ const CreateComplaint = () => {
       next.phone = "Enter a valid phone number.";
     }
 
-    if (!form.categoryId) next.categoryId = "Choose a complaint category.";
+    if (!form.categoryId) {
+      next.categoryId = "Choose a complaint category.";
+    }
 
     if (!form.details.trim()) {
       next.details = "Enter your complaint details.";
@@ -246,24 +281,36 @@ const CreateComplaint = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
+    if (submitting || categoriesLoading) return;
+
     const validationErrors = validate();
-    setErrors(validationErrors);
+
+    setErrors((prev) => ({
+      ...prev,
+      ...validationErrors,
+      form: undefined,
+    }));
+
     if (Object.keys(validationErrors).length > 0) return;
 
     const rawUserId = getCurrentUserId();
     const userId = Number(rawUserId);
 
     if (!rawUserId || !Number.isInteger(userId) || userId <= 0) {
-      setErrors({
+      setErrors((prev) => ({
+        ...prev,
         form: "Unable to identify the logged-in user. Please log in again.",
-      });
+      }));
       return;
     }
 
     const categoryId = Number(form.categoryId);
 
     if (!Number.isInteger(categoryId) || categoryId <= 0) {
-      setErrors({ categoryId: "Please select a valid complaint category." });
+      setErrors((prev) => ({
+        ...prev,
+        categoryId: "Please select a valid complaint category.",
+      }));
       return;
     }
 
@@ -294,21 +341,27 @@ const CreateComplaint = () => {
         );
       }
 
-      navigate("/jobseeker/complaint-list", {
-        replace: true,
-        state: { successMessage: "Complaint submitted successfully." },
+      setStatusModal({
+        isOpen: true,
+        type: "success",
+        title: "Complaint Submitted",
+        message: "Your complaint has been submitted successfully.",
       });
     } catch (error) {
       console.error("Complaint submission failed:", error);
 
       const apiErrors = error.response?.data?.errors;
+
       const validationMessage =
         apiErrors && typeof apiErrors === "object"
           ? Object.values(apiErrors).flat().join(" ")
           : "";
 
-      setErrors({
-        form:
+      setStatusModal({
+        isOpen: true,
+        type: "error",
+        title: "Submission Failed",
+        message:
           validationMessage ||
           error.response?.data?.message ||
           error.response?.data?.Message ||
@@ -321,173 +374,243 @@ const CreateComplaint = () => {
     }
   };
 
+  // Consistent horizontal label/control layout for all fields.
+  const renderField = ({ id, label, required = false, error, children }) => (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
+      <label htmlFor={id} className={LABEL_CLASS}>
+        {label}
+        {required && <span className="ml-1 text-black">*</span>}
+      </label>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        {children}
+
+        {error && (
+          <p className="text-xs text-red-600" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-full bg-white text-slate-800">
-      <PageHeader title="Add Complaint" onBack={() => navigate(-1)} />
+      <PageHeader title="Raise Complaint" onBack={() => navigate(-1)} />
 
       <form onSubmit={handleSubmit} noValidate>
         <div className="grid grid-cols-1 gap-4">
+          {/* Complainant Information */}
           <Card title="Complainant Information" icon={UserRound}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <Field label="Name" htmlFor="name" required error={errors.name}>
-                <IconField icon={Building2}>
-                  <input
-                    id="name"
-                    type="text"
-                    value={form.name}
-                    readOnly
-                    placeholder="Your full name"
-                    className={inputClass(Boolean(errors.name))}
-                  />
-                </IconField>
-              </Field>
+            <div className="flex flex-col gap-5">
+              {renderField({
+                id: "name",
+                label: "Name",
+                required: true,
+                error: errors.name,
+                children: (
+                  <div className="relative">
+                    <Building2
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-black"
+                    />
+                    <input
+                      id="name"
+                      type="text"
+                      value={form.name}
+                      readOnly
+                      placeholder="Your full name"
+                      className={`${inputClass(Boolean(errors.name))} w-full bg-slate-50 pl-9 text-sm text-black`}
+                    />
+                  </div>
+                ),
+              })}
 
-              <Field
-                label="Email"
-                htmlFor="email"
-                required
-                error={errors.email}
-              >
-                <IconField icon={Mail}>
-                  <input
-                    id="email"
-                    type="text"
-                    value={form.email}
-                    readOnly
-                    placeholder="Your Email Adddress"
-                    className={inputClass(Boolean(errors.name))}
-                  />
-                </IconField>
-              </Field>
+              {renderField({
+                id: "email",
+                label: "Email Address",
+                required: true,
+                error: errors.email,
+                children: (
+                  <div className="relative">
+                    <Mail
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-black"
+                    />
+                    <input
+                      id="email"
+                      type="email"
+                      value={form.email}
+                      readOnly
+                      placeholder="Your email address"
+                      className={`${inputClass(Boolean(errors.email))} w-full bg-slate-50 pl-9 text-sm text-black`}
+                    />
+                  </div>
+                ),
+              })}
 
-              <Field label="Mobile Number" htmlFor="phone" error={errors.phone}>
-                <IconField icon={Phone}>
-                  <input
-                    id="phone"
-                    type="text"
-                    value={form.phone}
-                    readOnly
-                    placeholder="Your Phone No."
-                    className={inputClass(Boolean(errors.name))}
-                  />
-                </IconField>
-              </Field>
+              {renderField({
+                id: "phone",
+                label: "Mobile Number",
+                error: errors.phone,
+                children: (
+                  <div className="relative">
+                    <Phone
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-black"
+                    />
+                    <input
+                      id="phone"
+                      type="tel"
+                      value={form.phone}
+                      readOnly
+                      placeholder="Your phone number"
+                      className={`${inputClass(Boolean(errors.phone))} w-full bg-slate-50 pl-9 text-sm text-black`}
+                    />
+                  </div>
+                ),
+              })}
             </div>
           </Card>
 
+          {/* Complaint Details */}
           <Card title="Complaint Details" icon={FileText}>
-            <div className="grid grid-cols-1 gap-4">
-              <Field
-                label="Complaint Category"
-                htmlFor="categoryId"
-                required
-                error={errors.categoryId || errors.categories}
-              >
-                <IconField icon={Tag}>
-                  <select
-                    id="categoryId"
-                    value={form.categoryId}
-                    onChange={(e) => update("categoryId", e.target.value)}
-                    disabled={categoriesLoading}
-                    className={`${inputClass(Boolean(errors.categoryId || errors.categories))} cursor-pointer disabled:cursor-not-allowed`}
-                  >
-                    <option value="">
-                      {categoriesLoading
-                        ? "Loading categories..."
-                        : "Select a category"}
-                    </option>
+            <div className="flex flex-col gap-5">
+              {renderField({
+                id: "categoryId",
+                label: "Complaint Category",
+                required: true,
+                error: errors.categoryId || errors.categories,
+                children: (
+                  <div className="relative">
+                    <Tag
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-black"
+                    />
 
-                    {categories.map((category) => {
-                      const id = getCategoryId(category);
-                      const name = getCategoryName(category);
+                    <select
+                      id="categoryId"
+                      value={form.categoryId}
+                      onChange={(e) => update("categoryId", e.target.value)}
+                      disabled={categoriesLoading}
+                      className={`${inputClass(Boolean(errors.categoryId || errors.categories))} w-full cursor-pointer pl-9 text-sm text-black disabled:cursor-not-allowed`}
+                    >
+                      <option value="">
+                        {categoriesLoading
+                          ? "Loading categories..."
+                          : "Select a category"}
+                      </option>
 
-                      if (id == null || !name) return null;
+                      {categories.map((category) => {
+                        const id = getCategoryId(category);
+                        const name = getCategoryName(category);
 
-                      return (
-                        <option key={id} value={id}>
-                          {name}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </IconField>
-              </Field>
+                        if (id == null || !name) return null;
 
-              <Field
-                label="Complaint Description"
-                htmlFor="details"
-                required
-                error={errors.details}
-              >
-                <IconField icon={AlignLeft}>
-                  <textarea
-                    id="details"
-                    rows={6}
-                    value={form.details}
-                    onChange={(e) => update("details", e.target.value)}
-                    placeholder="Describe your complaint in detail."
-                    className={`${inputClass(Boolean(errors.details), false)} resize-y pl-3`}
-                  />
-                </IconField>
-                <p className="mt-1 text-right text-xs text-slate-500">
-                  {form.details.length} characters
-                </p>
-              </Field>
+                        return (
+                          <option key={id} value={id}>
+                            {name}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                ),
+              })}
+
+              {renderField({
+                id: "details",
+                label: "Complaint Description",
+                required: true,
+                error: errors.details,
+                children: (
+                  <>
+                    <div className="relative">
+                      <AlignLeft
+                        size={16}
+                        className="absolute left-3 top-3 text-black"
+                      />
+
+                      <textarea
+                        id="details"
+                        rows={6}
+                        value={form.details}
+                        onChange={(e) => update("details", e.target.value)}
+                        placeholder="Describe your complaint in detail."
+                        className={`${inputClass(Boolean(errors.details), false)} w-full resize-y pl-9 text-sm text-black`}
+                      />
+                    </div>
+
+                    <p className="text-right text-xs text-black">
+                      {form.details.length} characters
+                    </p>
+                  </>
+                ),
+              })}
             </div>
           </Card>
 
+          {/* Supporting Document */}
           <Card title="Supporting Document" icon={Paperclip}>
-            <div>
-              <span className="mb-1.5 block text-xs font-medium text-slate-500">
-                Attachment (optional)
-              </span>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
+              <label htmlFor="attachment" className={LABEL_CLASS}>
+                Attachment
+                <span className="ml-1 font-normal text-black">(Optional)</span>
+              </label>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed bg-[#f4f9fb] px-4 text-sm font-medium transition hover:bg-[#eaf3f7]"
-                  style={{ color: ACCENT, borderColor: ACCENT }}
-                >
-                  <Paperclip size={15} />
-                  Choose file
-                </button>
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    ref={fileInputRef}
+                    id="attachment"
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    onChange={onFileChange}
+                    className="hidden"
+                  />
 
-                <input
-                  ref={fileInputRef}
-                  id="attachment"
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  onChange={onFileChange}
-                  className="hidden"
-                />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-slate-400 bg-slate-50 px-4 py-2 text-sm font-medium text-black transition hover:bg-slate-100"
+                  >
+                    <Paperclip size={15} />
+                    Choose File
+                  </button>
 
-                {attachment ? (
-                  <span className="inline-flex items-center gap-2 rounded-full bg-[#eaf3f7] px-3 py-1 text-xs text-slate-700">
-                    {attachment.name}
-                    <button
-                      type="button"
-                      onClick={removeAttachment}
-                      aria-label="Remove attachment"
-                      className="text-slate-500 hover:text-red-600"
-                    >
-                      <CloseIcon size={14} />
-                    </button>
-                  </span>
-                ) : (
-                  <span className="text-xs text-slate-500">
-                    PDF, images, or documents. Maximum 10 MB.
-                  </span>
+                  {attachment ? (
+                    <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-black">
+                      <span className="max-w-56 truncate">
+                        {attachment.name}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={removeAttachment}
+                        aria-label="Remove attachment"
+                        className="shrink-0 text-black hover:text-red-600"
+                      >
+                        <CloseIcon size={15} />
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-black">
+                      PDF, JPG, PNG, DOC, or DOCX. Maximum 10 MB.
+                    </span>
+                  )}
+                </div>
+
+                {errors.attachment && (
+                  <p className="text-xs text-red-600" role="alert">
+                    {errors.attachment}
+                  </p>
                 )}
               </div>
-
-              {errors.attachment && (
-                <p className="mt-1 text-xs text-red-600">{errors.attachment}</p>
-              )}
             </div>
           </Card>
         </div>
 
+        {/* Form Error */}
         {errors.form && (
           <div
             role="alert"
@@ -497,12 +620,13 @@ const CreateComplaint = () => {
           </div>
         )}
 
+        {/* Action Buttons */}
         <div className="mt-4 flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-end">
           <button
             type="button"
             onClick={() => navigate(-1)}
             disabled={submitting}
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-black transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancel
           </button>
@@ -510,7 +634,7 @@ const CreateComplaint = () => {
           <button
             type="submit"
             disabled={submitting || categoriesLoading}
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-transparent px-4 py-2.5 text-sm font-medium text-black shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             style={{ backgroundColor: ACCENT }}
           >
             {submitting ? (
@@ -518,10 +642,44 @@ const CreateComplaint = () => {
             ) : (
               <Plus size={15} />
             )}
-            {submitting ? "Submitting..." : "Submit Complaint"}
+
+            {submitting
+              ? "Submitting..."
+              : categoriesLoading
+                ? "Loading Categories..."
+                : "Submit Complaint"}
           </button>
         </div>
       </form>
+      <StatusModal
+        isOpen={statusModal.isOpen}
+        type={statusModal.type}
+        title={statusModal.title}
+        message={statusModal.message}
+        confirmText="OK"
+        onConfirm={() => {
+          if (statusModal.type === "success") {
+            navigate("/jobseeker/complaint-list", {
+              replace: true,
+              state: {
+                successMessage: "Complaint submitted successfully.",
+              },
+            });
+            return;
+          }
+
+          setStatusModal((prev) => ({
+            ...prev,
+            isOpen: false,
+          }));
+        }}
+        onCancel={() => {
+          setStatusModal((prev) => ({
+            ...prev,
+            isOpen: false,
+          }));
+        }}
+      />
     </div>
   );
 };
