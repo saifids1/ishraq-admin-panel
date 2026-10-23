@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronsLeft, FileText, Eye } from "lucide-react";
-import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
-import { getCurrentUserId } from "../../../../utils/authUtils";
+import { adminEnquiryService } from "../../../api/Services/adminEnquiryService";
+import { getCurrentUserId } from "../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
