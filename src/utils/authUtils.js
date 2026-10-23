@@ -37,7 +37,7 @@ export const getCurrentUser = () => {
  */
 export const getCurrentUserId = () => {
   const user = getCurrentUser();
-  return user?.id ?? user?.profileId ?? null;
+  return user?.profileId ?? null;
 };
 
 /**
