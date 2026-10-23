@@ -8,7 +8,7 @@ import countryMasterApi from "../../../api/Services/countryMasterApi";
 import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import StatusModal from "../../../components/common/StatusModal";
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 
 /* ---------- shared input/select styles ---------- */
 const selectClass =
@@ -373,7 +373,7 @@ const CreateEmployer = ({ mode }) => {
     setError("");
     try {
       // Resolve the currently logged-in user id (from login response / JWT / storage).
-      const currentUserId = Number(getCurrentUserId());
+      const currentUserId = Number(getCurrentUserId2());
       if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
         throw new Error(
           "Unable to identify the current user. Please sign in again.",
