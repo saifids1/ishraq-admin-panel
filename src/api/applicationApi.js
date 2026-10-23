@@ -13,9 +13,18 @@ const applicationApi = {
   getAppliedJobs: (jobseekerId, pageNo = 1, pageSize = 10) =>
     axiosInstance.get("/Application", {
       params: {
-        jobseekerId: jobseekerId,
+        jobseekerId,
         pageNo,
         pageSize,
+      },
+    }),
+
+  // Get applications by jobseeker ID and job description ID
+  getApplicationsByJobseekerAndJob: (jobseekerId, jobdesc_Id) =>
+    axiosInstance.get("/Application", {
+      params: {
+        jonseekerId: jobseekerId,
+        jobdesc_Id,
       },
     }),
 

@@ -19,40 +19,48 @@ const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
 /* ======================== HELPERS ======================== */
 
 const hasValue = (value) =>
-  value !== undefined && value !== null && String(value).trim() !== "";
+  value !== undefined &&
+  value !== null &&
+  String(value).trim() !== "";
 
 const text = (value) => (hasValue(value) ? String(value).trim() : "-");
 
-// Builds a full URL for a stored file path. Absolute URLs are returned unchanged.
 const buildFileUrl = (path) => {
   if (!hasValue(path)) return "";
 
   const value = String(path).trim();
+
   if (/^https?:\/\//i.test(value)) return value;
 
-  // Normalize Windows-style slashes and remove leading slashes so the
-  // base URL and path join with exactly one "/".
   const cleanPath = value.replace(/\\/g, "/").replace(/^\/+/, "");
 
   return `${API_BASE_URL}/${cleanPath}`;
 };
 
-// Keys in the API are inconsistent (jQ_, JQ_, jq_), so every key is lower-cased for lookup.
 const toLowerKeys = (obj) =>
   Object.fromEntries(
-    Object.entries(obj ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
+    Object.entries(obj ?? {}).map(([key, value]) => [
+      key.toLowerCase(),
+      value,
+    ]),
   );
 
-// Unwraps { data: {...} } or { Data: {...} } response shapes.
 const unwrap = (response) => {
   let current = response;
 
   for (let i = 0; i < 3; i += 1) {
-    if (!current || typeof current !== "object" || Array.isArray(current))
+    if (
+      !current ||
+      typeof current !== "object" ||
+      Array.isArray(current)
+    ) {
       break;
+    }
 
     const next = current.data ?? current.Data;
+
     if (next === undefined || next === null) break;
+
     current = next;
   }
 
@@ -61,24 +69,26 @@ const unwrap = (response) => {
 
 const yesNo = (value) => {
   if (value === true || value === 1) return "Yes";
+
   const normalized = String(value ?? "").toLowerCase();
+
   if (normalized === "true" || normalized === "1") return "Yes";
   if (normalized === "false" || normalized === "0") return "No";
+
   return "-";
 };
 
-// Trims fractions past milliseconds (e.g. "2026-10-16T15:42:08.2901637")
-// so every browser parses the date.
 const formatDate = (value, withTime = false) => {
   if (!hasValue(value)) return "-";
 
   const cleaned = String(value).replace(/(\.\d{3})\d+/, "$1");
   const date = new Date(cleaned);
+
   if (Number.isNaN(date.getTime())) return "-";
 
   return date.toLocaleString("en-GB", {
     day: "2-digit",
-    month: "short",
+    month: "2-digit",
     year: "numeric",
     ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
   });
@@ -93,8 +103,10 @@ const normalizeJob = (raw) => {
   const get = (...keys) => {
     for (const key of keys) {
       const value = row[key.toLowerCase()];
+
       if (hasValue(value)) return value;
     }
+
     return undefined;
   };
 
@@ -102,15 +114,25 @@ const normalizeJob = (raw) => {
     id: get("jQ_job_requirement_id"),
     requirementNumber: get("jQ_job_re_id"),
     position: get("jQ_position_title"),
-    employerName: get("employerName"),
-    instituteType: get("instituteTypeName"),
-    jobRole: get("jobRoleName"),
-    jobCategory: get("jobCategoryName"),
+    employerName:
+      get("employerName") ??
+      row.employer?.em_organization_name,
+    instituteType:
+      get("instituteTypeName") ??
+      row.institutetype?.name,
+    jobRole:
+      get("jobRoleName") ??
+      row.jobrole?.name,
+    jobCategory:
+      get("jobCategoryName") ??
+      row.jobcategory?.name,
     status: get("jobStatusName"),
     employmentType: get("employmentTypeName"),
     department: get("jQ_department_speciality"),
     vacancies: get("jQ_vacancies"),
-    location: get("jobLocationName"),
+    location:
+      get("jobLocationName") ??
+      row.joblocation?.ctm_cityname,
     qualification: get("jQ_qualification_required"),
     experience: get("jQ_experience_required"),
     salary: get("jQ_salary_range"),
@@ -126,17 +148,7 @@ const normalizeJob = (raw) => {
   };
 };
 
-const STATUS_STYLES = {
-  open: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  paused: "bg-amber-50 text-amber-700 ring-amber-200",
-  closed: "bg-slate-100 text-slate-600 ring-slate-200",
-};
-
-const getStatusStyle = (status = "") =>
-  STATUS_STYLES[status.trim().toLowerCase()] ??
-  "bg-slate-50 text-slate-600 ring-slate-200";
-
-/* ======================== LAYOUT HELPERS (same as EditJobSeeker) ======================== */
+/* ======================== LAYOUT HELPERS ======================== */
 
 const SectionTitle = ({ children }) => (
   <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
@@ -155,7 +167,6 @@ const FieldRow = ({ label, fullWidth = false, children }) => (
   </div>
 );
 
-// Read-only value styled like the form inputs so it reads the same but cannot be edited.
 const ReadOnlyValue = ({ children, multiline = false }) => (
   <div
     className={`w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 ${
@@ -178,9 +189,11 @@ export default function JobRequirementDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [applying, setApplying] = useState(false);
+  const [alreadyApplied, setAlreadyApplied] = useState(false);
+  const [checkingApplication, setCheckingApplication] = useState(true);
   const [modal, setModal] = useState(null);
 
-  /* ---------- modal helpers (same pattern as EditJobSeeker) ---------- */
+  /* ---------- modal helpers ---------- */
 
   const openStatus = (type, message, extra = {}) => {
     setModal({
@@ -219,10 +232,13 @@ export default function JobRequirementDetails() {
     let cancelled = false;
 
     const numericId = Number(id);
+
     if (!Number.isInteger(numericId) || numericId <= 0) {
       setError("Invalid job requirement ID.");
       setLoading(false);
-      return undefined;
+      return () => {
+        cancelled = true;
+      };
     }
 
     const load = async () => {
@@ -232,7 +248,10 @@ export default function JobRequirementDetails() {
       try {
         const response = await getJobRequirementById(numericId);
 
-        if (response?.Success === false || response?.success === false) {
+        if (
+          response?.Success === false ||
+          response?.success === false
+        ) {
           throw new Error(
             response?.Message ||
               response?.message ||
@@ -275,7 +294,76 @@ export default function JobRequirementDetails() {
 
   const job = useMemo(() => (raw ? normalizeJob(raw) : null), [raw]);
 
-  /* ---------- apply ---------- */
+  /* ---------- check existing application ---------- */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkApplication = async () => {
+      setCheckingApplication(true);
+      setAlreadyApplied(false);
+
+      try {
+        const jobseekerId = Number(getCurrentUserId());
+        const jobRequirementId = Number(id);
+
+        if (
+          !Number.isInteger(jobseekerId) ||
+          jobseekerId <= 0 ||
+          !Number.isInteger(jobRequirementId) ||
+          jobRequirementId <= 0
+        ) {
+          return;
+        }
+
+        const response =
+          await applicationApi.getApplicationsByJobseekerAndJob(
+            jobseekerId,
+            jobRequirementId,
+          );
+
+        const result = response?.data;
+
+        // API response: { success, data: { data: [...] } }
+        const applications = Array.isArray(result?.data?.data)
+          ? result.data.data
+          : Array.isArray(result?.data)
+            ? result.data
+            : [];
+
+        const matchingApplication = applications.some(
+          (application) =>
+            Number(application.aP_job_requirement_id) ===
+              jobRequirementId &&
+            Number(application.aP_jobseeker_id) === jobseekerId,
+        );
+
+        if (!cancelled) {
+          setAlreadyApplied(
+            (result?.success === true ||
+              result?.Success === true) &&
+              matchingApplication,
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to check application status:", err);
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingApplication(false);
+        }
+      }
+    };
+
+    checkApplication();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  /* ---------- submit application ---------- */
 
   const submitApplication = async (jobseekerId, jobRequirementId) => {
     setApplying(true);
@@ -292,9 +380,13 @@ export default function JobRequirementDetails() {
       const result = response?.data;
 
       if (result?.success ?? result?.Success) {
+        setAlreadyApplied(true);
+
         openStatus(
           "update",
-          result?.message || result?.Message || "Application submitted successfully.",
+          result?.message ||
+            result?.Message ||
+            "Application submitted successfully.",
           {
             confirmText: "Continue",
             onConfirm: () => navigate(JOB_LIST_PATH),
@@ -303,7 +395,9 @@ export default function JobRequirementDetails() {
       } else {
         openStatus(
           "error",
-          result?.message || result?.Message || "Failed to submit application.",
+          result?.message ||
+            result?.Message ||
+            "Failed to submit application.",
         );
       }
     } catch (err) {
@@ -320,7 +414,7 @@ export default function JobRequirementDetails() {
   };
 
   const handleApply = () => {
-    if (applying) return;
+    if (applying || alreadyApplied || checkingApplication) return;
 
     const jobseekerId = Number(getCurrentUserId());
     const jobRequirementId = Number(id);
@@ -330,7 +424,10 @@ export default function JobRequirementDetails() {
       return;
     }
 
-    if (!Number.isInteger(jobRequirementId) || jobRequirementId <= 0) {
+    if (
+      !Number.isInteger(jobRequirementId) ||
+      jobRequirementId <= 0
+    ) {
       openStatus("error", "Invalid job requirement.");
       return;
     }
@@ -339,7 +436,8 @@ export default function JobRequirementDetails() {
       title: "Confirm application",
       message: "Are you sure you want to apply for this job?",
       confirmText: "Apply",
-      onConfirm: () => submitApplication(jobseekerId, jobRequirementId),
+      onConfirm: () =>
+        submitApplication(jobseekerId, jobRequirementId),
     });
   };
 
@@ -372,18 +470,11 @@ export default function JobRequirementDetails() {
         >
           <ChevronsLeft size={18} strokeWidth={2} />
         </button>
-        <h2 className="font-semibold text-slate-800">View Job Requirement</h2>
-      </div>
 
-      {job?.status && (
-        <span
-          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${getStatusStyle(
-            job.status,
-          )}`}
-        >
-          {job.status}
-        </span>
-      )}
+        <h2 className="font-semibold text-slate-800">
+          View Job Requirement
+        </h2>
+      </div>
     </div>
   );
 
@@ -410,13 +501,16 @@ export default function JobRequirementDetails() {
         <div className="mx-auto">
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
             {header}
+
             <div className="p-8 text-center">
               <p className="text-sm font-semibold text-slate-800">
                 Could not load job requirement
               </p>
+
               <p className="mt-1 text-sm text-slate-500">
                 {error || "Job requirement not found."}
               </p>
+
               <button
                 type="button"
                 onClick={() => navigate(JOB_LIST_PATH)}
@@ -446,17 +540,24 @@ export default function JobRequirementDetails() {
             {/* JOB INFORMATION */}
             <section>
               <SectionTitle>Job Information</SectionTitle>
+
               <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
                 <FieldRow label="Employer">
-                  <ReadOnlyValue>{text(job.employerName)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {text(job.employerName)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Job Type">
-                  <ReadOnlyValue>{text(job.instituteType)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {text(job.instituteType)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Job Category">
-                  <ReadOnlyValue>{text(job.jobCategory)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {text(job.jobCategory)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Job Role">
@@ -476,15 +577,21 @@ export default function JobRequirementDetails() {
                 </FieldRow>
 
                 <FieldRow label="Employment Type">
-                  <ReadOnlyValue>{text(job.employmentType)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {text(job.employmentType)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Qualification Required">
-                  <ReadOnlyValue>{text(job.qualification)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {text(job.qualification)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Experience Required">
-                  <ReadOnlyValue>{text(job.experience)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {text(job.experience)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Salary Range">
@@ -500,9 +607,12 @@ export default function JobRequirementDetails() {
             {/* FACILITIES & DATES */}
             <section>
               <SectionTitle>Facilities & Dates</SectionTitle>
+
               <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
                 <FieldRow label="Accommodation">
-                  <ReadOnlyValue>{yesNo(job.accommodation)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {yesNo(job.accommodation)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Food Facility">
@@ -510,19 +620,27 @@ export default function JobRequirementDetails() {
                 </FieldRow>
 
                 <FieldRow label="Expected Joining Date">
-                  <ReadOnlyValue>{formatDate(job.joiningDate)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {formatDate(job.joiningDate)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Application Deadline">
-                  <ReadOnlyValue>{formatDate(job.deadline)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {formatDate(job.deadline)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Created On">
-                  <ReadOnlyValue>{formatDate(job.createdAt, true)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {formatDate(job.createdAt, true)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Last Updated">
-                  <ReadOnlyValue>{formatDate(job.updatedAt, true)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {formatDate(job.updatedAt, true)}
+                  </ReadOnlyValue>
                 </FieldRow>
               </div>
             </section>
@@ -530,6 +648,7 @@ export default function JobRequirementDetails() {
             {/* LOCATION */}
             <section>
               <SectionTitle>Job Location</SectionTitle>
+
               <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
                 <FieldRow label="Location">
                   <ReadOnlyValue>{text(job.location)}</ReadOnlyValue>
@@ -540,9 +659,12 @@ export default function JobRequirementDetails() {
             {/* DESCRIPTION & ATTACHMENT */}
             <section>
               <SectionTitle>Description & Attachment</SectionTitle>
+
               <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
                 <FieldRow label="Job Description" fullWidth>
-                  <ReadOnlyValue multiline>{text(job.description)}</ReadOnlyValue>
+                  <ReadOnlyValue multiline>
+                    {text(job.description)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Attachment" fullWidth>
@@ -554,11 +676,16 @@ export default function JobRequirementDetails() {
                       title="Open attachment in a new tab"
                       className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-[#1e5a7a] transition hover:bg-[#eaf3f7]"
                     >
-                      <span className="min-w-0 break-all">{attachmentName}</span>
+                      <span className="min-w-0 break-all">
+                        {attachmentName}
+                      </span>
+
                       <ExternalLink size={14} className="shrink-0" />
                     </a>
                   ) : (
-                    <ReadOnlyValue>No attachment uploaded.</ReadOnlyValue>
+                    <ReadOnlyValue>
+                      No attachment uploaded.
+                    </ReadOnlyValue>
                   )}
                 </FieldRow>
               </div>
@@ -575,15 +702,40 @@ export default function JobRequirementDetails() {
                 Back to List
               </button>
 
-              <button
-                type="button"
-                onClick={handleApply}
-                disabled={applying}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {applying && <LoaderCircle size={15} className="animate-spin" />}
-                {applying ? "Applying..." : "Apply for Job"}
-              </button>
+              {checkingApplication ? (
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-500"
+                >
+                  <LoaderCircle
+                    size={15}
+                    className="animate-spin"
+                  />
+                  Checking application...
+                </button>
+              ) : alreadyApplied ? (
+                <span className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-5 py-2.5 text-sm font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                  <span aria-hidden="true">✓</span>
+                  Applied
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleApply}
+                  disabled={applying}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {applying && (
+                    <LoaderCircle
+                      size={15}
+                      className="animate-spin"
+                    />
+                  )}
+
+                  {applying ? "Applying..." : "Apply for Job"}
+                </button>
+              )}
             </div>
           </div>
         </div>

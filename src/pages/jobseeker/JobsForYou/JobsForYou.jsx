@@ -4,9 +4,8 @@ import {
   BriefcaseBusiness,
   Building2,
   ChevronsRight,
+  Eye,
   MapPin,
-  MessageCircleCheck,
-  MessageCircleX,
   RefreshCw,
   Search as SearchIcon,
 } from "lucide-react";
@@ -17,7 +16,7 @@ import { getJobsForJobseeker } from "../../../api/jobRequirementApi";
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
-const TABLE_MIN_WIDTH = 1000;
+const TABLE_MIN_WIDTH = 1180;
 
 const TABLE_COLUMNS = [
   { key: "srNo", label: "Sr.No", width: "70px" },
@@ -25,9 +24,10 @@ const TABLE_COLUMNS = [
   { key: "instituteType", label: "Job Type", width: "150px" },
   { key: "jobRole", label: "Job Role", width: "160px" },
   { key: "jobCategory", label: "Job Category", width: "170px" },
-  { key: "vacancies", label: "Vacancies", width: "110px" },
+  { key: "vacancies", label: "Vacancies", width: "100px" },
   { key: "deadline", label: "Deadline", width: "130px" },
-  { key: "actions", label: "Action", width: "130px" },
+  { key: "applied", label: "Applied", width: "130px" },
+  { key: "actions", label: "Action", width: "110px" },
 ];
 
 const TABLE_COL_COUNT = TABLE_COLUMNS.length;
@@ -70,6 +70,8 @@ const normalizeJob = (item) => {
     return undefined;
   };
 
+  const appliedValue = get("jobseekerApplied");
+
   return {
     id: get("jQ_job_requirement_id"),
     employerName: get("employerName") ?? "",
@@ -81,12 +83,14 @@ const normalizeJob = (item) => {
     jobCategory: get("jobCategoryName") ?? "-",
     vacancies: get("jQ_vacancies") ?? 0,
     deadline: get("jQ_deadline"),
-    applied: get("jobseekerApplied") === true,
+    applied:
+      appliedValue === true ||
+      String(appliedValue).toLowerCase() === "true" ||
+      appliedValue === 1 ||
+      String(appliedValue) === "1",
   };
 };
 
-// Read the matching IDs from the existing logged-in user.
-// No API request is made here.
 const getMatchingProfile = () => {
   const jobseekerId = localStorage.getItem("jB_jobseeker_id");
   const instituteTypeId = localStorage.getItem("jB_institute_type_id");
@@ -135,11 +139,11 @@ const JobsForYou = () => {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
-  /* refs for horizontal scroll sync */
   const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
 
-  // Resolve the current user's matching IDs locally.
+  /* --------------------------- LOAD PROFILE --------------------------- */
+
   useEffect(() => {
     try {
       setProfile(getMatchingProfile());
@@ -151,11 +155,12 @@ const JobsForYou = () => {
     }
   }, [reloadKey]);
 
-  // Fetch the current page of matching jobs.
+  /* --------------------------- LOAD JOBS --------------------------- */
+
   useEffect(() => {
     if (!profile) {
       setLoading(false);
-      return;
+      return undefined;
     }
 
     let cancelled = false;
@@ -211,10 +216,12 @@ const JobsForYou = () => {
     };
   }, [profile, page, pageSize, reloadKey]);
 
-  /* sync header & body horizontal scroll */
+  /* --------------------------- SYNC SCROLL --------------------------- */
+
   useEffect(() => {
     const body = bodyScrollRef.current;
     const header = headerScrollRef.current;
+
     if (!body || !header) return undefined;
 
     const onScroll = () => {
@@ -222,12 +229,15 @@ const JobsForYou = () => {
     };
 
     body.addEventListener("scroll", onScroll);
+
     return () => body.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Search filters the jobs on the current page only.
+  /* --------------------------- SEARCH --------------------------- */
+
   const filteredJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
+
     if (!query) return jobs;
 
     return jobs.filter((job) =>
@@ -245,6 +255,8 @@ const JobsForYou = () => {
     );
   }, [jobs, search]);
 
+  /* --------------------------- PAGINATION --------------------------- */
+
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
   const currentPage = Math.min(page, totalPages);
   const start = totalRecords === 0 ? 0 : (currentPage - 1) * pageSize + 1;
@@ -254,7 +266,9 @@ const JobsForYou = () => {
     const count = 5;
     let from = Math.max(1, currentPage - Math.floor(count / 2));
     const to = Math.min(totalPages, from + count - 1);
+
     from = Math.max(1, to - count + 1);
+
     return Array.from({ length: to - from + 1 }, (_, index) => from + index);
   }, [currentPage, totalPages]);
 
@@ -268,18 +282,21 @@ const JobsForYou = () => {
 
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
+
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
+
   const td =
     "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
+
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
   const btnRefresh =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
-  /* Sticky actions column — header + cells */
   const stickyActionsHead =
     "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
+
   const stickyActionsCell =
     "sticky right-0 z-20 bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
 
@@ -294,11 +311,12 @@ const JobsForYou = () => {
         </h1>
 
         <div className="flex w-full flex-wrap items-center gap-2.5 xl:w-auto">
-          <div className="relative min-w-[320px] flex-1 xl:flex-none">
+          <div className="relative min-w-[280px] flex-1 xl:flex-none">
             <SearchIcon
               size={15}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
             />
+
             <input
               type="search"
               aria-label="Search jobs"
@@ -356,28 +374,29 @@ const JobsForYou = () => {
       {/* TABLE */}
       <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="flex h-full flex-col">
-          {/* Header strip */}
+          {/* TABLE HEADER */}
           <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
             <table
               className="w-full table-fixed border-collapse text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
             >
               <colgroup>
-                {TABLE_COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width }} />
+                {TABLE_COLUMNS.map((column) => (
+                  <col key={column.key} style={{ width: column.width }} />
                 ))}
               </colgroup>
+
               <thead>
                 <tr>
-                  {TABLE_COLUMNS.map((c) => (
+                  {TABLE_COLUMNS.map((column) => (
                     <th
-                      key={c.key}
+                      key={column.key}
                       scope="col"
                       className={
-                        c.key === "actions" ? stickyActionsHead : thClass
+                        column.key === "actions" ? stickyActionsHead : thClass
                       }
                     >
-                      {c.label}
+                      {column.label}
                     </th>
                   ))}
                 </tr>
@@ -385,7 +404,7 @@ const JobsForYou = () => {
             </table>
           </div>
 
-          {/* Body */}
+          {/* TABLE BODY */}
           <div
             ref={bodyScrollRef}
             className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
@@ -396,8 +415,8 @@ const JobsForYou = () => {
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
             >
               <colgroup>
-                {TABLE_COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width }} />
+                {TABLE_COLUMNS.map((column) => (
+                  <col key={column.key} style={{ width: column.width }} />
                 ))}
               </colgroup>
 
@@ -445,10 +464,12 @@ const JobsForYou = () => {
                       }}
                       className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
+                      {/* SR. NO. */}
                       <td className={`${td} tabular-nums text-center`}>
                         {start + index}
                       </td>
 
+                      {/* ORGANIZATION & LOCATION */}
                       <td className={td}>
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 truncate font-semibold">
@@ -464,18 +485,21 @@ const JobsForYou = () => {
                         </div>
                       </td>
 
+                      {/* JOB TYPE */}
                       <td className={`${td} whitespace-nowrap`}>
                         <div className="w-full min-w-0 truncate">
                           {job.instituteType}
                         </div>
                       </td>
 
+                      {/* JOB ROLE */}
                       <td className={`${td} whitespace-nowrap`}>
                         <div className="w-full min-w-0 truncate">
                           {job.jobRole}
                         </div>
                       </td>
 
+                      {/* JOB CATEGORY */}
                       <td className={`${td} whitespace-nowrap text-center`}>
                         <span
                           className="inline-flex max-w-full items-center rounded-md bg-orange-600 px-2.5 py-1 text-[13px] font-medium text-white ring-1 ring-inset ring-orange-700 shadow-sm"
@@ -485,50 +509,45 @@ const JobsForYou = () => {
                         </span>
                       </td>
 
+                      {/* VACANCIES */}
                       <td className={`${td} tabular-nums text-center`}>
                         {job.vacancies}
                       </td>
 
-                      <td className={`${td} tabular-nums whitespace-nowrap text-center`}>
+                      {/* DEADLINE */}
+                      <td
+                        className={`${td} tabular-nums whitespace-nowrap text-center`}
+                      >
                         {hasValue(job.deadline) && dayjs(job.deadline).isValid()
                           ? dayjs(job.deadline).format("DD-MM-YYYY")
                           : "-"}
                       </td>
 
-                      <td className={`${td} ${stickyActionsCell} text-center`}>
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/jobseeker/jobs/${job.id}`)}
-                            title="View job"
-                            aria-label={`View ${job.position}`}
-                            className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                          >
-                            <ChevronsRight size={14} strokeWidth={2.2} />
-                          </button>
+                      {/* APPLIED STATUS: OWN COLUMN */}
+                      <td className={`${td} text-center`}>
+                        {job.applied ? (
+                          <span className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-emerald-100 px-3 py-1 text-[13px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-300">
+                            Applied
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-rose-100 px-3 py-1 text-[13px] font-semibold text-rose-700 ring-1 ring-inset ring-rose-300">
+                            Not Applied
+                          </span>
+                        )}
+                      </td>
 
-                          {job.applied ? (
-                            <button
-                              type="button"
-                              disabled
-                              title="Already applied"
-                              aria-label={`Already applied for ${job.position}`}
-                              className="grid h-7 w-7 cursor-not-allowed place-items-center rounded-md bg-emerald-100 text-emerald-700"
-                            >
-                              <MessageCircleCheck size={15} strokeWidth={2.2} />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/jobseeker/jobs/${job.id}`)}
-                              title="View job and apply"
-                              aria-label={`View ${job.position} and apply`}
-                              className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                            >
-                              <MessageCircleX size={14} strokeWidth={2.2} />
-                            </button>
-                          )}
-                        </div>
+                      {/* ACTION: VIEW ALWAYS VISIBLE */}
+                      <td className={`${td} ${stickyActionsCell} text-center`}>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/jobseeker/jobs/${job.id}`)}
+                          title={`View ${job.position}`}
+                          aria-label={`View ${job.position}`}
+                          className="mx-auto inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                        >
+                          <ChevronsRight size={15} strokeWidth={2.2} />
+                          
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -544,10 +563,8 @@ const JobsForYou = () => {
         <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
           <span>
             Showing{" "}
-            <strong className="font-semibold text-[#53677f]">{start}</strong>{" "}
-            to{" "}
-            <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
-            of{" "}
+            <strong className="font-semibold text-[#53677f]">{start}</strong> to{" "}
+            <strong className="font-semibold text-[#53677f]">{end}</strong> of{" "}
             <strong className="font-semibold text-[#53677f]">
               {totalRecords}
             </strong>{" "}
@@ -565,9 +582,9 @@ const JobsForYou = () => {
               disabled={loading}
               className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[13px] text-[#34445a] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {DEFAULT_PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
+              {DEFAULT_PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {size}
                 </option>
               ))}
             </select>
