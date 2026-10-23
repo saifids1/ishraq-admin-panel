@@ -27,6 +27,7 @@ const COLUMNS = [
   { key: "rating", width: "200px" },
   { key: "experience", width: "320px" },
   { key: "createdAt", width: "130px" },
+  { key: "Status", width: "120px" },
   { key: "actions", width: "120px" },
 ];
 
@@ -62,7 +63,26 @@ const mapFeedback = (item) => ({
   createdAt: formatDate(item.fB_created_at),
   createdAtRaw: item.fB_created_at,
   active: item.fB_is_active,
+  status: item.statusName,
 });
+
+const STATUS_BADGE = {
+  open: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
+  active: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
+  new: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
+  hold: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+  paused: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+  pending: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+  closed: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
+  resolved: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
+};
+
+const statusBadgeClass = (value) =>
+  STATUS_BADGE[
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+  ] ?? "bg-slate-500 ring-slate-600 shadow-slate-500/20";
 
 /* ------------------------------ COMPONENT ------------------------------ */
 
@@ -179,13 +199,7 @@ const FeedbackList = () => {
     if (!query) return feedback;
 
     return feedback.filter((item) =>
-      [
-        item.name,
-        item.contact,
-        item.userType,
-        item.requestNo,
-        item.experience,
-      ]
+      [item.name, item.contact, item.userType, item.requestNo, item.experience]
         .join(" ")
         .toLowerCase()
         .includes(query),
@@ -197,7 +211,9 @@ const FeedbackList = () => {
   const stats = useMemo(() => {
     const rated = feedback.filter((item) => item.rating > 0);
     const averageRating = rated.length
-      ? (rated.reduce((sum, item) => sum + item.rating, 0) / rated.length).toFixed(1)
+      ? (
+          rated.reduce((sum, item) => sum + item.rating, 0) / rated.length
+        ).toFixed(1)
       : "0.0";
     const activeCount = feedback.filter((item) => item.active === true).length;
 
@@ -291,6 +307,7 @@ const FeedbackList = () => {
     { key: "rating", label: "Rating", className: thClass },
     { key: "experience", label: "Overall Experience", className: thClass },
     { key: "createdAt", label: "Submit Date", className: thClass },
+    { key: "status", label: "Status", className: thClass },
     { key: "actions", label: "Actions", className: stickyActionsHead },
   ];
 
@@ -526,6 +543,14 @@ const FeedbackList = () => {
                         <td className={`${td} whitespace-nowrap tabular-nums`}>
                           {item.createdAt}
                         </td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span
+                            title={item.status}
+                            className={`${BADGE_BASE} ${statusBadgeClass(item.status)}`}
+                          >
+                            {item.status || "-"}
+                          </span>
+                        </td>
 
                         <td
                           className={`${td} ${stickyActionsCell} text-center`}
@@ -561,8 +586,7 @@ const FeedbackList = () => {
             <span>
               Showing{" "}
               <strong className="font-semibold text-[#53677f]">{start}</strong>{" "}
-              to{" "}
-              <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
+              to <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
               of{" "}
               <strong className="font-semibold text-[#53677f]">
                 {totalRecords}
