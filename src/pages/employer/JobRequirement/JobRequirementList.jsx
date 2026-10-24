@@ -32,6 +32,7 @@ const TABLE_MIN_WIDTH = 1380;
 
 const COLUMNS = [
   { key: "srNo", width: "60px" },
+  { key: "jdNo", width: "180px" },
   { key: "position", width: "260px" },
   { key: "instituteType", width: "170px" },
   { key: "jobRole", width: "200px" },
@@ -85,6 +86,7 @@ const toneOf = (value) => TONES[STATUS_TONES[value]] ?? TONES.neutral;
 
 const normalizeJob = (item) => ({
   id: item?.jQ_job_requirement_id,
+  jdNo: item?.jQ_job_re_id,
   position: item?.jQ_position_title || "Untitled position",
   department: item?.jQ_department_speciality || "",
   location: item?.jobLocationName || "-",
@@ -341,7 +343,7 @@ const JobRequirementList = () => {
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
   const td =
-    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
+    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] font-semibold text-slate-900";
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2";
   const btnRefresh =
@@ -358,6 +360,7 @@ const JobRequirementList = () => {
 
   const headers = [
     { key: "srNo", label: "Sr.No", className: thClass },
+    { key: "jdNo", label: "Job Requirement No", className: thClass },
     { key: "position", label: "Position & Location", className: thClass },
     { key: "instituteType", label: "Institute Type", className: thClass },
     { key: "jobRole", label: "Job Role", className: thClass },
@@ -529,6 +532,9 @@ const JobRequirementList = () => {
                       >
                         <td className={`${td} tabular-nums`}>
                           {start + index}
+                        </td>
+                        <td className={`${td} tabular-nums`}>
+                          {job.jdNo}
                         </td>
 
                         <td className={`${td} whitespace-nowrap`}>

@@ -25,18 +25,19 @@ const COLUMNS = [
   { key: "referenceNo", width: "180px" },
   { key: "fullName", width: "220px" },
   { key: "complaintCategory", width: "200px" },
-  { key: "details", width: "280px" },
+  // { key: "details", width: "280px" },
   { key: "createdAt", width: "130px" },
   { key: "status", width: "150px" },
   { key: "actions", width: "120px" },
 ];
 
 const STATUS_STYLE = {
-  NEW: "bg-blue-600 ring-blue-700 shadow-blue-600/20",
-  OPEN: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  "IN-PROGRESS": "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  HOLD: "bg-violet-600 ring-violet-700 shadow-violet-600/20",
-  CLOSED: "bg-slate-700 ring-slate-800 shadow-slate-700/20",
+  new: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/30",
+  open: "bg-blue-600 text-white ring-blue-700 shadow-blue-600/20",
+  "in-progress":
+    "bg-orange-500 text-white ring-orange-600 shadow-orange-500/20",
+  hold: "bg-red-600 text-white ring-red-700 shadow-red-600/20",
+  closed: "bg-emerald-600 text-white ring-emerald-700 shadow-emerald-600/20",
 };
 
 const DEFAULT_STATUS_STYLE = "bg-gray-500 ring-gray-600 shadow-gray-500/20";
@@ -70,7 +71,10 @@ const requestOnce = (key, request) => {
 };
 
 const normalizeStatus = (value = "") =>
-  String(value).trim().toUpperCase().replace(/[\s_]+/g, "-");
+  String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[\s_]+/g, "-");
 
 const getValue = (item, keys, fallback = "") => {
   if (!item || typeof item !== "object") return fallback;
@@ -93,7 +97,7 @@ const getValue = (item, keys, fallback = "") => {
 
   for (const key of keys) {
     const matchedKey = existingKeys.find(
-      (existing) => existing.toLowerCase() === key.toLowerCase()
+      (existing) => existing.toLowerCase() === key.toLowerCase(),
     );
 
     if (!matchedKey) continue;
@@ -131,55 +135,30 @@ const mapComplaint = (item) => ({
   id: getValue(
     item,
     ["cP_complaint_id", "CP_ComplaintId", "complaintId", "id"],
-    null
+    null,
   ),
 
   referenceNo: getValue(
     item,
-    [
-      "cP_reference_no",
-      "CP_ReferenceNo",
-      "cP_request_no",
-      "requestNo",
-    ],
-    "-"
+    ["cP_reference_no", "CP_ReferenceNo", "cP_request_no", "requestNo"],
+    "-",
   ),
 
   fullName: getValue(
     item,
-    [
-      "cP_full_name",
-      "cP_name",
-      "cP_complainer_name",
-      "fullName",
-      "name",
-    ],
-    "-"
+    ["cP_full_name", "cP_name", "cP_complainer_name", "fullName", "name"],
+    "-",
   ),
 
   contactNo: getValue(
     item,
-    [
-      "cP_mobile",
-      "cP_contact",
-      "cP_contact_no",
-      "contactNo",
-      "contact",
-    ],
-    "-"
+    ["cP_mobile", "cP_contact", "cP_contact_no", "contactNo", "contact"],
+    "-",
   ),
 
-  email: getValue(
-    item,
-    ["cP_email", "cP_email_id", "email"],
-    "-"
-  ),
+  email: getValue(item, ["cP_email", "cP_email_id", "email"], "-"),
 
-  userType: getValue(
-    item,
-    ["userTypeName", "cP_user_type_name"],
-    "-"
-  ),
+  userType: getValue(item, ["userTypeName", "cP_user_type_name"], "-"),
 
   complaintCategory: getValue(
     item,
@@ -189,27 +168,15 @@ const mapComplaint = (item) => ({
       "complaintCategory",
       "categoryName",
     ],
-    "-"
+    "-",
   ),
 
-  details: getValue(
-    item,
-    ["cP_details", "complaintDetails", "details"],
-    "-"
-  ),
+  details: getValue(item, ["cP_details", "complaintDetails", "details"], "-"),
 
-  status: getValue(
-    item,
-    ["statusName", "cP_status_name"],
-    "NEW"
-  ),
+  status: getValue(item, ["statusName", "cP_status_name"], "NEW"),
 
   createdAt: formatDate(
-    getValue(
-      item,
-      ["cP_created_at", "cP_created_date", "createdAt"],
-      ""
-    )
+    getValue(item, ["cP_created_at", "cP_created_date", "createdAt"], ""),
   ),
 
   raw: item,
@@ -275,16 +242,11 @@ const ComplaintList = () => {
     setLoading(true);
     setError("");
 
-    const requestKey = [
-      "complaints",
-      String(userId),
-      page,
-      pageSize,
-    ].join(":");
+    const requestKey = ["complaints", String(userId), page, pageSize].join(":");
 
     try {
       const response = await requestOnce(requestKey, () =>
-        getComplaintsByUserId(userId, page, pageSize)
+        getComplaintsByUserId(userId, page, pageSize),
       );
 
       // Ignore responses belonging to an outdated request.
@@ -293,9 +255,7 @@ const ComplaintList = () => {
       const body = normalizeResponse(response);
 
       if (body?.success === false) {
-        throw new Error(
-          body.message || "Unable to load complaints."
-        );
+        throw new Error(body.message || "Unable to load complaints.");
       }
 
       // Expected API:
@@ -308,19 +268,13 @@ const ComplaintList = () => {
       // }
       const result = body?.data;
 
-      const rows = Array.isArray(result?.data)
-        ? result.data
-        : [];
+      const rows = Array.isArray(result?.data) ? result.data : [];
 
       setComplaints(rows.map(mapComplaint));
 
-      setTotalRecords(
-        Math.max(0, Number(result?.totalRecords) || 0)
-      );
+      setTotalRecords(Math.max(0, Number(result?.totalRecords) || 0));
 
-      setTotalPages(
-        Math.max(1, Number(result?.totalPages) || 1)
-      );
+      setTotalPages(Math.max(1, Number(result?.totalPages) || 1));
     } catch (err) {
       if (requestId !== requestSequence.current) return;
 
@@ -384,7 +338,7 @@ const ComplaintList = () => {
       ]
         .join(" ")
         .toLowerCase()
-        .includes(query)
+        .includes(query),
     );
   }, [complaints, search]);
 
@@ -392,9 +346,8 @@ const ComplaintList = () => {
 
   const stats = useMemo(() => {
     const countOf = (statusKey) =>
-      complaints.filter(
-        (item) => normalizeStatus(item.status) === statusKey
-      ).length;
+      complaints.filter((item) => normalizeStatus(item.status) === statusKey)
+        .length;
 
     return [
       {
@@ -464,7 +417,7 @@ const ComplaintList = () => {
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
   const td =
-    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
+    "border-t border-[#e2e8ee] px-3.5 py-2.5 font-semibold text-[15px] text-slate-900";
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2";
   const btnRefresh =
@@ -483,8 +436,12 @@ const ComplaintList = () => {
     { key: "srNo", label: "Sr.No", className: thClass },
     { key: "referenceNo", label: "Request No.", className: thClass },
     { key: "fullName", label: "Organization Name", className: thClass },
-    { key: "complaintCategory", label: "Complaint Category", className: thClass },
-    { key: "details", label: "Complaint Details", className: thClass },
+    {
+      key: "complaintCategory",
+      label: "Complaint Category",
+      className: thClass,
+    },
+    // { key: "details", label: "Complaint Details", className: thClass },
     { key: "createdAt", label: "Submit Date", className: thClass },
     { key: "status", label: "Status", className: thClass },
     { key: "actions", label: "Actions", className: stickyActionsHead },
@@ -695,16 +652,6 @@ const ComplaintList = () => {
                             {item.complaintCategory}
                           </span>
                         </td>
-
-                        <td className={td}>
-                          <span
-                            className="block truncate"
-                            title={item.details}
-                          >
-                            {item.details}
-                          </span>
-                        </td>
-
                         <td className={`${td} whitespace-nowrap tabular-nums`}>
                           {item.createdAt}
                         </td>
@@ -712,7 +659,7 @@ const ComplaintList = () => {
                         <td className={`${td} whitespace-nowrap`}>
                           <span
                             className={`${BADGE_BASE} ${
-                              STATUS_STYLE[normalizeStatus(item.status)] ??
+                              STATUS_STYLE[normalizeStatus(item.status).toLowerCase()] ??
                               DEFAULT_STATUS_STYLE
                             }`}
                             title={item.status}
@@ -757,8 +704,7 @@ const ComplaintList = () => {
             <span>
               Showing{" "}
               <strong className="font-semibold text-[#53677f]">{start}</strong>{" "}
-              to{" "}
-              <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
+              to <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
               of{" "}
               <strong className="font-semibold text-[#53677f]">
                 {totalRecords}

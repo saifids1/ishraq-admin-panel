@@ -548,12 +548,12 @@ export default function JobRequirementDetails() {
     ["Job Role", job.jobRole],
     ["Position Title", job.position],
     ["Department / Speciality", job.department],
-    ["Number of Vacancies", job.vacancies],
-    ["Employment Type", job.employmentType],
     ["Qualification Required", job.qualification],
     ["Experience Required", job.experience],
     ["Salary Range", job.salary],
+    ["Employment Type", job.employmentType],
     ["Duty Hours", job.dutyHours],
+    ["Number of Vacancies", job.vacancies],
   ];
 
   const facilityDateItems = [

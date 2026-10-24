@@ -24,7 +24,9 @@ const formatDate = (value) => {
 };
 
 /* ---------- DOCUMENT URL Configuration (same as JobSeekerDetails) ---------- */
-const DOCUMENT_BASE_URL = (process.env.REACT_APP_DOCUMENT_BASE_URL || "").trim();
+const DOCUMENT_BASE_URL = (
+  process.env.REACT_APP_DOCUMENT_BASE_URL || ""
+).trim();
 
 const toAbsoluteUrl = (url) => {
   if (!url) return url;
@@ -55,10 +57,17 @@ const REQUEST_STATUS_LABELS = {
 };
 
 const REQUEST_STATUS_TONES = {
-  new: { badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20" },
-  inprogress: { badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20" },
-  hold: { badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20" },
-  closed: { badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20" },
+  new: {
+    badge: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/30",
+  },
+  open: { badge: "bg-blue-600 text-white ring-blue-700 shadow-blue-600/20" },
+  "in-progress": {
+    badge: "bg-orange-500 text-white ring-orange-600 shadow-orange-500/20",
+  },
+  hold: { badge: "bg-red-600 text-white ring-red-700 shadow-red-600/20" },
+  closed: {
+    badge: "bg-emerald-600 text-white ring-emerald-700 shadow-emerald-600/20",
+  },
 };
 
 const NEUTRAL_BADGE = "bg-slate-500 ring-slate-600 shadow-slate-500/20";
@@ -108,8 +117,8 @@ const requestStatusLabel = (record) => {
 const cfg = {
   title: "Complaints",
   activeField: "CP_is_active",
+  CP_reference_no: "CP_reference_no",
   detailFields: [
-    { key: "CP_reference_no", label: "Request ID" },
     { key: "CP_full_name", label: "Full Name" },
     { key: "CP_mobile", label: "Mobile" },
     { key: "CP_email", label: "Email" },
@@ -268,12 +277,17 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
     /* Multiline → textarea-style display */
     if (field.type === "multiline") {
       return (
-        <textarea
-          readOnly
-          value={fieldDisplayValue(field, value)}
-          rows={3}
-          className={`${displayInputClass} resize-none`}
-        />
+        <>
+          <textarea
+            readOnly
+            value={fieldDisplayValue(field, value)}
+            rows={3}
+            className={`${displayInputClass} resize-none`}
+          />
+          <p className="mt-1 text-xs text-amber-600">
+            Maximum 500 characters allowed.
+          </p>
+        </>
       );
     }
 
@@ -317,6 +331,9 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
 
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
+            <h2 className="font-semibold text-slate-800">
+              {record?.CP_reference_no}
+            </h2>
 
             {record && headerStatusLabel && (
               <span
@@ -350,13 +367,15 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
                   {cfg.detailFields.map((field) => (
                     <div
                       key={field.key}
-                      className={`grid grid-cols-[130px_1fr] items-center gap-3 ${
-                        field.type === "multiline" ? "md:col-span-2" : ""
+                      className={`grid grid-cols-[130px_1fr]  gap-3 ${
+                        field.type === "multiline"
+                          ? "md:col-span-2 items-top"
+                          : "items-center"
                       }`}
                     >
                       <label
                         htmlFor={`field-${field.key}`}
-                        className="text-[14px] font-semibold text-black"
+                        className={`text-[14px] font-semibold text-black `}
                       >
                         {field.label}
                       </label>
@@ -369,8 +388,8 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
               </div>
 
               {/* Response (read-only) */}
-              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
-                <p className="mb-1.5 block text-sm font-medium text-slate-700">
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 flex items-top  gap-y-4">
+                <p className="mb-1.5 block text-sm font-semibold text-black mr-[8%]">
                   Response
                 </p>
                 <div className="w-full whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
@@ -380,17 +399,6 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
                     <span className="text-slate-400">No response yet.</span>
                   )}
                 </div>
-              </div>
-
-              {/* Footer actions */}
-              <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
-                <button
-                  type="button"
-                  onClick={() => navigate(-1)}
-                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                >
-                  Back
-                </button>
               </div>
             </div>
           ) : null}
