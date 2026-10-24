@@ -22,27 +22,10 @@ import {
 } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
 import { getAdminStatusRecordLabel } from "../../../../utils/adminStatusConfirmation";
+import formatAdminEnquiryDateTime from "../../../../utils/formatAdminEnquiryDateTime";
 import { getCurrentUserId2 } from "../../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
-
-const formatDate = (value) => {
-  if (value === null || value === undefined || value === "") return "-";
-  const s = String(value).trim();
-  if (s.startsWith("0001-01-01")) return "-";
-
-  let d;
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (plain) {
-    d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
-  } else {
-    d = value instanceof Date ? value : new Date(s);
-  }
-  if (Number.isNaN(d.getTime())) return "-";
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}-${mm}-${d.getFullYear()}`;
-};
 
 const readField = (item, key) => {
   if (!key) return undefined;
@@ -208,7 +191,7 @@ const TABLE_COLUMNS = [
   { key: "userType", label: "User Type", width: "140px" },
   { key: "statusName", label: "Request Status", width: "150px" },
   { key: "rating", label: "Rating", width: "110px" },
-  { key: "submittedAt", label: "Submitted", width: "130px" },
+  { key: "submittedAt", label: "Submitted", width: "160px" },
   { key: "actions", label: "Actions", width: "130px" },
 ];
 
@@ -406,35 +389,35 @@ const FeedbackList = ({ formType = "feedback" }) => {
   );
 
   /* --------------------------- SERVER-SIDE PAGINATION --------------------------- */
-/* ---- Sort: NEW rows always first (stable sort, preserves server order) ---- */
-const isRowNew = (row) =>
-  isNewStatus(row, row.statusName) ||
-  Number(requestStatusIdOf(row)) === 1;
+  /* ---- Sort: NEW rows always first (stable sort, preserves server order) ---- */
+  const isRowNew = (row) =>
+    isNewStatus(row, row.statusName) || Number(requestStatusIdOf(row)) === 1;
 
-const sortedRows = useMemo(() => {
-  const list = [...rows];
-  // stable partition: NEW first, then everything else in original order
-  return [
-    ...list.filter((r) => isRowNew(r)),
-    ...list.filter((r) => !isRowNew(r)),
-  ];
-}, [rows]);
+  const sortedRows = useMemo(() => {
+    const list = [...rows];
+    // stable partition: NEW first, then everything else in original order
+    return [
+      ...list.filter((r) => isRowNew(r)),
+      ...list.filter((r) => !isRowNew(r)),
+    ];
+  }, [rows]);
 
-const count = totalRecords;
-const totalPagesLocal = Math.max(1, totalPages);
-const currentPage = Math.min(page, totalPagesLocal);
-const start = (currentPage - 1) * pageSize;
-const searchText = query.search.trim().toLowerCase();
-const pageRows = (searchText
-  ? sortedRows.filter((row) =>
-      Object.values(row).some(
-        (value) =>
-          (typeof value === "string" || typeof value === "number") &&
-          String(value).toLowerCase().includes(searchText),
-      ),
-    )
-  : sortedRows
-).slice(start, start + pageSize);
+  const count = totalRecords;
+  const totalPagesLocal = Math.max(1, totalPages);
+  const currentPage = Math.min(page, totalPagesLocal);
+  const start = (currentPage - 1) * pageSize;
+  const searchText = query.search.trim().toLowerCase();
+  const pageRows = (
+    searchText
+      ? sortedRows.filter((row) =>
+          Object.values(row).some(
+            (value) =>
+              (typeof value === "string" || typeof value === "number") &&
+              String(value).toLowerCase().includes(searchText),
+          ),
+        )
+      : sortedRows
+  ).slice(start, start + pageSize);
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -585,230 +568,192 @@ const pageRows = (searchText
         </div>
       )}
 
-      {/* TABLE */}
-      <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
-        <div className="flex h-full flex-col">
-          {/* Header strip */}
-          <div
-            ref={headerScrollRef}
-            className="shrink-0 overflow-hidden"
-            style={{ scrollbarGutter: "stable" }}
-          >
-            <table
-              className="w-full table-fixed border-collapse text-[15px]"
-              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+    {/* TABLE — single scroll container, sticky thead, sticky actions col */}
+<div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
+  <div
+    ref={bodyScrollRef}
+    className="common-scrollbar h-[470px] overflow-auto"
+  >
+    <table
+      className="w-full border-collapse text-[15px]"
+      style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+    >
+      <colgroup>
+        {TABLE_COLUMNS.map((c) => (
+          <col key={c.key} style={{ width: c.width }} />
+        ))}
+      </colgroup>
+
+      <thead className="sticky top-0 z-30">
+        <tr>
+          {TABLE_COLUMNS.map((c) => (
+            <th
+              key={c.key}
+              scope="col"
+              className={
+                c.key === "actions"
+                  ? stickyActionsHead + " sticky top-0"
+                  : thClass + " sticky top-0"
+              }
             >
-              <colgroup>
-                {TABLE_COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width }} />
-                ))}
-              </colgroup>
-              <thead>
-                <tr>
-                  {TABLE_COLUMNS.map((c) => (
-                    <th
-                      key={c.key}
-                      scope="col"
-                      className={
-                        c.key === "actions" ? stickyActionsHead : thClass
+              {c.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+
+      <tbody>
+        {loading ? (
+          <tr>
+            <td colSpan={TABLE_COL_COUNT} className="px-4 py-12 text-center">
+              <div className="flex flex-col items-center">
+                <span
+                  aria-hidden="true"
+                  className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
+                />
+                <p className="mt-3 text-[15px] text-[#6b7a88]">Loading...</p>
+              </div>
+            </td>
+          </tr>
+        ) : pageRows.length === 0 ? (
+          <tr>
+            <td
+              colSpan={TABLE_COL_COUNT}
+              className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+            >
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                <Inbox size={22} />
+              </div>
+              <p className="mt-3 text-[15px] text-[#1e2b36]">
+                No {cfg.entityName || "records"} yet
+              </p>
+            </td>
+          </tr>
+        ) : (
+          pageRows.map((row, index) => {
+            const reqTone = requestToneOf(row.statusName);
+            const rowIsNew = isNewStatus(row, row.statusName);
+            return (
+              <tr
+                key={row.id ?? index}
+                style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                className={`js-row group transition-colors ${
+                  rowIsNew
+                    ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
+                    : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                }`}
+              >
+                <td className={`${td} tabular-nums`}>{start + index + 1}</td>
+
+                <td className={`${td} whitespace-nowrap`}>
+                  <div className="w-full min-w-0 truncate">
+                    {row.requestId ?? "-"}
+                  </div>
+                </td>
+                <td className={`${td} whitespace-nowrap`}>
+                  <div className="w-full min-w-0 truncate">
+                    {row.name ?? "-"}
+                  </div>
+                </td>
+                <td className={`${td} whitespace-nowrap`}>
+                  <div className="w-full min-w-0 truncate">
+                    {row.contact ?? "-"}
+                  </div>
+                </td>
+                <td className={`${td} whitespace-nowrap`}>
+                  <div className="w-full min-w-0 truncate">
+                    {row.userType ?? "-"}
+                  </div>
+                </td>
+
+                <td className={`${td} whitespace-nowrap text-center`}>
+                  <div className="w-full min-w-0 truncate">
+                    <span
+                      className={`${BADGE_BASE} ${reqTone.badge} ${
+                        rowIsNew ? "js-badge-new" : ""
+                      } gap-1`}
+                    >
+                      {row.statusName || "-"}
+                    </span>
+                  </div>
+                </td>
+
+                <td className={`${td} whitespace-nowrap text-center`}>
+                  <div className="w-full min-w-0 truncate">
+                    {row.rating ?? "-"}
+                  </div>
+                </td>
+                <td className={`${td} whitespace-nowrap text-center`}>
+                  <div className="w-full min-w-0 truncate">
+                    {formatAdminEnquiryDateTime(row.submittedAt)}
+                  </div>
+                </td>
+
+                <td className={`${td} ${stickyActionsCell} text-center`}>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      title={`View ${row[cfg.titleField] || "Record"}`}
+                      aria-label={`View ${row[cfg.titleField] || "Record"}`}
+                      onClick={() => handleView(row)}
+                      className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                    >
+                      <ChevronsRight size={14} strokeWidth={2.2} />
+                    </button>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={row.status === "Active"}
+                      aria-label={
+                        row.status === "Active"
+                          ? `Deactivate ${row[cfg.titleField] || "Record"}`
+                          : `Activate ${row[cfg.titleField] || "Record"}`
                       }
+                      title={
+                        row.status === "Active"
+                          ? "Active. Click to deactivate"
+                          : "Not active. Click to activate"
+                      }
+                      onClick={() => askToggle(row)}
+                      className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
+                        row.status === "Active"
+                          ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                          : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
+                      }`}
                     >
-                      {c.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-            </table>
-          </div>
-
-          {/* Body */}
-          <div
-            ref={bodyScrollRef}
-            className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
-            style={{ scrollbarGutter: "stable" }}
-          >
-            <table
-              className="w-full table-fixed border-collapse text-[15px]"
-              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-            >
-              <colgroup>
-                {TABLE_COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width }} />
-                ))}
-              </colgroup>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td
-                      colSpan={TABLE_COL_COUNT}
-                      className="px-4 py-12 text-center"
-                    >
-                      <div className="flex flex-col items-center">
-                        <span
-                          aria-hidden="true"
-                          className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
-                        />
-                        <p className="mt-3 text-[15px] text-[#6b7a88]">
-                          Loading...
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : pageRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={TABLE_COL_COUNT}
-                      className="border-t border-[#e2e8ee] px-4 py-12 text-center"
-                    >
-                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                        <Inbox size={22} />
-                      </div>
-                      <p className="mt-3 text-[15px] text-[#1e2b36]">
-                        No {cfg.entityName || "records"} yet
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  pageRows.map((row, index) => {
-                    const reqTone = requestToneOf(row.statusName);
-                    const rowIsNew = isNewStatus(row, row.statusName);
-                    return (
-                      <tr
-                        key={row.id ?? index}
-                        style={{
-                          animationDelay: `${Math.min(index, 12) * 35}ms`,
-                        }}
-                        className={`js-row group transition-colors ${
-                          rowIsNew
-                            ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
-                            : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                      <span
+                        className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                          row.status === "Active"
+                            ? "translate-x-[18px]"
+                            : "translate-x-0"
                         }`}
                       >
-                        <td className={`${td} tabular-nums`}>
-                          {start + index + 1}
-                        </td>
-
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.requestId ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.name ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.contact ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.userType ?? "-"}
-                          </div>
-                        </td>
-
-                        <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            <span
-                              className={`${BADGE_BASE} ${reqTone.badge} ${
-                                rowIsNew ? "js-badge-new" : ""
-                              } gap-1`}
-                            >
-                              {row.statusName || "-"}
-                            </span>
-                          </div>
-                        </td>
-
-                        <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.rating ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            {formatDate(row.submittedAt)}
-                          </div>
-                        </td>
-
-                        <td
-                          className={`${td} ${stickyActionsCell} text-center`}
-                        >
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              type="button"
-                              title={`View ${
-                                row[cfg.titleField] || "Record"
-                              }`}
-                              aria-label={`View ${
-                                row[cfg.titleField] || "Record"
-                              }`}
-                              onClick={() => handleView(row)}
-                              className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                            >
-                              <ChevronsRight size={14} strokeWidth={2.2} />
-                            </button>
-
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={row.status === "Active"}
-                              aria-label={
-                                row.status === "Active"
-                                  ? `Deactivate ${
-                                      row[cfg.titleField] || "Record"
-                                    }`
-                                  : `Activate ${
-                                      row[cfg.titleField] || "Record"
-                                    }`
-                              }
-                              title={
-                                row.status === "Active"
-                                  ? "Active. Click to deactivate"
-                                  : "Not active. Click to activate"
-                              }
-                              onClick={() => askToggle(row)}
-                              className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
-                                row.status === "Active"
-                                  ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                                  : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                              }`}
-                            >
-                              <span
-                                className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                                  row.status === "Active"
-                                    ? "translate-x-[18px]"
-                                    : "translate-x-0"
-                                }`}
-                              >
-                                {row.status === "Active" ? (
-                                  <UserRoundCheck
-                                    size={13}
-                                    strokeWidth={2.7}
-                                    className="text-emerald-700"
-                                  />
-                                ) : (
-                                  <UserRoundX
-                                    size={13}
-                                    strokeWidth={2.7}
-                                    className="text-rose-700"
-                                  />
-                                )}
-                              </span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+                        {row.status === "Active" ? (
+                          <UserRoundCheck
+                            size={13}
+                            strokeWidth={2.7}
+                            className="text-emerald-700"
+                          />
+                        ) : (
+                          <UserRoundX
+                            size={13}
+                            strokeWidth={2.7}
+                            className="text-rose-700"
+                          />
+                        )}
+                      </span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })
+        )}
+      </tbody>
+    </table>
+  </div>
+</div>
 
       {/* PAGINATION — server-side */}
       <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">

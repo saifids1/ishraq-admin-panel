@@ -3,14 +3,10 @@ import { useStatusToast } from "../../../../components/common/StatusModalProvide
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ChevronDown,
   Search as SearchIcon,
-  X as CloseIcon,
   Inbox,
   ShieldCheck,
   ShieldAlert,
-  UserRoundCheck,
-  UserRoundX,
   ChevronsRight,
   Clock3,
   Loader2,
@@ -20,27 +16,8 @@ import {
 } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
 import { getAdminStatusRecordLabel } from "../../../../utils/adminStatusConfirmation";
+import formatAdminEnquiryDateTime from "../../../../utils/formatAdminEnquiryDateTime";
 import { getCurrentUserId2 } from "../../../../utils/authUtils";
-
-/* ------------------------------ HELPERS ------------------------------ */
-
-const formatDate = (value) => {
-  if (value === null || value === undefined || value === "") return "-";
-  const s = String(value).trim();
-  if (s.startsWith("0001-01-01")) return "-";
-
-  let d;
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (plain) {
-    d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
-  } else {
-    d = value instanceof Date ? value : new Date(s);
-  }
-  if (Number.isNaN(d.getTime())) return "-";
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}-${mm}-${d.getFullYear()}`;
-};
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
@@ -77,10 +54,7 @@ const TONES = {
 const BADGE_BASE =
   "inline-flex h-7 w-[110px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
-const STATUS_TONES = { Active: "success", Inactive: "danger" };
-const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
-
-/* ---------- REQUEST STATUS (same palette as CareerEnquiryList) ---------- */
+/* ---------- REQUEST STATUS ---------- */
 
 const REQUEST_STATUS_LABELS = {
   1: "NEW",
@@ -156,7 +130,6 @@ const requestStatusIdOf = (item) => {
   return statusIdEntry?.[1];
 };
 
-/** Is this row NEW? Either statusId === 1 or status name normalises to "new". */
 const isNewStatus = (item, statusName) => {
   const id = Number(requestStatusIdOf(item));
   if (Number.isFinite(id) && id === 1) return true;
@@ -164,6 +137,7 @@ const isNewStatus = (item, statusName) => {
 };
 
 /* --------------------------- COLUMN DEFINITION --------------------------- */
+
 /* Used for search only. */
 const COLUMNS = [
   { key: "name", label: "Name" },
@@ -171,10 +145,14 @@ const COLUMNS = [
   { key: "mobile", label: "Mobile" },
   { key: "subject", label: "Subject" },
   { key: "message", label: "Message" },
-  { key: "createdAt", label: "Submitted", format: formatDate },
+  {
+    key: "createdAt",
+    label: "Submitted",
+    format: formatAdminEnquiryDateTime,
+  },
 ];
 
-/* Visible table columns — matches CareerEnquiryList's shape. */
+/* Visible table columns. */
 const TABLE_COLUMNS = [
   { key: "srNo", label: "Sr.No", width: "60px" },
   { key: "requestId", label: "Contact Enquiry ID", width: "170px" },
@@ -183,6 +161,7 @@ const TABLE_COLUMNS = [
   { key: "mobile", label: "Mobile", width: "130px" },
   { key: "subject", label: "Subject", width: "200px" },
   { key: "statusName", label: "Request Status", width: "150px" },
+  { key: "createdAt", label: "Submitted", width: "160px" },
   { key: "actions", label: "Actions", width: "100px" },
 ];
 
@@ -204,7 +183,11 @@ const cfg = {
     { key: "CN_mobile", label: "Mobile" },
     { key: "UserTypeName", label: "You are" },
     { key: "CN_subject", label: "Subject" },
-    { key: "CN_created_at", label: "Submitted", format: formatDate },
+    {
+      key: "CN_created_at",
+      label: "Submitted",
+      format: formatAdminEnquiryDateTime,
+    },
   ],
 };
 
@@ -253,8 +236,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useStatusToast();
 
-  /* refs for horizontal scroll sync */
-  const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
   const statusPushedRef = useRef(new Set());
   const statusUpdateInProgressRef = useRef(new Set());
@@ -283,26 +264,13 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
     } finally {
       setLoading(false);
     }
-  }, [formType, cfg, page, pageSize, query.search]);
+  }, [formType, page, pageSize, query.search]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  /* sync header & body horizontal scroll */
-  useEffect(() => {
-    const body = bodyScrollRef.current;
-    const header = headerScrollRef.current;
-    if (!body || !header) return undefined;
-
-    const onScroll = () => {
-      header.scrollLeft = body.scrollLeft;
-    };
-    body.addEventListener("scroll", onScroll);
-    return () => body.removeEventListener("scroll", onScroll);
-  }, []);
-
-  /* --------------------------- REFRESH (silent) --------------------------- */
+  /* --------------------------- REFRESH --------------------------- */
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
@@ -348,7 +316,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
             changedAt: new Date().toISOString(),
           });
           statusPushedRef.current.add(enquiryId);
-          /* reflect NEW -> OPEN locally so the row loses its yellow flash */
           setRows((prev) =>
             prev.map((r) =>
               r.id === enquiryId
@@ -373,20 +340,15 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
     [formType, navigate, setToast],
   );
 
-  /* --------------------------- CATEGORIES --------------------------- */
+  /* --------------------------- FILTERED + SORTED --------------------------- */
 
-  const categories = useMemo(() => {
-    if (!cfg.categoryField) return [];
-    return [
-      ...new Set(rows.map((r) => r[cfg.categoryField]).filter(Boolean)),
-    ].sort();
-  }, [rows, cfg]);
+  const isRowNew = (row) =>
+    isNewStatus(row, row.statusName) ||
+    Number(requestStatusIdOf(row)) === 1;
 
-  /* --------------------------- FILTERED ROWS --------------------------- */
-
-  const filteredRows = useMemo(() => {
+  const sortedRows = useMemo(() => {
     const q = query.search.trim().toLowerCase();
-    return rows.filter((r) => {
+    const filtered = rows.filter((r) => {
       if (
         q &&
         !COLUMNS.some((c) =>
@@ -405,21 +367,14 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
         return false;
       return true;
     });
-  }, [rows, query, cfg]);
 
-  /* --------------------------- SORT: NEW FIRST --------------------------- */
+    // stable partition: NEW first
+    const newRows = filtered.filter((r) => isRowNew(r));
+    const otherRows = filtered.filter((r) => !isRowNew(r));
+    return [...newRows, ...otherRows];
+  }, [rows, query]);
 
-  const isRowNew = (row) =>
-    isNewStatus(row, row.statusName) ||
-    Number(requestStatusIdOf(row)) === 1;
-
-  const sortedRows = useMemo(() => {
-    const list = [...filteredRows];
-    return [
-      ...list.filter((r) => isRowNew(r)),
-      ...list.filter((r) => !isRowNew(r)),
-    ];
-  }, [filteredRows]);
+  /* --------------------------- CLIENT-SIDE PAGINATION --------------------------- */
 
   const count = sortedRows.length;
   const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
@@ -503,11 +458,10 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
   const thClass =
-    "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
+    "sticky top-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
-  /* Sticky actions column — header + cells */
   const stickyActionsHead =
-    "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
+    "sticky top-0 right-0 z-40 whitespace-nowrap bg-[#2c6b8a] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
 
   const stickyActionsCell =
     "sticky right-0 z-20 bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
@@ -538,7 +492,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
             />
           </div>
 
-          {/* Refresh — silent, only reloads table */}
           <button
             type="button"
             title="Refresh table"
@@ -579,180 +532,160 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
         </div>
       )}
 
-      {/* TABLE */}
-      <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
-        <div className="flex h-full flex-col">
-          {/* Header strip — fixed, no vertical scrollbar */}
-          <div
-            ref={headerScrollRef}
-            className="shrink-0 overflow-hidden"
-            style={{ scrollbarGutter: "stable" }}
+      {/* TABLE — single scroll container, sticky thead, sticky actions col */}
+      <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
+        <div
+          ref={bodyScrollRef}
+          className="common-scrollbar h-[470px] overflow-auto"
+        >
+          <table
+            className="w-full border-collapse text-[15px]"
+            style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
           >
-            <table
-              className="w-full table-fixed border-collapse text-[15px]"
-              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-            >
-              <colgroup>
+            <colgroup>
+              {TABLE_COLUMNS.map((c) => (
+                <col key={c.key} style={{ width: c.width }} />
+              ))}
+            </colgroup>
+
+            <thead>
+              <tr>
                 {TABLE_COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width }} />
+                  <th
+                    key={c.key}
+                    scope="col"
+                    className={
+                      c.key === "actions" ? stickyActionsHead : thClass
+                    }
+                  >
+                    {c.label}
+                  </th>
                 ))}
-              </colgroup>
-              <thead>
+              </tr>
+            </thead>
+
+            <tbody>
+              {loading ? (
                 <tr>
-                  {TABLE_COLUMNS.map((c) => (
-                    <th
-                      key={c.key}
-                      scope="col"
-                      className={
-                        c.key === "actions" ? stickyActionsHead : thClass
-                      }
-                    >
-                      {c.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-            </table>
-          </div>
-
-          {/* Body — vertical scrollbar lives here only */}
-          <div
-            ref={bodyScrollRef}
-            className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
-            style={{ scrollbarGutter: "stable" }}
-          >
-            <table
-              className="w-full table-fixed border-collapse text-[15px]"
-              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-            >
-              <colgroup>
-                {TABLE_COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width }} />
-                ))}
-              </colgroup>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td
-                      colSpan={TABLE_COL_COUNT}
-                      className="px-4 py-12 text-center"
-                    >
-                      <div className="flex flex-col items-center">
-                        <span
-                          aria-hidden="true"
-                          className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
-                        />
-                        <p className="mt-3 text-[15px] text-[#6b7a88]">
-                          Loading...
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : pageRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={TABLE_COL_COUNT}
-                      className="border-t border-[#e2e8ee] px-4 py-12 text-center"
-                    >
-                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                        <Inbox size={22} />
-                      </div>
-                      <p className="mt-3 text-[15px] text-[#1e2b36]">
-                        No {cfg.entityName || "records"} yet
+                  <td
+                    colSpan={TABLE_COL_COUNT}
+                    className="px-4 py-12 text-center"
+                  >
+                    <div className="flex flex-col items-center">
+                      <span
+                        aria-hidden="true"
+                        className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
+                      />
+                      <p className="mt-3 text-[15px] text-[#6b7a88]">
+                        Loading...
                       </p>
-                    </td>
-                  </tr>
-                ) : (
-                  pageRows.map((row, index) => {
-                    const reqTone = requestToneOf(row.statusName);
-                    const rowIsNew = isRowNew(row);
-                    return (
-                      <tr
-                        key={row.id ?? index}
-                        style={{
-                          animationDelay: `${Math.min(index, 12) * 35}ms`,
-                        }}
-                        className={`js-row group transition-colors ${
-                          rowIsNew
-                            ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
-                            : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
-                        }`}
-                      >
-                        <td className={`${td} tabular-nums`}>
-                          {start + index + 1}
-                        </td>
+                    </div>
+                  </td>
+                </tr>
+              ) : pageRows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={TABLE_COL_COUNT}
+                    className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+                  >
+                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                      <Inbox size={22} />
+                    </div>
+                    <p className="mt-3 text-[15px] text-[#1e2b36]">
+                      No {cfg.entityName || "records"} yet
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                pageRows.map((row, index) => {
+                  const reqTone = requestToneOf(row.statusName);
+                  const rowIsNew = isRowNew(row);
+                  return (
+                    <tr
+                      key={row.id ?? index}
+                      style={{
+                        animationDelay: `${Math.min(index, 12) * 35}ms`,
+                      }}
+                      className={`js-row group transition-colors ${
+                        rowIsNew
+                          ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
+                          : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                      }`}
+                    >
+                      <td className={`${td} tabular-nums`}>
+                        {start + index + 1}
+                      </td>
 
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.requestId ?? "-"}
-                          </div>
-                        </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.requestId ?? "-"}
+                        </div>
+                      </td>
 
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.name ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.email ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.mobile ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.subject ?? "-"}
-                          </div>
-                        </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.name ?? "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.email ?? "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.mobile ?? "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.subject ?? "-"}
+                        </div>
+                      </td>
 
-                        <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            <span
-                              className={`${BADGE_BASE} ${reqTone.badge} ${
-                                rowIsNew ? "js-badge-new" : ""
-                              }`}
-                            >
-                              {row.statusName || "-"}
-                            </span>
-                          </div>
-                        </td>
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <div className="w-full min-w-0 truncate">
+                          <span
+                            className={`${BADGE_BASE} ${reqTone.badge} ${
+                              rowIsNew ? "js-badge-new" : ""
+                            }`}
+                          >
+                            {row.statusName || "-"}
+                          </span>
+                        </div>
+                      </td>
 
-                        {/* Actions — sticky right */}
-                        <td
-                          className={`${td} ${stickyActionsCell} text-center`}
-                        >
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              type="button"
-                              title={`View ${
-                                row[cfg.titleField] || "Record"
-                              }`}
-                              aria-label={`View ${
-                                row[cfg.titleField] || "Record"
-                              }`}
-                              onClick={() => handleView(row)}
-                              className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                            >
-                              <ChevronsRight size={14} strokeWidth={2.2} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <div className="w-full min-w-0 truncate">
+                          {formatAdminEnquiryDateTime(row.createdAt)}
+                        </div>
+                      </td>
+
+                      <td className={`${td} ${stickyActionsCell} text-center`}>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            title={`View ${row[cfg.titleField] || "Record"}`}
+                            aria-label={`View ${
+                              row[cfg.titleField] || "Record"
+                            }`}
+                            onClick={() => handleView(row)}
+                            className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                          >
+                            <ChevronsRight size={14} strokeWidth={2.2} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* PAGINATION */}
+      {/* PAGINATION — client-side */}
       <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
           <span>

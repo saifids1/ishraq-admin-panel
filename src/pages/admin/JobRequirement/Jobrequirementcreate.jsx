@@ -1042,8 +1042,10 @@ export default function JobRequirementCreate({ mode = "create" }) {
                 <button
                   type="button"
                   onClick={() => {
-                    setIsView(false);
                     setError("");
+                    navigate(`/admin/job-requirements/${id}/edit`, {
+                      replace: true,
+                    });
                   }}
                   className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
                 >
