@@ -2,9 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   BriefcaseBusiness,
-  Building2,
   ChevronsRight,
-  Eye,
   MapPin,
   RefreshCw,
   Search as SearchIcon,
@@ -12,19 +10,23 @@ import {
 import dayjs from "dayjs";
 
 import { getJobsForJobseeker } from "../../../api/jobRequirementApi";
+import { getCurrentUserId } from "../../../utils/authUtils";
+import jobseekerApi from "../../../api/Services/adjobseekerApi";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
 const TABLE_MIN_WIDTH = 1180;
+const PAGE_WINDOW = 5;
 
 const TABLE_COLUMNS = [
   { key: "srNo", label: "Sr.No", width: "70px" },
-  { key: "org", label: "Organization & Location", width: "260px" },
+  { key: "jd", label: "Job Requirement Id", width: "180px" },
+  { key: "org", label: "Location", width: "150px" },
   { key: "instituteType", label: "Job Type", width: "150px" },
   { key: "jobRole", label: "Job Role", width: "160px" },
   { key: "jobCategory", label: "Job Category", width: "170px" },
-  { key: "vacancies", label: "Vacancies", width: "100px" },
+  { key: "vacancies", label: "No. Of Vacancies", width: "150px" },
   { key: "deadline", label: "Deadline", width: "130px" },
   { key: "applied", label: "Applied", width: "130px" },
   { key: "actions", label: "Action", width: "110px" },
@@ -32,10 +34,38 @@ const TABLE_COLUMNS = [
 
 const TABLE_COL_COUNT = TABLE_COLUMNS.length;
 
+const STYLES = {
+  pageBtn:
+    "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]",
+  navBtn:
+    "border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]",
+  td: "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900",
+  th: "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]",
+  stickyActionsHead:
+    "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]",
+  stickyActionsCell:
+    "sticky right-0 z-20 bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]",
+  refreshBtn:
+    "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0",
+  viewBtn:
+    "mx-auto inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
+};
+
 /* ------------------------------ HELPERS ------------------------------ */
 
 const hasValue = (value) =>
   value !== undefined && value !== null && String(value).trim() !== "";
+
+const toId = (value) => {
+  const n = Number(value);
+  return hasValue(value) && Number.isFinite(n) ? n : null;
+};
+
+const isTrue = (value) =>
+  value === true ||
+  value === 1 ||
+  String(value).toLowerCase() === "true" ||
+  String(value) === "1";
 
 const normalizeKeys = (item) =>
   Object.fromEntries(
@@ -44,6 +74,29 @@ const normalizeKeys = (item) =>
       value,
     ]),
   );
+
+const getErrorMessage = (err, fallback) =>
+  err?.response?.data?.message ||
+  err?.response?.data?.Message ||
+  err?.message ||
+  fallback;
+
+const getMatchingProfile = async () => {
+  const jobseekerId = toId(getCurrentUserId());
+  if (jobseekerId === null) {
+    throw new Error("Your session has expired. Please log in again.");
+  }
+
+  const response = await jobseekerApi.getById(jobseekerId);
+  const record = response?.data?.data ?? {};
+
+  return {
+    jobseekerId,
+    instituteTypeId: toId(record.jB_institute_type_id),
+    jobRoleId: toId(record.jB_job_role_id),
+    jobCategoryId: toId(record.jB_job_category_id),
+  };
+};
 
 const findBody = (response) =>
   [response?.data?.data, response?.data, response].find(
@@ -61,7 +114,6 @@ const getRows = (body) => {
 
 const normalizeJob = (item) => {
   const row = normalizeKeys(item);
-
   const get = (...keys) => {
     for (const key of keys) {
       const value = row[key.toLowerCase()];
@@ -70,44 +122,19 @@ const normalizeJob = (item) => {
     return undefined;
   };
 
-  const appliedValue = get("jobseekerApplied");
-
   return {
     id: get("jQ_job_requirement_id"),
     employerName: get("employerName") ?? "",
     position: get("jQ_position_title") ?? "Untitled position",
     department: get("jQ_department_speciality") ?? "",
     location: get("jobLocationName") ?? "-",
+    jobId: get("jQ_job_re_id") ?? "-",
     instituteType: get("instituteTypeName") ?? "-",
     jobRole: get("jobRoleName") ?? "-",
     jobCategory: get("jobCategoryName") ?? "-",
     vacancies: get("jQ_vacancies") ?? 0,
     deadline: get("jQ_deadline"),
-    applied:
-      appliedValue === true ||
-      String(appliedValue).toLowerCase() === "true" ||
-      appliedValue === 1 ||
-      String(appliedValue) === "1",
-  };
-};
-
-const getMatchingProfile = () => {
-  const jobseekerId = localStorage.getItem("jB_jobseeker_id");
-  const instituteTypeId = localStorage.getItem("jB_institute_type_id");
-  const jobRoleId = localStorage.getItem("jB_job_role_id");
-  const jobCategoryId = localStorage.getItem("jB_job_category_id");
-
-  if (!jobseekerId || !instituteTypeId || !jobRoleId || !jobCategoryId) {
-    throw new Error(
-      "Your jobseeker profile is not loaded yet. Please refresh the page and try again.",
-    );
-  }
-
-  return {
-    jobseekerId: Number(jobseekerId),
-    instituteTypeId: Number(instituteTypeId),
-    jobRoleId: Number(jobRoleId),
-    jobCategoryId: Number(jobCategoryId),
+    applied: isTrue(get("jobseekerApplied")),
   };
 };
 
@@ -123,6 +150,16 @@ const getResponseMessage = (response) =>
   response?.data?.message ||
   response?.data?.Message ||
   "Unable to load matching jobs.";
+
+const SEARCH_FIELDS = [
+  "position",
+  "employerName",
+  "location",
+  "instituteType",
+  "jobRole",
+  "jobCategory",
+  "department",
+];
 
 /* ------------------------------ COMPONENT ------------------------------ */
 
@@ -140,28 +177,32 @@ const JobsForYou = () => {
   const [reloadKey, setReloadKey] = useState(0);
 
   const headerScrollRef = useRef(null);
-  const bodyScrollRef = useRef(null);
 
-  /* --------------------------- LOAD PROFILE --------------------------- */
+  /* --------------------------- LOAD PROFILE (once) --------------------------- */
 
   useEffect(() => {
-    try {
-      setProfile(getMatchingProfile());
-      setError("");
-    } catch (err) {
-      setProfile(null);
-      setError(err.message || "Unable to load your profile.");
-      setLoading(false);
-    }
-  }, [reloadKey]);
+    let cancelled = false;
+
+    getMatchingProfile()
+      .then((result) => {
+        if (!cancelled) setProfile(result);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(getErrorMessage(err, "Unable to load your profile."));
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* --------------------------- LOAD JOBS --------------------------- */
 
   useEffect(() => {
-    if (!profile) {
-      setLoading(false);
-      return undefined;
-    }
+    if (!profile) return undefined;
 
     let cancelled = false;
 
@@ -187,23 +228,16 @@ const JobsForYou = () => {
         const rows = getRows(body).map(normalizeJob);
         const total = Number(body?.totalRecords ?? body?.TotalRecords);
 
-        if (!cancelled) {
-          setJobs(rows);
-          setTotalRecords(
-            Number.isFinite(total) && total >= 0 ? total : rows.length,
-          );
-        }
+        if (cancelled) return;
+        setJobs(rows);
+        setTotalRecords(
+          Number.isFinite(total) && total >= 0 ? total : rows.length,
+        );
       } catch (err) {
-        if (!cancelled) {
-          setJobs([]);
-          setTotalRecords(0);
-          setError(
-            err?.response?.data?.message ||
-              err?.response?.data?.Message ||
-              err.message ||
-              "Failed to load matching jobs.",
-          );
-        }
+        if (cancelled) return;
+        setJobs([]);
+        setTotalRecords(0);
+        setError(getErrorMessage(err, "Failed to load matching jobs."));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -216,42 +250,17 @@ const JobsForYou = () => {
     };
   }, [profile, page, pageSize, reloadKey]);
 
-  /* --------------------------- SYNC SCROLL --------------------------- */
-
-  useEffect(() => {
-    const body = bodyScrollRef.current;
-    const header = headerScrollRef.current;
-
-    if (!body || !header) return undefined;
-
-    const onScroll = () => {
-      header.scrollLeft = body.scrollLeft;
-    };
-
-    body.addEventListener("scroll", onScroll);
-
-    return () => body.removeEventListener("scroll", onScroll);
-  }, []);
-
-  /* --------------------------- SEARCH --------------------------- */
+  /* --------------------------- SEARCH (current page) --------------------------- */
 
   const filteredJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
-
     if (!query) return jobs;
 
     return jobs.filter((job) =>
-      [
-        job.position,
-        job.employerName,
-        job.location,
-        job.instituteType,
-        job.jobRole,
-        job.jobCategory,
-        job.department,
-      ]
-        .filter(hasValue)
-        .some((value) => String(value).toLowerCase().includes(query)),
+      SEARCH_FIELDS.some((field) => {
+        const value = job[field];
+        return hasValue(value) && String(value).toLowerCase().includes(query);
+      }),
     );
   }, [jobs, search]);
 
@@ -263,42 +272,26 @@ const JobsForYou = () => {
   const end = Math.min(currentPage * pageSize, totalRecords);
 
   const pageNumbers = useMemo(() => {
-    const count = 5;
-    let from = Math.max(1, currentPage - Math.floor(count / 2));
-    const to = Math.min(totalPages, from + count - 1);
-
-    from = Math.max(1, to - count + 1);
-
-    return Array.from({ length: to - from + 1 }, (_, index) => from + index);
+    const from = Math.max(
+      1,
+      Math.min(
+        currentPage - Math.floor(PAGE_WINDOW / 2),
+        totalPages - PAGE_WINDOW + 1,
+      ),
+    );
+    const to = Math.min(totalPages, from + PAGE_WINDOW - 1);
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
   }, [currentPage, totalPages]);
 
   const refresh = () => {
-    setJobs([]);
     setPage(1);
     setReloadKey((value) => value + 1);
   };
 
-  /* --------------------------- STYLES --------------------------- */
-
-  const pageBtn =
-    "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
-
-  const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
-
-  const td =
-    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
-
-  const thClass =
-    "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
-
-  const btnRefresh =
-    "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
-
-  const stickyActionsHead =
-    "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
-
-  const stickyActionsCell =
-    "sticky right-0 z-20 bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
+  const handlePageSizeChange = (e) => {
+    setPageSize(Number(e.target.value));
+    setPage(1);
+  };
 
   /* --------------------------- RENDER --------------------------- */
 
@@ -316,7 +309,6 @@ const JobsForYou = () => {
               size={15}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
             />
-
             <input
               type="search"
               aria-label="Search jobs"
@@ -333,7 +325,7 @@ const JobsForYou = () => {
             aria-label="Refresh table"
             onClick={refresh}
             disabled={loading}
-            className={btnRefresh}
+            className={STYLES.refreshBtn}
           >
             <RefreshCw
               size={15}
@@ -385,7 +377,6 @@ const JobsForYou = () => {
                   <col key={column.key} style={{ width: column.width }} />
                 ))}
               </colgroup>
-
               <thead>
                 <tr>
                   {TABLE_COLUMNS.map((column) => (
@@ -393,7 +384,9 @@ const JobsForYou = () => {
                       key={column.key}
                       scope="col"
                       className={
-                        column.key === "actions" ? stickyActionsHead : thClass
+                        column.key === "actions"
+                          ? STYLES.stickyActionsHead
+                          : STYLES.th
                       }
                     >
                       {column.label}
@@ -406,9 +399,14 @@ const JobsForYou = () => {
 
           {/* TABLE BODY */}
           <div
-            ref={bodyScrollRef}
             className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
             style={{ scrollbarGutter: "stable" }}
+            onScroll={(e) => {
+              if (headerScrollRef.current) {
+                headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+              }
+            }}
+            aria-busy={loading}
           >
             <table
               className="w-full table-fixed border-collapse text-[15px]"
@@ -458,49 +456,42 @@ const JobsForYou = () => {
                 ) : (
                   filteredJobs.map((job, index) => (
                     <tr
-                      key={job.id ?? `${job.position}-${index}`}
+                      key={job.id ?? `${job.jobId}-${index}`}
                       style={{
                         animationDelay: `${Math.min(index, 12) * 35}ms`,
                       }}
                       className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
-                      {/* SR. NO. */}
-                      <td className={`${td} tabular-nums text-center`}>
+                      <td className={`${STYLES.td} tabular-nums text-center`}>
                         {start + index}
                       </td>
 
-                      {/* ORGANIZATION & LOCATION */}
-                      <td className={td}>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 truncate font-semibold">
-                            <Building2 size={13} className="shrink-0" />
-                            <span className="truncate">
-                              {job.employerName || "-"}
-                            </span>
-                          </div>
-                          <div className="mt-1 flex items-center gap-1.5 truncate text-[13px] text-[#60738a]">
-                            <MapPin size={12} className="shrink-0" />
-                            <span className="truncate">{job.location}</span>
-                          </div>
+                      <td className={`${STYLES.td} tabular-nums text-center`}>
+                        {job.jobId}
+                      </td>
+
+                      <td className={STYLES.td}>
+                        <div className="flex items-center gap-1.5 truncate text-[14px] text-black">
+                          <MapPin size={12} className="shrink-0" />
+                          <span className="truncate">{job.location}</span>
                         </div>
                       </td>
 
-                      {/* JOB TYPE */}
-                      <td className={`${td} whitespace-nowrap`}>
+                      <td className={`${STYLES.td} whitespace-nowrap`}>
                         <div className="w-full min-w-0 truncate">
                           {job.instituteType}
                         </div>
                       </td>
 
-                      {/* JOB ROLE */}
-                      <td className={`${td} whitespace-nowrap`}>
+                      <td className={`${STYLES.td} whitespace-nowrap`}>
                         <div className="w-full min-w-0 truncate">
                           {job.jobRole}
                         </div>
                       </td>
 
-                      {/* JOB CATEGORY */}
-                      <td className={`${td} whitespace-nowrap text-center`}>
+                      <td
+                        className={`${STYLES.td} whitespace-nowrap text-center`}
+                      >
                         <span
                           className="inline-flex max-w-full items-center rounded-md bg-orange-600 px-2.5 py-1 text-[13px] font-medium text-white ring-1 ring-inset ring-orange-700 shadow-sm"
                           title={job.jobCategory}
@@ -509,22 +500,19 @@ const JobsForYou = () => {
                         </span>
                       </td>
 
-                      {/* VACANCIES */}
-                      <td className={`${td} tabular-nums text-center`}>
+                      <td className={`${STYLES.td} tabular-nums text-center`}>
                         {job.vacancies}
                       </td>
 
-                      {/* DEADLINE */}
                       <td
-                        className={`${td} tabular-nums whitespace-nowrap text-center`}
+                        className={`${STYLES.td} tabular-nums whitespace-nowrap text-center`}
                       >
                         {hasValue(job.deadline) && dayjs(job.deadline).isValid()
                           ? dayjs(job.deadline).format("DD-MM-YYYY")
                           : "-"}
                       </td>
 
-                      {/* APPLIED STATUS: OWN COLUMN */}
-                      <td className={`${td} text-center`}>
+                      <td className={`${STYLES.td} text-center`}>
                         {job.applied ? (
                           <span className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-emerald-100 px-3 py-1 text-[13px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-300">
                             Applied
@@ -536,17 +524,18 @@ const JobsForYou = () => {
                         )}
                       </td>
 
-                      {/* ACTION: VIEW ALWAYS VISIBLE */}
-                      <td className={`${td} ${stickyActionsCell} text-center`}>
+                      <td
+                        className={`${STYLES.td} ${STYLES.stickyActionsCell} text-center`}
+                      >
                         <button
                           type="button"
                           onClick={() => navigate(`/jobseeker/jobs/${job.id}`)}
+                          disabled={!job.id}
                           title={`View ${job.position}`}
                           aria-label={`View ${job.position}`}
-                          className="mx-auto inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                          className={STYLES.viewBtn}
                         >
                           <ChevronsRight size={15} strokeWidth={2.2} />
-                          
                         </button>
                       </td>
                     </tr>
@@ -575,10 +564,7 @@ const JobsForYou = () => {
             <span>Show:</span>
             <select
               value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(1);
-              }}
+              onChange={handlePageSizeChange}
               disabled={loading}
               className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[13px] text-[#34445a] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -599,7 +585,7 @@ const JobsForYou = () => {
             type="button"
             onClick={() => setPage(Math.max(1, currentPage - 1))}
             disabled={currentPage <= 1 || loading}
-            className={navBtn}
+            className={`${STYLES.pageBtn} ${STYLES.navBtn}`}
           >
             Previous
           </button>
@@ -611,7 +597,7 @@ const JobsForYou = () => {
               onClick={() => setPage(number)}
               disabled={loading}
               aria-current={number === currentPage ? "page" : undefined}
-              className={`${pageBtn} ${
+              className={`${STYLES.pageBtn} ${
                 number === currentPage
                   ? "bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] font-semibold text-white shadow-[0_2px_6px_rgba(44,107,138,0.45)] ring-2 ring-[#2c6b8a]/25"
                   : "border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a]"
@@ -625,7 +611,7 @@ const JobsForYou = () => {
             type="button"
             onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage >= totalPages || loading}
-            className={navBtn}
+            className={`${STYLES.pageBtn} ${STYLES.navBtn}`}
           >
             Next
           </button>
