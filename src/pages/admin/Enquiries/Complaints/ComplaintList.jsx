@@ -7,8 +7,6 @@ import {
   Inbox,
   ShieldCheck,
   ShieldAlert,
-  UserRoundCheck,
-  UserRoundX,
   ChevronsRight,
   Clock3,
   Loader2,
@@ -21,27 +19,10 @@ import {
 } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
 import { getAdminStatusRecordLabel } from "../../../../utils/adminStatusConfirmation";
+import formatAdminEnquiryDateTime from "../../../../utils/formatAdminEnquiryDateTime";
 import { getCurrentUserId2 } from "../../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
-
-const formatDate = (value) => {
-  if (value === null || value === undefined || value === "") return "-";
-  const s = String(value).trim();
-  if (s.startsWith("0001-01-01")) return "-";
-
-  let d;
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (plain) {
-    d = new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3]));
-  } else {
-    d = value instanceof Date ? value : new Date(s);
-  }
-  if (Number.isNaN(d.getTime())) return "-";
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}-${mm}-${d.getFullYear()}`;
-};
 
 const readField = (item, key) => {
   if (!key) return undefined;
@@ -86,11 +67,6 @@ const TONES = {
 
 const BADGE_BASE =
   "inline-flex h-7 w-[110px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
-
-const STATUS_TONES = { Active: "success", Inactive: "danger" };
-const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
-
-/* ---------- REQUEST STATUS (same palette as CareerEnquiryList) ---------- */
 
 const REQUEST_STATUS_LABELS = {
   1: "NEW",
@@ -181,7 +157,6 @@ const requestStatusIdOf = (item) => {
   return statusIdEntry?.[1];
 };
 
-/** Is this row NEW? Either statusId === 1 or status name normalises to "new". */
 const isNewStatus = (item, statusName) => {
   const id = Number(requestStatusIdOf(item));
   if (Number.isFinite(id) && id === 1) return true;
@@ -199,7 +174,7 @@ const TABLE_COLUMNS = [
   { key: "statusName", label: "Request Status", width: "150px" },
   { key: "category", label: "Category", width: "170px" },
   { key: "userType", label: "User Type", width: "130px" },
-  { key: "submittedAt", label: "Submitted", width: "130px" },
+  { key: "submittedAt", label: "Submitted", width: "160px" },
   { key: "actions", label: "Actions", width: "100px" },
 ];
 
@@ -265,16 +240,12 @@ const ComplaintList = ({ formType = "complaint" }) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
-  const [query, setQuery] = useState({
-    search: "",
-  });
+  const [query, setQuery] = useState({ search: "" });
 
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useStatusToast();
 
-  /* refs for horizontal scroll sync */
-  const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
   const statusPushedRef = useRef(new Set());
   const statusUpdateInProgressRef = useRef(new Set());
@@ -285,17 +256,11 @@ const ComplaintList = ({ formType = "complaint" }) => {
     setLoading(true);
     setError("");
     try {
-      const params = {
-        pageNo: page,
-        pageSize,
-      };
-      if (query.search.trim()) params.search = query.search.trim();
-
       const result = await adminEnquiryService.list(
         formType,
-        params.pageNo,
-        params.pageSize,
-        params.search,
+        page,
+        pageSize,
+        query.search.trim() || undefined,
       );
       const list = result.data ?? [];
       const total = result.totalRecords ?? list.length;
@@ -317,26 +282,13 @@ const ComplaintList = ({ formType = "complaint" }) => {
     } finally {
       setLoading(false);
     }
-  }, [formType, cfg, page, pageSize, query.search]);
+  }, [formType, page, pageSize, query.search]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  /* sync header & body horizontal scroll */
-  useEffect(() => {
-    const body = bodyScrollRef.current;
-    const header = headerScrollRef.current;
-    if (!body || !header) return undefined;
-
-    const onScroll = () => {
-      header.scrollLeft = body.scrollLeft;
-    };
-    body.addEventListener("scroll", onScroll);
-    return () => body.removeEventListener("scroll", onScroll);
-  }, []);
-
-  /* --------------------------- REFRESH (silent) --------------------------- */
+  /* --------------------------- REFRESH --------------------------- */
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
@@ -353,6 +305,8 @@ const ComplaintList = ({ formType = "complaint" }) => {
       setRefreshing(false);
     }
   }, [load, refreshing, setToast]);
+
+  /* --------------------------- VIEW --------------------------- */
 
   const handleView = useCallback(
     async (row) => {
@@ -382,7 +336,6 @@ const ComplaintList = ({ formType = "complaint" }) => {
             changedAt: new Date().toISOString(),
           });
           statusPushedRef.current.add(enquiryId);
-          /* reflect NEW -> OPEN locally so the row loses its yellow flash */
           setRows((prev) =>
             prev.map((r) =>
               r.id === enquiryId
@@ -407,39 +360,35 @@ const ComplaintList = ({ formType = "complaint" }) => {
     [formType, navigate, setToast],
   );
 
-  /* --------------------------- SORTED ROWS (NEW FIRST) --------------------------- */
+  /* --------------------------- PAGE ROWS (NEW FIRST) --------------------------- */
 
-  const isRowNew = (row) =>
-    isNewStatus(row, row.statusName) ||
-    Number(requestStatusIdOf(row)) === 1;
+  // Server-side pagination: `rows` already holds exactly one page.
+  // Apply local search filter to the current page, then sort NEW-first.
+  // Do NOT re-slice with `start` — that would blank out pages ≥ 2 when a
+  // search filter is active.
+  const pageRows = useMemo(() => {
+    const q = query.search.trim().toLowerCase();
 
-  const sortedRows = useMemo(() => {
-    const list = [...rows];
-    return [
-      ...list.filter((r) => isRowNew(r)),
-      ...list.filter((r) => !isRowNew(r)),
-    ];
-  }, [rows]);
+    const filtered = rows.filter((row) => {
+      if (!q) return true;
+      return Object.values(row).some(
+        (value) =>
+          (typeof value === "string" || typeof value === "number") &&
+          String(value).toLowerCase().includes(q),
+      );
+    });
 
-  /* --------------------------- SERVER-SIDE PAGINATION --------------------------- */
+    const newRows = filtered.filter((r) => isNewStatus(r, r.statusName));
+    const otherRows = filtered.filter((r) => !isNewStatus(r, r.statusName));
+    return [...newRows, ...otherRows];
+  }, [rows, query.search]);
+
+  /* --------------------------- PAGINATION --------------------------- */
 
   const count = totalRecords;
   const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const searchText = query.search.trim().toLowerCase();
-
-  const pageRows = (
-    searchText
-      ? sortedRows.filter((row) =>
-          Object.values(row).some(
-            (value) =>
-              (typeof value === "string" || typeof value === "number") &&
-              String(value).toLowerCase().includes(searchText),
-          ),
-        )
-      : sortedRows
-  ).slice(start, start + pageSize);
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -508,14 +457,15 @@ const ComplaintList = ({ formType = "complaint" }) => {
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
   const td =
     "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
-  const thClass =
-    "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
   const btnRefresh =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
+  const thClass =
+    "sticky top-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
+
   const stickyActionsHead =
-    "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
+    "sticky top-0 right-0 z-40 whitespace-nowrap bg-[#2c6b8a] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
 
   const stickyActionsCell =
     "sticky right-0 z-20 bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
@@ -546,7 +496,6 @@ const ComplaintList = ({ formType = "complaint" }) => {
             />
           </div>
 
-          {/* Refresh — silent */}
           <button
             type="button"
             title="Refresh table"
@@ -587,185 +536,162 @@ const ComplaintList = ({ formType = "complaint" }) => {
         </div>
       )}
 
-      {/* TABLE */}
-      <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
-        <div className="flex h-full flex-col">
-          <div
-            ref={headerScrollRef}
-            className="shrink-0 overflow-hidden"
-            style={{ scrollbarGutter: "stable" }}
+      {/* TABLE — single scroll container, sticky thead, sticky actions col */}
+      <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
+        <div
+          ref={bodyScrollRef}
+          className="common-scrollbar h-[470px] overflow-auto"
+        >
+          <table
+            className="w-full border-collapse text-[15px]"
+            style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
           >
-            <table
-              className="w-full table-fixed border-collapse text-[15px]"
-              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-            >
-              <colgroup>
+            <colgroup>
+              {TABLE_COLUMNS.map((c) => (
+                <col key={c.key} style={{ width: c.width }} />
+              ))}
+            </colgroup>
+
+            <thead>
+              <tr>
                 {TABLE_COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width }} />
+                  <th
+                    key={c.key}
+                    scope="col"
+                    className={
+                      c.key === "actions" ? stickyActionsHead : thClass
+                    }
+                  >
+                    {c.label}
+                  </th>
                 ))}
-              </colgroup>
-              <thead>
+              </tr>
+            </thead>
+
+            <tbody>
+              {loading ? (
                 <tr>
-                  {TABLE_COLUMNS.map((c) => (
-                    <th
-                      key={c.key}
-                      scope="col"
-                      className={
-                        c.key === "actions" ? stickyActionsHead : thClass
-                      }
-                    >
-                      {c.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-            </table>
-          </div>
-
-          <div
-            ref={bodyScrollRef}
-            className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
-            style={{ scrollbarGutter: "stable" }}
-          >
-            <table
-              className="w-full table-fixed border-collapse text-[15px]"
-              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-            >
-              <colgroup>
-                {TABLE_COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width }} />
-                ))}
-              </colgroup>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td
-                      colSpan={TABLE_COL_COUNT}
-                      className="px-4 py-12 text-center"
-                    >
-                      <div className="flex flex-col items-center">
-                        <span
-                          aria-hidden="true"
-                          className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
-                        />
-                        <p className="mt-3 text-[15px] text-[#6b7a88]">
-                          Loading...
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : pageRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={TABLE_COL_COUNT}
-                      className="border-t border-[#e2e8ee] px-4 py-12 text-center"
-                    >
-                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                        <Inbox size={22} />
-                      </div>
-                      <p className="mt-3 text-[15px] text-[#1e2b36]">
-                        No {cfg.entityName || "records"} yet
+                  <td
+                    colSpan={TABLE_COL_COUNT}
+                    className="px-4 py-12 text-center"
+                  >
+                    <div className="flex flex-col items-center">
+                      <span
+                        aria-hidden="true"
+                        className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
+                      />
+                      <p className="mt-3 text-[15px] text-[#6b7a88]">
+                        Loading...
                       </p>
-                    </td>
-                  </tr>
-                ) : (
-                  pageRows.map((row, index) => {
-                    const reqTone = requestToneOf(row.statusName);
-                    const rowIsNew = isRowNew(row);
-                    return (
-                      <tr
-                        key={row.id ?? index}
-                        style={{
-                          animationDelay: `${Math.min(index, 12) * 35}ms`,
-                        }}
-                        className={`js-row group transition-colors ${
-                          rowIsNew
-                            ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
-                            : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
-                        }`}
-                      >
-                        <td className={`${td} tabular-nums`}>
-                          {start + index + 1}
-                        </td>
+                    </div>
+                  </td>
+                </tr>
+              ) : pageRows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={TABLE_COL_COUNT}
+                    className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+                  >
+                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                      <Inbox size={22} />
+                    </div>
+                    <p className="mt-3 text-[15px] text-[#1e2b36]">
+                      No {cfg.entityName || "records"} yet
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                pageRows.map((row, index) => {
+                  const reqTone = requestToneOf(row.statusName);
+                  const rowIsNew = isNewStatus(row, row.statusName);
+                  return (
+                    <tr
+                      key={row.id ?? index}
+                      style={{
+                        animationDelay: `${Math.min(index, 12) * 35}ms`,
+                      }}
+                      className={`js-row group transition-colors ${
+                        rowIsNew
+                          ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
+                          : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                      }`}
+                    >
+                      <td className={`${td} tabular-nums`}>
+                        {start + index + 1}
+                      </td>
 
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.requestId ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.name ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.email ?? "-"}
-                          </div>
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.mobile ?? "-"}
-                          </div>
-                        </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.requestId ?? "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.name ?? "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.email ?? "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.mobile ?? "-"}
+                        </div>
+                      </td>
 
-                        <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            <span
-                              className={`${BADGE_BASE} ${reqTone.badge} ${
-                                rowIsNew ? "js-badge-new" : ""
-                              } gap-1`}
-                            >
-                              {row.statusName || "-"}
-                            </span>
-                          </div>
-                        </td>
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <div className="w-full min-w-0 truncate">
+                          <span
+                            className={`${BADGE_BASE} ${reqTone.badge} ${
+                              rowIsNew ? "js-badge-new" : ""
+                            } gap-1`}
+                          >
+                            {row.statusName || "-"}
+                          </span>
+                        </div>
+                      </td>
 
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.category ?? "-"}
-                          </div>
-                        </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.category ?? "-"}
+                        </div>
+                      </td>
 
-                        <td className={`${td} whitespace-nowrap`}>
-                          <div className="w-full min-w-0 truncate">
-                            {row.userType ?? "-"}
-                          </div>
-                        </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <div className="w-full min-w-0 truncate">
+                          {row.userType ?? "-"}
+                        </div>
+                      </td>
 
-                        <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            {formatDate(row.submittedAt)}
-                          </div>
-                        </td>
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        <div className="w-full min-w-0 truncate">
+                          {formatAdminEnquiryDateTime(row.submittedAt)}
+                        </div>
+                      </td>
 
-                        <td
-                          className={`${td} ${stickyActionsCell} text-center`}
-                        >
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              type="button"
-                              title={`View ${
-                                row[cfg.titleField] || "Record"
-                              }`}
-                              aria-label={`View ${
-                                row[cfg.titleField] || "Record"
-                              }`}
-                              onClick={() => handleView(row)}
-                              className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                            >
-                              <ChevronsRight size={14} strokeWidth={2.2} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                      <td className={`${td} ${stickyActionsCell} text-center`}>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            title={`View ${row[cfg.titleField] || "Record"}`}
+                            aria-label={`View ${
+                              row[cfg.titleField] || "Record"
+                            }`}
+                            onClick={() => handleView(row)}
+                            className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                          >
+                            <ChevronsRight size={14} strokeWidth={2.2} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
