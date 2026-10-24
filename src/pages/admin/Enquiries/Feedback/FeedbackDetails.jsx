@@ -7,7 +7,7 @@ import { getCurrentUserId2 } from "../../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
-const formatDate = (value) => {
+const formatDateTime = (value) => {
   if (value === null || value === undefined || value === "") return "-";
   const s = String(value).trim();
   if (s.startsWith("0001-01-01")) return "-";
@@ -22,22 +22,33 @@ const formatDate = (value) => {
   if (Number.isNaN(d.getTime())) return "-";
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}-${mm}-${d.getFullYear()}`;
+  const yyyy = d.getFullYear();
+  const timePart = d.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${dd}-${mm}-${yyyy}, ${timePart}`;
 };
 
-/* ---------- REQUEST STATUS (same palette as Contact/Career list) ---------- */
+/* ---------- REQUEST STATUS (5-state palette) ---------- */
 
 const REQUEST_STATUS_LABELS = {
-  1: "In Progress",
-  2: "On Hold",
-  3: "Closed",
+  1: "NEW",
+  2: "OPEN",
+  3: "IN-PROGRESS",
+  4: "HOLD",
+  5: "CLOSED",
 };
 
 const REQUEST_STATUS_TONES = {
-  new: { badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20" },
-  inprogress: { badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20" },
-  hold: { badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20" },
-  closed: { badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20" },
+  new: {
+    badge: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/50",
+  },
+  open: { badge: "bg-blue-600 ring-blue-700 shadow-blue-600/20" },
+  inprogress: { badge: "bg-orange-500 ring-orange-600 shadow-orange-500/20" },
+  hold: { badge: "bg-red-600 ring-red-700 shadow-red-600/20" },
+  closed: { badge: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20" },
 };
 
 const NEUTRAL_BADGE = "bg-slate-500 ring-slate-600 shadow-slate-500/20";
@@ -48,6 +59,7 @@ const normalizeRequestStatus = (value) => {
     .toLowerCase()
     .replace(/[\s_-]+/g, "");
   if (raw === "new") return "new";
+  if (["open", "opened"].includes(raw)) return "open";
   if (["inprogress", "inprocess", "processing", "ongoing"].includes(raw))
     return "inprogress";
   if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
@@ -84,11 +96,12 @@ const requestStatusLabel = (record) => {
   return "";
 };
 
+const RESPONSE_MAX = 500;
+
 const cfg = {
   title: "Feedback",
   activeField: "FB_is_active",
   detailFields: [
-    { key: "FB_request_no", label: "Request ID" },
     { key: "FB_name", label: "Name" },
     { key: "FB_contact", label: "Contact" },
     { key: "UserTypeName", label: "You are" },
@@ -97,23 +110,27 @@ const cfg = {
       key: "FB_overall_experience",
       label: "Overall Experience (text)",
       type: "multiline",
+      stacked: true,
     },
     {
       key: "FB_useful_text",
       label: "What did you find useful?",
       type: "multiline",
+      stacked: true,
     },
     {
       key: "FB_improve_text",
       label: "What can we improve?",
       type: "multiline",
+      stacked: true,
     },
     {
       key: "FB_suggestions",
       label: "Additional Suggestions",
       type: "multiline",
+      stacked: true,
     },
-    { key: "FB_created_at", label: "Submitted", type: "date" },
+    { key: "FB_created_at", label: "Submitted", type: "datetime" },
   ],
 };
 
@@ -125,7 +142,6 @@ const inputClass =
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
-/* Read-only display input — looks like a normal input but not editable */
 const displayInputClass =
   "w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition cursor-default";
 
@@ -157,15 +173,13 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // ---- Response + Status state ----
   const [responseText, setResponseText] = useState("");
   const [status, setStatus] = useState("1");
-  const [savingResponse, setSavingResponse] = useState(false);
-  const [savingStatus, setSavingStatus] = useState(false);
-  const [responseSaved, setResponseSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [statusOptions, setStatusOptions] = useState([]);
   const [statusLoading, setStatusLoading] = useState(true);
   const [notice, setNotice] = useState("");
+  const [responseLocked, setResponseLocked] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,16 +204,19 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
           if (!data) {
             setError("Record not found.");
           } else {
-            /* ---- Response: include the API's actual key `fb_responseRetun` ---- */
             const savedResponse =
-              data?.fb_responseRetun ?? // API key (note spelling)
+              data?.fb_responseRetun ??
               data?.responseRetun ??
               data?.responseReturn ??
               data?.response ??
               data?.admin_response ??
               "";
-            setResponseText(savedResponse);
-            setResponseSaved(Boolean(String(savedResponse).trim()));
+            const savedStr = String(savedResponse ?? "").slice(
+              0,
+              RESPONSE_MAX,
+            );
+            setResponseText(savedStr);
+            setResponseLocked(Boolean(savedStr.trim()));
 
             const existingStatusId =
               data?.requestStatusId ??
@@ -251,21 +268,20 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
     }
   };
 
-  /* ---------- Render the raw display string for a field ---------- */
   const fieldDisplayValue = (field, value) => {
     if (value === null || value === undefined || value === "") return "";
 
     switch (field.type) {
       case "date":
-        return formatDate(value);
+        return formatDateTime(value);
+      case "datetime":
+        return formatDateTime(value);
       default:
         return String(value);
     }
   };
 
-  /* ---------- Render the field's read-only display block ---------- */
   const renderFieldInput = (field, value) => {
-    /* Rating → styled stars inside a display box */
     if (field.type === "rating") {
       return (
         <div className={displayInputClass}>
@@ -278,7 +294,6 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
       );
     }
 
-    /* File → button inside a display box */
     if (field.type === "file") {
       return (
         <div className={displayInputClass}>
@@ -294,7 +309,6 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
       );
     }
 
-    /* Multiline → textarea-style display */
     if (field.type === "multiline") {
       return (
         <textarea
@@ -306,7 +320,6 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
       );
     }
 
-    /* Default → single-line read-only input */
     return (
       <input
         type="text"
@@ -317,18 +330,38 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
     );
   };
 
-  // ---- Submit response ----
-  const handleSubmitResponse = async () => {
-    if (savingResponse || responseSaved) return;
+  const handleSubmit = async () => {
+    if (saving || isClosed) return;
 
     const trimmed = responseText.trim();
-    if (!trimmed) {
-      setError("Response cannot be empty.");
-      setToast({ tone: "err", msg: "Response cannot be empty." });
+
+    if (!responseLocked) {
+      if (!trimmed) {
+        setError("Response cannot be empty.");
+        setToast({ tone: "err", msg: "Response cannot be empty." });
+        return;
+      }
+
+      if (trimmed.length > RESPONSE_MAX) {
+        setError(`Response cannot exceed ${RESPONSE_MAX} characters.`);
+        setToast({
+          tone: "err",
+          msg: `Response cannot exceed ${RESPONSE_MAX} characters.`,
+        });
+        return;
+      }
+    }
+
+    if (!status) {
+      setError("Select a request status before submitting.");
+      setToast({
+        tone: "err",
+        msg: "Select a request status before submitting.",
+      });
       return;
     }
 
-    setSavingResponse(true);
+    setSaving(true);
     setError("");
     setNotice("");
 
@@ -339,97 +372,102 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
           "Unable to identify the current user. Please sign in again.",
         );
       }
-      await adminEnquiryService.updateEnquiryResponse(
-        formType,
-        id,
-        trimmed,
-        userId,
+
+      const selectedStatus = statusOptions.find(
+        (option) => Number(option.value) === Number(status),
       );
-      setNotice("Response submitted successfully.");
-      setToast({ tone: "ok", msg: "Response submitted successfully." });
-      setResponseSaved(true);
-      setRecord((prev) =>
-        prev
-          ? { ...prev, fb_responseRetun: trimmed, response: trimmed }
-          : prev,
-      );
-    } catch (err) {
-      const message = err?.message || "Failed to submit response.";
-      setError(message);
-      setToast({ tone: "err", msg: message });
-    } finally {
-      setSavingResponse(false);
-    }
-  };
-
-  // ---- Update status ----
-  const handleSaveStatus = async () => {
-    // Locked once the request is Closed.
-    if (savingStatus || savingResponse || isClosed) return;
-
-    setSavingStatus(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const userId = Number(getCurrentUserId2());
-      if (!Number.isInteger(userId) || userId <= 0) {
+      if (!selectedStatus) {
         throw new Error(
-          "Unable to identify the current user. Please sign in again.",
+          "The selected request status is unavailable. Refresh and try again.",
         );
       }
-      await adminEnquiryService.updateEnquiryStatus(formType, id, {
-        statusId: Number(status),
-        userId,
-        changedAt: new Date().toISOString(),
-      });
-      setNotice("Status updated successfully.");
-      setToast({ tone: "ok", msg: "Status updated successfully." });
-      const newLabel =
-        statusOptions.find((o) => String(o.value) === String(status))?.label ??
-        null;
+
+      const tasks = [
+        adminEnquiryService.updateEnquiryStatus(formType, id, {
+          statusId: Number(status),
+          userId,
+          changedAt: new Date().toISOString(),
+        }),
+      ];
+
+      if (!responseLocked) {
+        tasks.push(
+          adminEnquiryService.updateEnquiryResponse(
+            formType,
+            id,
+            trimmed,
+            userId,
+          ),
+        );
+      }
+
+      await Promise.all(tasks);
+
+      setNotice("Submitted successfully.");
+      setToast({ tone: "ok", msg: "Submitted successfully." });
+
+      if (!responseLocked) {
+        setResponseLocked(true);
+      }
+
       setRecord((prev) =>
         prev
           ? {
               ...prev,
+              ...(responseLocked
+                ? {}
+                : { fb_responseRetun: trimmed, response: trimmed }),
+              requestStatusId: Number(status),
+              RequestStatusId: Number(status),
               statusId: Number(status),
-              // keep header badge / isClosed in sync immediately
-              statusName: newLabel ?? prev.statusName,
-              requestStatusName: newLabel ?? prev.requestStatusName,
+              requestStatusName: selectedStatus.label,
+              RequestStatusName: selectedStatus.label,
+              statusName: selectedStatus.label,
+              status: selectedStatus.label,
             }
           : prev,
       );
     } catch (err) {
-      const message = err?.message || "Failed to update status.";
+      const message = err?.message || "Failed to submit.";
       setError(message);
       setToast({ tone: "err", msg: message });
     } finally {
-      setSavingStatus(false);
+      setSaving(false);
     }
   };
 
   const title = cfg?.singular || cfg?.title || "Feedback";
   const pageTitle = `View ${title}`;
 
-  /* ---- Header request-status badge (same colors as list) ---- */
   const headerStatusLabel = useMemo(() => requestStatusLabel(record), [record]);
   const headerStatusTone = useMemo(
     () => requestToneOf(headerStatusLabel),
     [headerStatusLabel],
   );
 
-  /* ---- Lock status editing once the request is Closed. ---- */
+  const headerRequestId = useMemo(
+    () =>
+      record?.FB_request_no ??
+      record?.fb_request_no ??
+      record?.FB_reference_no ??
+      record?.requestNo ??
+      "",
+    [record],
+  );
+
   const isClosed = useMemo(
     () => normalizeRequestStatus(headerStatusLabel) === "closed",
     [headerStatusLabel],
   );
 
+  const responseDisabled = saving || isClosed || responseLocked;
+
   return (
     <div className="min-h-full bg-[#f4f8fb]">
       <div className="mx-auto">
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          {/* Header bar */}
-          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* Sticky header bar */}
+          <div className="sticky top-0 z-20 relative flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -444,7 +482,12 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
-            {/* Request Status badge — same colors as the list, no icon */}
+            {headerRequestId && (
+              <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center">
+                <span className="text-[16px]">{headerRequestId}</span>
+              </div>
+            )}
+
             {record && headerStatusLabel && (
               <span
                 className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${headerStatusTone.badge}`}
@@ -454,107 +497,135 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
             )}
           </div>
 
-          {/* Error banner */}
           {error && (
             <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
               {error}
             </div>
           )}
 
-          {/* Success notice */}
-          {notice && (
-            <div className="mx-4 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
-              {notice}
-            </div>
-          )}
-
-          {/* Loading state */}
           {loading ? (
             <div className="flex min-h-[300px] items-center justify-center p-6 text-slate-500">
               Loading details...
             </div>
           ) : record ? (
             <div className="p-4">
-              {/* Details list — every value lives inside a display box */}
+              {/* Details list */}
               <div className="rounded-lg border border-slate-200 bg-white p-4">
+                {/* Top group — single-line fields (2-col, label : input) */}
                 <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
-                  {cfg.detailFields.map((field) => (
-                    <div
-                      key={field.key}
-                      className={`grid grid-cols-[140px_1fr] items-start gap-3 ${
-                        field.type === "multiline" ? "md:col-span-2" : ""
-                      }`}
-                    >
-                      <label
-                        htmlFor={`field-${field.key}`}
-                        className="pt-2.5 text-[14px] font-semibold text-black"
+                  {cfg.detailFields
+                    .filter((f) => !f.stacked)
+                    .map((field) => (
+                      <div
+                        key={field.key}
+                        className="grid grid-cols-[140px_1fr] items-center gap-3"
                       >
-                        {field.label}
-                      </label>
-                      <div className="min-w-0">
-                        {renderFieldInput(field, record[field.key])}
+                        <label
+                          htmlFor={`field-${field.key}`}
+                          className="text-[14px] font-semibold text-black"
+                        >
+                          {field.label}
+                        </label>
+                        <div className="min-w-0">
+                          {renderFieldInput(field, record[field.key])}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                </div>
+
+                {/* Bottom group — stacked fields, label w-44 fixed width, input fills remaining */}
+                <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-1">
+                  {cfg.detailFields
+                    .filter((f) => f.stacked)
+                    .map((field) => (
+                      <div
+                        key={field.key}
+                        className="grid grid-cols-[176px_1fr] items-start gap-3"
+                      >
+                        <label
+                          htmlFor={`field-${field.key}`}
+                          className="pt-2.5 text-[14px] font-semibold leading-tight text-black"
+                          style={{ overflowWrap: "anywhere" }}
+                        >
+                          {field.label}
+                        </label>
+                        <div className="min-w-0">
+                          {renderFieldInput(field, record[field.key])}
+                        </div>
+                      </div>
+                    ))}
                 </div>
               </div>
 
-              {/* ---- Merged Response + Status section ---- */}
-              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                  {/* Response — read-only if already saved */}
-                  <div className="md:col-span-2">
+              {/* ---- Response 70% | Status 30%, same row ---- */}
+              <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-[7fr_3fr]">
+                  <div className="grid grid-cols-[120px_1fr] items-start gap-3">
                     <label
                       htmlFor="admin-response"
-                      className="mb-1.5 block text-sm font-medium text-slate-700"
+                      className="pt-2.5 text-[14px] font-semibold text-black"
                     >
                       Response
                     </label>
-
-                    {responseSaved ? (
-                      <div
-                        id="admin-response"
-                        className="w-full whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700"
-                      >
-                        {responseText || (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </div>
-                    ) : (
+                    <div className="min-w-0">
                       <textarea
                         id="admin-response"
                         value={responseText}
                         onChange={(event) =>
-                          setResponseText(event.target.value)
+                          setResponseText(
+                            String(event.target.value).slice(0, RESPONSE_MAX),
+                          )
                         }
                         rows={4}
-                        placeholder="Type your response to this feedback..."
-                        className={inputClass}
-                        disabled={savingResponse || savingStatus}
+                        maxLength={RESPONSE_MAX}
+                        placeholder={
+                          responseLocked
+                            ? ""
+                            : "Type your response to this feedback..."
+                        }
+                        className={`${inputClass} resize-none ${
+                          responseLocked
+                            ? "cursor-not-allowed bg-slate-50 text-slate-600"
+                            : ""
+                        }`}
+                        disabled={responseDisabled}
+                        readOnly={responseLocked}
                       />
-                    )}
+                      <div className="mt-1 flex justify-end">
+                        <span className="text-[11px] text-slate-500">
+                          {responseText.length}/{RESPONSE_MAX}
+                        </span>
+                      </div>
+
+                      {responseLocked && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Response has already been submitted and can no longer
+                          be edited.
+                        </p>
+                      )}
+                      {isClosed && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          This feedback is closed — status and response can no
+                          longer be changed.
+                        </p>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Status — disabled when request is Closed */}
-                  <div>
+                  <div className="grid grid-cols-[90px_1fr] items-start gap-3">
                     <label
                       htmlFor="status-select"
-                      className="mb-1.5 block text-sm font-medium text-slate-700"
+                      className="pt-2.5 text-[14px] font-semibold text-black"
                     >
                       Status
                     </label>
-                    <div className="relative">
+                    <div className="relative min-w-0">
                       <select
                         id="status-select"
                         value={status}
                         onChange={(event) => setStatus(event.target.value)}
                         className={selectClass}
-                        disabled={
-                          statusLoading ||
-                          savingResponse ||
-                          savingStatus ||
-                          isClosed
-                        }
+                        disabled={statusLoading || saving || isClosed}
                       >
                         {statusLoading ? (
                           <option value="">Loading statuses...</option>
@@ -573,54 +644,19 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
                         className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                       />
                     </div>
-                    {isClosed && (
-                      <p className="mt-1.5 text-xs text-slate-500">
-                        This feedback is closed — status can no longer be
-                        changed.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Buttons */}
-                  <div className="flex items-end justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={handleSaveStatus}
-                      disabled={savingStatus || savingResponse || isClosed}
-                      className="inline-flex items-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-5 py-2.5 text-sm font-semibold text-[#2f6b8a] transition hover:bg-[#e9f4f7] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {savingStatus
-                        ? "Saving..."
-                        : isClosed
-                          ? "Status Locked"
-                          : "Save Status"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleSubmitResponse}
-                      disabled={savingResponse || savingStatus || responseSaved}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {savingResponse
-                        ? "Submitting..."
-                        : responseSaved
-                          ? "Response Saved"
-                          : "Submit Response"}
-                    </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Footer actions */}
-              <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
-                <button
-                  type="button"
-                  onClick={() => navigate(-1)}
-                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                >
-                  Back
-                </button>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={saving || isClosed}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {saving ? "Submitting..." : "Submit"}
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}

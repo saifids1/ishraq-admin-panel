@@ -82,16 +82,21 @@ const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
 /* ---------- REQUEST STATUS (same palette as CareerEnquiryList) ---------- */
 
 const REQUEST_STATUS_LABELS = {
-  1: "In Progress",
-  2: "On Hold",
-  3: "Closed",
+  1: "NEW",
+  2: "OPEN",
+  3: "IN-PROGRESS",
+  4: "HOLD",
+  5: "CLOSED",
 };
 
 const REQUEST_STATUS_TONES = {
-  new: { badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20" },
-  inprogress: { badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20" },
-  hold: { badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20" },
-  closed: { badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20" },
+  new: {
+    badge: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/50",
+  },
+  open: { badge: "bg-blue-600 ring-blue-700 shadow-blue-600/20" },
+  inprogress: { badge: "bg-orange-500 ring-orange-600 shadow-orange-500/20" },
+  hold: { badge: "bg-red-600 ring-red-700 shadow-red-600/20" },
+  closed: { badge: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20" },
 };
 
 const normalizeRequestStatus = (value) => {
@@ -100,6 +105,7 @@ const normalizeRequestStatus = (value) => {
     .toLowerCase()
     .replace(/[\s_-]+/g, "");
   if (raw === "new") return "new";
+  if (["open", "opened"].includes(raw)) return "open";
   if (["inprogress", "inprocess", "processing", "ongoing"].includes(raw))
     return "inprogress";
   if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
@@ -149,6 +155,13 @@ const requestStatusIdOf = (item) => {
   return statusIdEntry?.[1];
 };
 
+/** Is this row NEW? Either statusId === 1 or status name normalises to "new". */
+const isNewStatus = (item, statusName) => {
+  const id = Number(requestStatusIdOf(item));
+  if (Number.isFinite(id) && id === 1) return true;
+  return normalizeRequestStatus(statusName) === "new";
+};
+
 /* --------------------------- COLUMN DEFINITION --------------------------- */
 /* Used for search only. */
 const COLUMNS = [
@@ -169,7 +182,6 @@ const TABLE_COLUMNS = [
   { key: "mobile", label: "Mobile", width: "130px" },
   { key: "subject", label: "Subject", width: "200px" },
   { key: "statusName", label: "Request Status", width: "150px" },
-  // { key: "status", label: "Status", width: "140px" },
   { key: "actions", label: "Actions", width: "100px" },
 ];
 
@@ -335,6 +347,14 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
             changedAt: new Date().toISOString(),
           });
           statusPushedRef.current.add(enquiryId);
+          /* reflect NEW -> OPEN locally so the row loses its yellow flash */
+          setRows((prev) =>
+            prev.map((r) =>
+              r.id === enquiryId
+                ? { ...r, statusId: 2, statusName: "OPEN" }
+                : r,
+            ),
+          );
         } catch (err) {
           setToast({
             id: Date.now(),
@@ -386,11 +406,25 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
     });
   }, [rows, query, cfg]);
 
-  const count = filteredRows.length;
+  /* --------------------------- SORT: NEW FIRST --------------------------- */
+
+  const isRowNew = (row) =>
+    isNewStatus(row, row.statusName) ||
+    Number(requestStatusIdOf(row)) === 1;
+
+  const sortedRows = useMemo(() => {
+    const list = [...filteredRows];
+    return [
+      ...list.filter((r) => isRowNew(r)),
+      ...list.filter((r) => !isRowNew(r)),
+    ];
+  }, [filteredRows]);
+
+  const count = sortedRows.length;
   const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const pageRows = sortedRows.slice(start, start + pageSize);
 
   useEffect(() => {
     if (page > totalPagesLocal) setPage(totalPagesLocal);
@@ -503,47 +537,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
             />
           </div>
 
-          {/* <div className="relative min-w-[200px] flex-1 xl:flex-none">
-            <select
-              aria-label="Status"
-              value={query.status}
-              onChange={(e) => patchFilter({ status: e.target.value })}
-              className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[15px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
-            >
-              <option value="All">Status: All</option>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-            <ChevronDown
-              size={15}
-              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
-            />
-          </div> */}
-
-          {/* {cfg.categoryField && (
-            <div className="relative min-w-[200px] flex-1 xl:flex-none">
-              <select
-                aria-label={cfg.categoryLabel || "Category"}
-                value={query.category}
-                onChange={(e) => patchFilter({ category: e.target.value })}
-                className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[15px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
-              >
-                <option value="All">
-                  {cfg.categoryLabel || "Category"}: All
-                </option>
-                {categories.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={15}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
-              />
-            </div>
-          )} */}
-
           {/* Refresh — silent, only reloads table */}
           <button
             type="button"
@@ -585,18 +578,15 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
         </div>
       )}
 
-      {/*
-        TABLE LAYOUT
-        - Outer wrapper: 470px fixed height, rounded border
-        - Header strip: fixed, no vertical scrollbar, horizontal-scroll
-          synced from body
-        - Body: vertical scrollbar only here
-        - Actions column: sticky right in both header and body
-      */}
+      {/* TABLE */}
       <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="flex h-full flex-col">
           {/* Header strip — fixed, no vertical scrollbar */}
-          <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
+          <div
+            ref={headerScrollRef}
+            className="shrink-0 overflow-hidden"
+            style={{ scrollbarGutter: "stable" }}
+          >
             <table
               className="w-full table-fixed border-collapse text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
@@ -675,13 +665,18 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
                 ) : (
                   pageRows.map((row, index) => {
                     const reqTone = requestToneOf(row.statusName);
+                    const rowIsNew = isRowNew(row);
                     return (
                       <tr
                         key={row.id ?? index}
                         style={{
                           animationDelay: `${Math.min(index, 12) * 35}ms`,
                         }}
-                        className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                        className={`js-row group transition-colors ${
+                          rowIsNew
+                            ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
+                            : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                        }`}
                       >
                         <td className={`${td} tabular-nums`}>
                           {start + index + 1}
@@ -716,23 +711,15 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
 
                         <td className={`${td} whitespace-nowrap text-center`}>
                           <div className="w-full min-w-0 truncate">
-                            <span className={`${BADGE_BASE} ${reqTone.badge}`}>
+                            <span
+                              className={`${BADGE_BASE} ${reqTone.badge} ${
+                                rowIsNew ? "js-badge-new" : ""
+                              }`}
+                            >
                               {row.statusName || "-"}
                             </span>
                           </div>
                         </td>
-
-                        {/* <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            <span
-                              className={`${BADGE_BASE} ${
-                                toneOf(row.status).badge
-                              }`}
-                            >
-                              {row.status || "-"}
-                            </span>
-                          </div>
-                        </td> */}
 
                         {/* Actions — sticky right */}
                         <td
@@ -752,54 +739,6 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
                             >
                               <ChevronsRight size={14} strokeWidth={2.2} />
                             </button>
-
-                            {/* <button
-                              type="button"
-                              role="switch"
-                              aria-checked={row.status === "Active"}
-                              aria-label={
-                                row.status === "Active"
-                                  ? `Deactivate ${
-                                      row[cfg.titleField] || "Record"
-                                    }`
-                                  : `Activate ${
-                                      row[cfg.titleField] || "Record"
-                                    }`
-                              }
-                              title={
-                                row.status === "Active"
-                                  ? "Active. Click to deactivate"
-                                  : "Not active. Click to activate"
-                              }
-                              onClick={() => askToggle(row)}
-                              className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
-                                row.status === "Active"
-                                  ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                                  : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                              }`}
-                            >
-                              <span
-                                className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                                  row.status === "Active"
-                                    ? "translate-x-[18px]"
-                                    : "translate-x-0"
-                                }`}
-                              >
-                                {row.status === "Active" ? (
-                                  <UserRoundCheck
-                                    size={13}
-                                    strokeWidth={2.7}
-                                    className="text-emerald-700"
-                                  />
-                                ) : (
-                                  <UserRoundX
-                                    size={13}
-                                    strokeWidth={2.7}
-                                    className="text-rose-700"
-                                  />
-                                )}
-                              </span>
-                            </button> */}
                           </div>
                         </td>
                       </tr>

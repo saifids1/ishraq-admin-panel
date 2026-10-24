@@ -90,26 +90,43 @@ const BADGE_BASE =
 const STATUS_TONES = { Active: "success", Inactive: "danger" };
 const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
 
-/* ---------- REQUEST STATUS ---------- */
+/* ---------- REQUEST STATUS (same palette as CareerEnquiryList) ---------- */
 
 const REQUEST_STATUS_LABELS = {
-  1: "In Progress",
-  2: "On Hold",
-  3: "Closed",
+  1: "NEW",
+  2: "OPEN",
+  3: "IN-PROGRESS",
+  4: "HOLD",
+  5: "CLOSED",
 };
 
+/* Colors per spec:
+   1 NEW         -> Yellow (with flash)
+   2 OPEN        -> Blue
+   3 IN-PROGRESS -> Orange
+   4 HOLD        -> Red
+   5 CLOSED      -> Green
+*/
+
 const REQUEST_STATUS_TONES = {
-  new: { badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20", icon: Clock3 },
+  new: {
+    badge: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/50",
+    icon: Clock3,
+  },
+  open: {
+    badge: "bg-blue-600 ring-blue-700 shadow-blue-600/20",
+    icon: ShieldCheck,
+  },
   inprogress: {
-    badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20",
+    badge: "bg-orange-500 ring-orange-600 shadow-orange-500/20",
     icon: Loader2,
   },
   hold: {
-    badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+    badge: "bg-red-600 ring-red-700 shadow-red-600/20",
     icon: PauseCircle,
   },
   closed: {
-    badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20",
+    badge: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
     icon: CheckCircle2,
   },
 };
@@ -120,6 +137,7 @@ const normalizeRequestStatus = (value) => {
     .toLowerCase()
     .replace(/[\s_-]+/g, "");
   if (raw === "new") return "new";
+  if (["open", "opened"].includes(raw)) return "open";
   if (["inprogress", "inprocess", "processing", "ongoing"].includes(raw))
     return "inprogress";
   if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
@@ -172,6 +190,13 @@ const requestStatusIdOf = (item) => {
   return statusIdEntry?.[1];
 };
 
+/** Determine if a row's status is NEW (either by id=1 or by status name) */
+const isNewStatus = (item, statusName) => {
+  const id = Number(requestStatusIdOf(item));
+  if (Number.isFinite(id) && id === 1) return true;
+  return normalizeRequestStatus(statusName) === "new";
+};
+
 /* --------------------------- COLUMN DEFINITION --------------------------- */
 
 const TABLE_COLUMNS = [
@@ -181,7 +206,6 @@ const TABLE_COLUMNS = [
   { key: "contact", label: "Contact", width: "180px" },
   { key: "userType", label: "User Type", width: "140px" },
   { key: "statusName", label: "Request Status", width: "150px" },
-  // { key: "status", label: "Status", width: "140px" },
   { key: "rating", label: "Rating", width: "110px" },
   { key: "submittedAt", label: "Submitted", width: "130px" },
   { key: "actions", label: "Actions", width: "130px" },
@@ -355,6 +379,14 @@ const FeedbackList = ({ formType = "feedback" }) => {
             changedAt: new Date().toISOString(),
           });
           statusPushedRef.current.add(enquiryId);
+          /* reflect NEW -> OPEN locally so the row loses its yellow flash */
+          setRows((prev) =>
+            prev.map((r) =>
+              r.id === enquiryId
+                ? { ...r, statusId: 2, statusName: "OPEN" }
+                : r,
+            ),
+          );
         } catch (err) {
           setToast({
             id: Date.now(),
@@ -373,21 +405,35 @@ const FeedbackList = ({ formType = "feedback" }) => {
   );
 
   /* --------------------------- SERVER-SIDE PAGINATION --------------------------- */
+/* ---- Sort: NEW rows always first (stable sort, preserves server order) ---- */
+const isRowNew = (row) =>
+  isNewStatus(row, row.statusName) ||
+  Number(requestStatusIdOf(row)) === 1;
 
-  const count = totalRecords;
-  const totalPagesLocal = Math.max(1, totalPages);
-  const currentPage = Math.min(page, totalPagesLocal);
-  const start = (currentPage - 1) * pageSize;
-  const searchText = query.search.trim().toLowerCase();
-  const pageRows = searchText
-    ? rows.filter((row) =>
-        Object.values(row).some(
-          (value) =>
-            (typeof value === "string" || typeof value === "number") &&
-            String(value).toLowerCase().includes(searchText),
-        ),
-      )
-    : rows;
+const sortedRows = useMemo(() => {
+  const list = [...rows];
+  // stable partition: NEW first, then everything else in original order
+  return [
+    ...list.filter((r) => isRowNew(r)),
+    ...list.filter((r) => !isRowNew(r)),
+  ];
+}, [rows]);
+
+const count = totalRecords;
+const totalPagesLocal = Math.max(1, totalPages);
+const currentPage = Math.min(page, totalPagesLocal);
+const start = (currentPage - 1) * pageSize;
+const searchText = query.search.trim().toLowerCase();
+const pageRows = (searchText
+  ? sortedRows.filter((row) =>
+      Object.values(row).some(
+        (value) =>
+          (typeof value === "string" || typeof value === "number") &&
+          String(value).toLowerCase().includes(searchText),
+      ),
+    )
+  : sortedRows
+).slice(start, start + pageSize);
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -542,7 +588,11 @@ const FeedbackList = ({ formType = "feedback" }) => {
       <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="flex h-full flex-col">
           {/* Header strip */}
-          <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
+          <div
+            ref={headerScrollRef}
+            className="shrink-0 overflow-hidden"
+            style={{ scrollbarGutter: "stable" }}
+          >
             <table
               className="w-full table-fixed border-collapse text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
@@ -621,13 +671,18 @@ const FeedbackList = ({ formType = "feedback" }) => {
                 ) : (
                   pageRows.map((row, index) => {
                     const reqTone = requestToneOf(row.statusName);
+                    const rowIsNew = isNewStatus(row, row.statusName);
                     return (
                       <tr
                         key={row.id ?? index}
                         style={{
                           animationDelay: `${Math.min(index, 12) * 35}ms`,
                         }}
-                        className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                        className={`js-row group transition-colors ${
+                          rowIsNew
+                            ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
+                            : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                        }`}
                       >
                         <td className={`${td} tabular-nums`}>
                           {start + index + 1}
@@ -653,6 +708,19 @@ const FeedbackList = ({ formType = "feedback" }) => {
                             {row.userType ?? "-"}
                           </div>
                         </td>
+
+                        <td className={`${td} whitespace-nowrap text-center`}>
+                          <div className="w-full min-w-0 truncate">
+                            <span
+                              className={`${BADGE_BASE} ${reqTone.badge} ${
+                                rowIsNew ? "js-badge-new" : ""
+                              } gap-1`}
+                            >
+                              {row.statusName || "-"}
+                            </span>
+                          </div>
+                        </td>
+
                         <td className={`${td} whitespace-nowrap text-center`}>
                           <div className="w-full min-w-0 truncate">
                             {row.rating ?? "-"}
@@ -663,28 +731,6 @@ const FeedbackList = ({ formType = "feedback" }) => {
                             {formatDate(row.submittedAt)}
                           </div>
                         </td>
-
-                        <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            <span
-                              className={`${BADGE_BASE} ${reqTone.badge} gap-1`}
-                            >
-                              {row.statusName || "-"}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            <span
-                              className={`${BADGE_BASE} ${
-                                toneOf(row.status).badge
-                              }`}
-                            >
-                              {row.status || "-"}
-                            </span>
-                          </div>
-                        </td> */}
 
                         <td
                           className={`${td} ${stickyActionsCell} text-center`}
