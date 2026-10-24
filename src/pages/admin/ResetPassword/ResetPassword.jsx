@@ -11,7 +11,6 @@ import {
   Mail,
   Phone,
   X,
-  Check,
   ShieldCheck,
   Loader2,
   AlertCircle,
@@ -23,7 +22,7 @@ import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import { getAllEmployers } from "../../../api/employerApi";
 
 /* ------------------------------------------------------------------ */
-/*  HELPERS                                                            */
+/*  role metadata                                                     */
 /* ------------------------------------------------------------------ */
 
 const ROLE = {
@@ -46,26 +45,21 @@ const ROLE_FILTERS = [
   { value: "employer", label: "Employers", icon: Building2 },
 ];
 
+/* the password rules — still gate submission */
 const RULES = [
-  { id: "len", label: "At least 8 characters", test: (p) => p.length >= 8 },
-  { id: "upper", label: "One uppercase letter", test: (p) => /[A-Z]/.test(p) },
-  { id: "lower", label: "One lowercase letter", test: (p) => /[a-z]/.test(p) },
-  { id: "num", label: "One number", test: (p) => /\d/.test(p) },
+  { id: "len", label: "at least 8 characters", test: (p) => p.length >= 8 },
+  { id: "upper", label: "one uppercase letter", test: (p) => /[A-Z]/.test(p) },
+  { id: "lower", label: "one lowercase letter", test: (p) => /[a-z]/.test(p) },
+  { id: "num", label: "one number", test: (p) => /\d/.test(p) },
   {
     id: "sym",
-    label: "One special character",
+    label: "one special character",
     test: (p) => /[^A-Za-z0-9]/.test(p),
   },
 ];
 
-const STRENGTH = [
-  { label: "Too weak", bar: "bg-rose-500", text: "text-rose-600" },
-  { label: "Weak", bar: "bg-rose-500", text: "text-rose-600" },
-  { label: "Fair", bar: "bg-amber-500", text: "text-amber-600" },
-  { label: "Good", bar: "bg-sky-500", text: "text-sky-600" },
-  { label: "Strong", bar: "bg-emerald-500", text: "text-emerald-600" },
-  { label: "Very strong", bar: "bg-emerald-500", text: "text-emerald-600" },
-];
+const PASSWORD_HINT =
+  "Password must be at least 8 characters and include one uppercase letter, one lowercase letter, one number, and one special character.";
 
 const initials = (name = "") =>
   name
@@ -91,7 +85,6 @@ const extractList = (response) => {
   const list = Array.isArray(payload)
     ? payload
     : payload?.items ?? payload?.Items ?? payload?.data ?? payload?.Data;
-
   return Array.isArray(list) ? list : [];
 };
 
@@ -159,14 +152,10 @@ const RoleBadge = ({ role }) => {
 };
 
 /* ------------------------------------------------------------------ */
-/*  FIELD LABEL                                                       */
+/*  PasswordField                                                     */
 /* ------------------------------------------------------------------ */
 
 const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
-
-/* ------------------------------------------------------------------ */
-/*  PASSWORD FIELD — label : input side-by-side                       */
-/* ------------------------------------------------------------------ */
 
 const PasswordField = ({
   id,
@@ -232,7 +221,7 @@ const PasswordField = ({
 };
 
 /* ------------------------------------------------------------------ */
-/*  PAGE                                                               */
+/*  Page                                                              */
 /* ------------------------------------------------------------------ */
 
 const ResetPassword = () => {
@@ -250,33 +239,34 @@ const ResetPassword = () => {
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
 
-  /* ---- modal state ---- */
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
   const [changedName, setChangedName] = useState("");
+  /* popup shown when the password fails one or more rules on submit */
+  const [passwordInfo, setPasswordInfo] = useState("");
 
-  /* LOAD USERS FROM API */
-
+  /* ---- fetch users whenever the role tab changes ---- */
   useEffect(() => {
     let cancelled = false;
     const loadUsers = async () => {
       setLoading(true);
       setApiError("");
       try {
-        const jobseekerPromises =
+        const jobseekerPromise =
           roleFilter === "all" || roleFilter === "jobseeker"
             ? jobseekerApi.getList().then(extractList)
             : Promise.resolve([]);
 
-        const employerPromises =
+        const employerPromise =
           roleFilter === "all" || roleFilter === "employer"
             ? getAllEmployers().then(extractList)
             : Promise.resolve([]);
 
         const [jobSeekersResult, employersResult] = await Promise.allSettled([
-          jobseekerPromises,
-          employerPromises,
+          jobseekerPromise,
+          employerPromise,
         ]);
+
         const jobSeekers =
           jobSeekersResult.status === "fulfilled" ? jobSeekersResult.value : [];
         const employers =
@@ -297,7 +287,7 @@ const ResetPassword = () => {
         if (!cancelled) setUsers(combined);
       } catch (err) {
         if (!cancelled) {
-          setApiError("Failed to load users. Please try again.");
+          setApiError("Couldn't load the user list. Try refreshing the page.");
           setUsers([]);
         }
       } finally {
@@ -314,8 +304,7 @@ const ResetPassword = () => {
   const boxRef = useRef(null);
   const inputRef = useRef(null);
 
-  /* SEARCH */
-
+  /* ---- filtered results for the combobox ---- */
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     const qDigits = digits(q);
@@ -335,6 +324,7 @@ const ResetPassword = () => {
 
   useEffect(() => setHighlight(0), [query, roleFilter]);
 
+  /* click outside closes the list */
   useEffect(() => {
     const onDown = (e) => {
       if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
@@ -355,6 +345,7 @@ const ResetPassword = () => {
     setNewPassword("");
     setConfirmPassword("");
     setError("");
+    setPasswordInfo("");
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
@@ -374,24 +365,36 @@ const ResetPassword = () => {
     }
   };
 
-  /* PASSWORD VALIDATION */
-
-  const passed = RULES.filter((r) => r.test(newPassword)).length;
-  const allRules = passed === RULES.length;
-  const strength = STRENGTH[newPassword ? passed : 0];
+  /* ---- derived password state ---- */
+  const missingRules = RULES.filter((r) => !r.test(newPassword));
+  const allRules = missingRules.length === 0;
   const mismatch =
     confirmPassword.length > 0 && newPassword !== confirmPassword;
   const matches = confirmPassword.length > 0 && newPassword === confirmPassword;
-  const canSubmit = !!selected && allRules && matches && !submitting;
+  const canSubmit =
+    !!selected && allRules && matches && !submitting;
 
-  /* SUBMIT → opens confirmation modal first */
   const onSubmit = (e) => {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!selected || submitting) return;
+
+    /* surface missing rules in a popup instead of blocking silently */
+    if (!allRules) {
+      const missing = missingRules.map((r) => r.label).join(", ");
+      setPasswordInfo(
+        `Your password is missing: ${missing}. It must be at least 8 characters and include one uppercase letter, one lowercase letter, one number, and one special character.`,
+      );
+      return;
+    }
+
+    if (!matches) {
+      setPasswordInfo("The two passwords don't match. Re-enter them.");
+      return;
+    }
+
     setConfirmOpen(true);
   };
 
-  /* Actual API call — runs when user confirms in the modal */
   const performReset = async () => {
     if (!selected) return;
     setSubmitting(true);
@@ -399,18 +402,16 @@ const ResetPassword = () => {
     const name = selected.name;
     try {
       await updatePasswordByEmailApi(selected.email, newPassword);
-
       setChangedName(name);
       setConfirmOpen(false);
       setSuccessOpen(true);
-
       setSelected(null);
       setNewPassword("");
       setConfirmPassword("");
     } catch (err) {
       setConfirmOpen(false);
       setError(
-        "We couldn't change the password. Check your connection and try again.",
+        "That didn't go through. Check your connection and give it another try.",
       );
     } finally {
       setSubmitting(false);
@@ -432,8 +433,8 @@ const ResetPassword = () => {
       `}</style>
 
       <div className="mx-auto rounded-[12px] border border-[#e2e8ee] bg-white shadow-sm">
-        {/* HEADER */}
-        <div className="flex items-center gap-3.5 border-b border-[#e2e8ee] px-2 py-2 sm:px-4 sm:py-4">
+        {/* ---------- page header ---------- */}
+        <div className="flex items-center gap-3.5 border-b border-[#e2e8ee] px-4 py-3 sm:px-5 sm:py-4">
           <div className="relative grid h-12 w-12 shrink-0 place-items-center">
             <span className="rp-halo absolute inset-0 rounded-2xl bg-[#e8f1f6]" />
             <span className="relative grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#2c6b8a] to-[#5ba6bd] text-white shadow-md">
@@ -442,33 +443,36 @@ const ResetPassword = () => {
           </div>
           <div>
             <h1 className="m-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[24px]">
-              Reset Password
+              Reset a password
             </h1>
             <p className="mt-0.5 text-[13px] text-[#6b7a88]">
-              Find a job seeker or employer and set a new password for their
-              account.
+              Search for the account, then set a new password for it.
             </p>
           </div>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-6 px-5 py-4 sm:px-4 sm:py-4">
-          {/* STEP 1 — FIND USER */}
+        <form
+          onSubmit={onSubmit}
+          className="space-y-6 px-4 py-4 sm:px-5 sm:py-5"
+        >
+          {/* ---------- step 1 — pick a user ---------- */}
           <section>
             <div className="mb-3 flex items-center gap-2">
               <span className="grid h-6 w-6 place-items-center rounded-full bg-[#2c6b8a] text-[12px] font-bold text-white">
                 1
               </span>
               <h2 className="text-[15px] font-bold text-[#1e2b36]">
-                Find the user
+                Which account?
               </h2>
             </div>
 
             {loading ? (
               <div className="flex items-center gap-2 py-4 text-[13px] text-[#6b7a88]">
-                <Loader2 size={16} className="animate-spin" /> Loading users…
+                <Loader2 size={16} className="animate-spin" />
+                Loading users…
               </div>
             ) : apiError ? (
-              <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 py-4 text-[13px] text-rose-700">
+              <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 {apiError}
               </div>
@@ -500,12 +504,12 @@ const ResetPassword = () => {
                   className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-medium text-[#34445a] transition hover:border-[#d64545] hover:text-[#d64545] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <X size={14} />
-                  Change
+                  Pick another
                 </button>
               </div>
             ) : (
               <>
-                {/* Role filter */}
+                {/* role filter tabs */}
                 <div
                   className="mb-3 inline-flex rounded-lg bg-[#f1f5f8] p-1"
                   role="group"
@@ -536,7 +540,7 @@ const ResetPassword = () => {
                   })}
                 </div>
 
-                {/* Combobox */}
+                {/* search combobox */}
                 <div ref={boxRef} className="relative">
                   <Search
                     size={16}
@@ -555,7 +559,7 @@ const ResetPassword = () => {
                         ? `ru-${results[highlight].id}`
                         : undefined
                     }
-                    placeholder="Search by name, email or phone number"
+                    placeholder="Start typing a name, email, or phone number…"
                     value={query}
                     onChange={(e) => {
                       setQuery(e.target.value);
@@ -591,10 +595,11 @@ const ResetPassword = () => {
                             <Search size={18} />
                           </span>
                           <p className="mt-2 text-[13.5px] font-semibold text-[#1e2b36]">
-                            No users found
+                            Nothing matched that
                           </p>
                           <p className="text-[12.5px] text-[#6b7a88]">
-                            Check the spelling or try an email or phone number.
+                            Try a different spelling, or paste in their email
+                            or phone number.
                           </p>
                         </li>
                       ) : (
@@ -640,7 +645,7 @@ const ResetPassword = () => {
             )}
           </section>
 
-          {/* STEP 2 — PASSWORD */}
+          {/* ---------- step 2 — set the password ---------- */}
           <section
             className={`transition-opacity duration-300 ${
               selected ? "opacity-100" : "opacity-60"
@@ -655,12 +660,13 @@ const ResetPassword = () => {
                 2
               </span>
               <h2 className="text-[15px] font-bold text-[#1e2b36]">
-                Set a new password
+                The new password
               </h2>
             </div>
             {!selected && (
               <p className="mb-3 flex items-center gap-1.5 text-[12.5px] text-[#6b7a88]">
-                <Lock size={13} /> Select a user above to unlock these fields.
+                <Lock size={13} />
+                Pick a user above and these fields will unlock.
               </p>
             )}
 
@@ -692,58 +698,22 @@ const ResetPassword = () => {
                     </span>
                   ) : matches ? (
                     <span className="inline-flex items-center gap-1 font-medium text-emerald-600">
-                      <Check size={13} strokeWidth={3} /> Passwords match
+                      Passwords match
                     </span>
                   ) : null
                 }
               />
             </div>
 
-            {selected && newPassword && (
-              <div className="rp-pop mt-3 rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] p-3.5">
-                <div className="mb-2.5 flex items-center justify-between text-[12.5px]">
-                  <span className="font-medium text-[#6b7a88]">
-                    Password strength
-                  </span>
-                  <span className={`font-semibold ${strength.text}`}>
-                    {strength.label}
-                  </span>
-                </div>
-                <div className="mb-3 flex gap-1" aria-hidden="true">
-                  {RULES.map((_, i) => (
-                    <span
-                      key={i}
-                      className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${
-                        i < passed ? strength.bar : "bg-[#e2e8ee]"
-                      }`}
-                    />
-                  ))}
-                </div>
-                <ul className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
-                  {RULES.map((r) => {
-                    const ok = r.test(newPassword);
-                    return (
-                      <li
-                        key={r.id}
-                        className={`flex items-center gap-1.5 text-[12.5px] transition-colors ${
-                          ok ? "text-emerald-700" : "text-[#6b7a88]"
-                        }`}
-                      >
-                        <span
-                          className={`grid h-4 w-4 place-items-center rounded-full ${
-                            ok
-                              ? "bg-emerald-500 text-white"
-                              : "bg-[#e2e8ee] text-transparent"
-                          }`}
-                        >
-                          <Check size={10} strokeWidth={3.5} />
-                        </span>
-                        {r.label}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+            {/* static hint — always visible under the two fields */}
+            {selected && (
+              <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-[#e2e8ee] bg-[#f9fbfc] px-3 py-2 text-[12.5px] leading-relaxed text-[#6b7a88]">
+                <ShieldCheck
+                  size={14}
+                  className="mt-[1px] shrink-0 text-[#2c6b8a]"
+                />
+                <span>{PASSWORD_HINT}</span>
+              </p>
             )}
           </section>
 
@@ -757,15 +727,15 @@ const ResetPassword = () => {
             </div>
           )}
 
-          {/* ACTIONS */}
+          {/* ---------- footer ---------- */}
           <div className="flex flex-col-reverse gap-2.5 border-t border-[#e2e8ee] pt-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="flex items-center gap-1.5 text-[12.5px] text-[#6b7a88]">
               <ShieldCheck size={14} className="text-[#2c6b8a]" />
-              The user's current password stops working immediately.
+              Their old password stops working the moment you save.
             </p>
             <button
               type="submit"
-              disabled={!canSubmit}
+              disabled={!selected || submitting}
               className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-5 text-[13.5px] font-semibold text-white shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
             >
               {submitting ? (
@@ -784,55 +754,61 @@ const ResetPassword = () => {
         </form>
       </div>
 
-      {/* ============================================================ */}
-      {/* 1. CONFIRMATION MODAL                                          */}
-      {/* ============================================================ */}
+      {/* password-rule info popup */}
+      <StatusModal
+        isOpen={!!passwordInfo}
+        type="info"
+        title="Password requirements not met"
+        message={passwordInfo}
+        confirmText="Got it"
+        onConfirm={() => setPasswordInfo("")}
+      />
+
+      {/* confirmation */}
       <StatusModal
         isOpen={confirmOpen}
         type="confirm"
-        title="Change password?"
+        title="Change the password?"
         message={
           <>
-            Are you sure you want to change the password for{" "}
+            You're about to reset the password for{" "}
             <strong className="font-semibold text-slate-900">
               {selected?.name || "this user"}
             </strong>
-            ?
+            .
             <br />
             <span className="mt-2 inline-block text-[13px] text-slate-500">
-              Their current password will stop working immediately.
+              Their current password will stop working right away.
             </span>
           </>
         }
         showCancel
         busy={submitting}
-        confirmText="Yes, change password"
-        cancelText="No, go back"
+        confirmText="Yes, change it"
+        cancelText="Never mind"
         onCancel={() => setConfirmOpen(false)}
         onConfirm={performReset}
       />
 
-      {/* ============================================================ */}
-      {/* 2. SUCCESS MODAL                                              */}
-      {/* ============================================================ */}
+      {/* success */}
       <StatusModal
         isOpen={successOpen}
         type="success"
         title="Password changed"
         message={
           <>
-            The password for{" "}
+            All set — the password for{" "}
             <strong className="font-semibold text-slate-900">
               {changedName || "the user"}
             </strong>{" "}
-            has been updated successfully.
+            is now the new one.
             <br />
             <span className="mt-2 inline-block text-[13px] text-slate-500">
-              Share the new password with them securely.
+              Send it to them through a secure channel.
             </span>
           </>
         }
-        confirmText="Done"
+        confirmText="Got it"
         onConfirm={() => setSuccessOpen(false)}
       />
     </div>
