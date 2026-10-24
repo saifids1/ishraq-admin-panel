@@ -47,10 +47,10 @@ const COLUMNS = [
   { key: "experience", width: "120px", minWidth: "90px" },
   { key: "email", width: "auto", minWidth: "170px" },
   { key: "mobile", width: "160px", minWidth: "120px" },
-  { key: "actions", width: "160px", minWidth: "120px" },
+  { key: "actions", width: "160px", minWidth: "120px", sticky: true },
 ];
 
-const COL_SPAN_ALL = COLUMNS.length; // 9
+const COL_SPAN_ALL = COLUMNS.length;
 
 /* ------------------------------ TONES ----------------------------- */
 
@@ -415,11 +415,9 @@ const JobSeekerList = () => {
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
-  /* Sticky Actions header — pinned to the right edge of the header table */
   const stickyActionsHead =
     "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.35)]";
 
-  /* Sticky Actions body cell — pinned to the right edge of the body table */
   const stickyActionsCell =
     "sticky right-0 z-20 border-t border-[#e2e8ee] bg-white px-3.5 py-2.5 text-center text-[15px] text-slate-900 shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.18)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
 
@@ -523,14 +521,27 @@ const JobSeekerList = () => {
           </div>
         )}
 
-        {/* TABLE */}
+        {/* ============================================================
+            TABLE
+            - Fixed-height container (h-[370px]) with flex column.
+            - Header strip: overflow-hidden, no vertical scrollbar.
+              scrollbarGutter: "stable" reserved so its content width
+              matches the body's usable width.
+            - Body: overflow-y-auto + overflow-x-auto (NOT `auto`),
+              so the horizontal scrollbar sits inside the body only
+              and the header never sees it.
+            - Actions column: sticky right-0 in both header and body.
+            ============================================================ */}
         <div className="mt-4 h-[370px] overflow-hidden rounded-lg border border-[#cbe1f4]">
           <div className="flex h-full flex-col">
-            {/* Header — hidden scrollbar, synced with body via JS.
-                Sticky right-0 on the Actions <th> works because the header
-                table itself is wider than this overflow-hidden wrapper and
-                scrollLeft is being driven. */}
-            <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
+            {/* HEADER strip — hidden vertical scrollbar + stable gutter */}
+            <div
+              ref={headerScrollRef}
+              className="shrink-0 overflow-hidden"
+              style={{
+                scrollbarGutter: "stable",
+              }}
+            >
               <table
                 className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
                 style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
@@ -577,10 +588,10 @@ const JobSeekerList = () => {
               </table>
             </div>
 
-            {/* Body — real scroll container in both axes */}
+            {/* BODY — real scroll container, only this scrolls vertically */}
             <div
               ref={bodyScrollRef}
-              className="common-scrollbar min-h-0 flex-1 overflow-auto"
+              className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
               style={{ scrollbarGutter: "stable" }}
             >
               <table

@@ -1,6 +1,12 @@
 import StatusModal from "../../../components/common/StatusModal";
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -33,10 +39,9 @@ const ORG_TYPE_STYLE = {
   Pharmacy: "bg-violet-600 text-white ring-violet-700",
 };
 
-/* ------------------------------ CONSTANTS ------------------------------ */
-
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
 const TABLE_MIN_WIDTH = 1450;
+const SEARCH_DEBOUNCE_MS = 400;
 
 const COLUMNS = [
   { key: "srNo", width: "60px" },
@@ -48,12 +53,10 @@ const COLUMNS = [
   { key: "jobs", width: "130px" },
   { key: "email", width: "220px" },
   { key: "mobile", width: "150px" },
-  { key: "actions", width: "160px" },
+  { key: "actions", width: "160px", sticky: true },
 ];
 
-const COL_SPAN_ALL = COLUMNS.length; // 10
-
-/* ------------------------------ TONES ----------------------------- */
+const COL_SPAN_ALL = COLUMNS.length;
 
 const TONES = {
   success: {
@@ -149,32 +152,65 @@ const EmployerList = () => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
-  const [query, setQuery] = useState({
-    search: "",
-    status: "All",
-  });
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
 
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useStatusToast();
 
-  /* refs for horizontal scroll sync */
   const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
+  const requestIdRef = useRef(0);
+  const abortRef = useRef(null);
+
+  /* --------------------------- DEBOUNCE SEARCH --------------------------- */
+
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+
+    if (!trimmed) {
+      setDebouncedSearch("");
+      setIsTyping(false);
+      return undefined;
+    }
+
+    setIsTyping(true);
+    const t = setTimeout(() => {
+      setDebouncedSearch(trimmed);
+      setPage(1);
+      setIsTyping(false);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   /* --------------------------- FETCH --------------------------- */
 
   const load = useCallback(async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const reqId = ++requestIdRef.current;
     setLoading(true);
     setError("");
+
     try {
       const response = await employerApi.getAll({
         pageNo: page,
         pageSize,
-        search: query.search.trim() || undefined,
-        status: query.status === "All" ? undefined : query.status,
+        search: debouncedSearch || undefined,
+        status: statusFilter === "All" ? undefined : statusFilter,
+        signal: controller.signal,
       });
+
+      if (reqId !== requestIdRef.current) return;
+
       const {
         list,
         totalRecords: total,
@@ -189,20 +225,29 @@ const EmployerList = () => {
       setTotalRecords(total);
       setTotalPages(pages);
     } catch (err) {
+      if (err?.name === "CanceledError" || err?.code === "ERR_CANCELED") return;
+      if (reqId !== requestIdRef.current) return;
+
       setRows([]);
       setTotalRecords(0);
       setTotalPages(0);
       setError(getApiErrorMessage(err) || "Unable to load employer records.");
     } finally {
-      setLoading(false);
+      if (reqId === requestIdRef.current) setLoading(false);
     }
-  }, [page, pageSize, query.search, query.status]);
+  }, [page, pageSize, debouncedSearch, statusFilter]);
 
   useEffect(() => {
     load();
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
   }, [load]);
 
-  /* sync header & body horizontal scroll */
+  /* Sync header horizontal scroll with body horizontal scroll.
+     Only `scrollLeft` is mirrored — vertical scrolling of the body never
+     moves the header, because the header container has overflow-hidden and
+     no vertical scroll of its own. */
   useEffect(() => {
     const body = bodyScrollRef.current;
     const header = headerScrollRef.current;
@@ -222,16 +267,10 @@ const EmployerList = () => {
     setRefreshing(true);
     try {
       await load();
-    } catch (err) {
-      setToast({
-        id: Date.now(),
-        tone: "err",
-        msg: err?.message || "Could not refresh",
-      });
     } finally {
       setRefreshing(false);
     }
-  }, [load, refreshing, setToast]);
+  }, [load, refreshing]);
 
   /* --------------------------- STATS --------------------------- */
 
@@ -283,62 +322,26 @@ const EmployerList = () => {
 
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
-  const handleToggle = async (row, isActive) => {
-    try {
-      await employerApi.toggleActive(row.id, isActive);
-
-      const response = await employerApi.getAll({
-        pageNo: page,
-        pageSize,
-        search: query.search.trim() || undefined,
-        status: query.status === "All" ? undefined : query.status,
-      });
-      const {
-        list,
-        totalRecords: total,
-        totalPages: pages,
-      } = parseListResponse(response, pageSize);
-
-      setRows(
-        list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
-      );
-      setTotalRecords(total);
-      setTotalPages(pages);
-    } catch (err) {
-      const status = err?.status ?? err?.response?.status;
-      if (status === 405) {
-        console.error(
-          "[EmployerList] 405 Method Not Allowed — the endpoint /api/Employer/{id}/active-status did not accept the HTTP verb.",
-          "Response Allow header:",
-          err?.response?.headers?.allow,
-        );
+  const handleToggle = useCallback(
+    async (row, isActive) => {
+      try {
+        await employerApi.toggleActive(row.id, isActive);
+        await load();
+      } catch (err) {
+        const status = err?.status ?? err?.response?.status;
+        if (status === 405) {
+          console.error(
+            "[EmployerList] 405 Method Not Allowed — endpoint /api/Employer/{id}/active-status rejected the HTTP verb.",
+            "Allow header:",
+            err?.response?.headers?.allow,
+          );
+        }
+        setError(getApiErrorMessage(err) || "Unable to update status.");
+        throw err;
       }
-      setError(getApiErrorMessage(err) || "Unable to update status.");
-      throw err;
-    }
-  };
-
-  /* ---------------------------- QUERY HELPERS ---------------------------- */
-
-  const patchFilter = (patch) => {
-    setQuery((q) => ({ ...q, ...patch }));
-    setPage(1); // reset to first page when filter changes
-  };
-
-  /* ---------------------------- PAGINATION ---------------------------- */
-
-  const currentPage = Math.min(page, Math.max(1, totalPages || 1));
-  const start = (currentPage - 1) * pageSize;
-
-  const pageNumbers = useMemo(() => {
-    const win = 5;
-    let from = Math.max(1, currentPage - Math.floor(win / 2));
-    const to = Math.min(Math.max(1, totalPages), from + win - 1);
-    from = Math.max(1, to - win + 1);
-    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
-  }, [currentPage, totalPages]);
+    },
+    [load],
+  );
 
   /* ---------------------------- TOAST ---------------------------- */
 
@@ -348,7 +351,7 @@ const EmployerList = () => {
     return () => clearTimeout(t);
   }, [toast, setToast]);
 
-  /* ---------------------------- STATUS TOGGLE ---------------------------- */
+  /* ---------------------------- CONFIRM FLOW ---------------------------- */
 
   const askToggle = (row) => {
     const next = row.status === "Active" ? "Inactive" : "Active";
@@ -378,6 +381,19 @@ const EmployerList = () => {
     }
   };
 
+  /* ---------------------------- PAGINATION ---------------------------- */
+
+  const currentPage = Math.min(page, Math.max(1, totalPages || 1));
+  const start = (currentPage - 1) * pageSize;
+
+  const pageNumbers = useMemo(() => {
+    const win = 5;
+    let from = Math.max(1, currentPage - Math.floor(win / 2));
+    const to = Math.min(Math.max(1, totalPages), from + win - 1);
+    from = Math.max(1, to - win + 1);
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  }, [currentPage, totalPages]);
+
   /* ---------------------------- STYLES ---------------------------- */
 
   const pageBtn =
@@ -393,7 +409,6 @@ const EmployerList = () => {
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
-  /* Sticky actions column — header + cells */
   const stickyActionsHead =
     "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
 
@@ -414,26 +429,50 @@ const EmployerList = () => {
           </h1>
 
           <div className="flex w-full flex-wrap items-center gap-2.5 xl:w-auto">
+            {/* SEARCH (debounced) */}
             <div className="relative min-w-[280px] flex-1 xl:flex-none">
               <SearchIcon
                 size={15}
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
               />
+
               <input
                 type="search"
                 aria-label="Search employers..."
                 placeholder="Search by organization, contact, email or city"
-                value={query.search}
-                onChange={(e) => patchFilter({ search: e.target.value })}
-                className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-9 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30 [&::-webkit-search-cancel-button]:hidden"
               />
+
+              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
+                {isTyping ? (
+                  <span
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#c9d5dd] border-t-[#2c6b8a]"
+                  />
+                ) : searchInput ? (
+                  <button
+                    type="button"
+                    aria-label="Clear search"
+                    onClick={() => setSearchInput("")}
+                    className="grid h-5 w-5 cursor-pointer place-items-center rounded-full text-[#9aa5b1] transition hover:bg-[#e8f1f6] hover:text-[#2c6b8a]"
+                  >
+                    <CloseIcon size={13} strokeWidth={2.5} />
+                  </button>
+                ) : null}
+              </div>
             </div>
 
+            {/* STATUS FILTER */}
             <div className="relative min-w-[200px] flex-1 xl:flex-none">
               <select
                 aria-label="Status"
-                value={query.status}
-                onChange={(e) => patchFilter({ status: e.target.value })}
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
                 className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[15px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
               >
                 <option value="All">Status: All</option>
@@ -485,7 +524,6 @@ const EmployerList = () => {
           aria-hidden="true"
           className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent"
         />
-
         {/* ERROR */}
         {error && (
           <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -500,11 +538,21 @@ const EmployerList = () => {
           </div>
         )}
 
-        {/* TABLE LAYOUT */}
+        {/* ============================================================
+            TABLE
+            - Header strip: overflow-hidden, no vertical scrollbar,
+              horizontal mirror only.
+            - Body: overflow-y-auto (vertical) + overflow-x-auto
+              (horizontal), each independently controlled.
+            - Actions column: sticky right in header and body.
+            ============================================================ */}
         <div className="mt-4 h-[370px] overflow-hidden rounded-lg border border-[#cbe1f4]">
           <div className="flex h-full flex-col">
-            {/* Header strip — fixed, no vertical scrollbar */}
-            <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
+            {/* HEADER strip — no vertical scroll, horizontal scroll synced */}
+            <div
+              ref={headerScrollRef}
+              className="shrink-0 overflow-hidden"
+            >
               <table
                 className="w-full table-fixed border-collapse text-[15px]"
                 style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
@@ -516,42 +564,22 @@ const EmployerList = () => {
                 </colgroup>
                 <thead>
                   <tr>
-                    <th scope="col" className={thClass}>
-                      Sr.No
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Employer ID
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Organization Name
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Contact Person
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Organization Type
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Status
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Jobs
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Email
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Contact Number
-                    </th>
-                    <th scope="col" className={stickyActionsHead}>
-                      Actions
-                    </th>
+                    <th scope="col" className={thClass}>Sr.No</th>
+                    <th scope="col" className={thClass}>Employer ID</th>
+                    <th scope="col" className={thClass}>Organization Name</th>
+                    <th scope="col" className={thClass}>Contact Person</th>
+                    <th scope="col" className={thClass}>Organization Type</th>
+                    <th scope="col" className={thClass}>Status</th>
+                    <th scope="col" className={thClass}>Jobs</th>
+                    <th scope="col" className={thClass}>Email</th>
+                    <th scope="col" className={thClass}>Contact Number</th>
+                    <th scope="col" className={stickyActionsHead}>Actions</th>
                   </tr>
                 </thead>
               </table>
             </div>
 
-            {/* Body — vertical scrollbar lives here only */}
+            {/* BODY — vertical + horizontal scroll, actions column sticky */}
             <div
               ref={bodyScrollRef}
               className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
@@ -576,9 +604,7 @@ const EmployerList = () => {
                             aria-hidden="true"
                             className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
                           />
-                          <p className="mt-3 text-[15px] text-[#6b7a88]">
-                            Loading...
-                          </p>
+                          <p className="mt-3 text-[15px] text-[#6b7a88]">Loading...</p>
                         </div>
                       </td>
                     </tr>
@@ -592,7 +618,9 @@ const EmployerList = () => {
                           <Inbox size={22} />
                         </div>
                         <p className="mt-3 text-[15px] text-[#1e2b36]">
-                          No employers found
+                          {debouncedSearch
+                            ? `No employers match "${debouncedSearch}"`
+                            : "No employers found"}
                         </p>
                       </td>
                     </tr>
@@ -600,9 +628,7 @@ const EmployerList = () => {
                     rows.map((row, index) => (
                       <tr
                         key={row.id ?? index}
-                        style={{
-                          animationDelay: `${Math.min(index, 12) * 35}ms`,
-                        }}
+                        style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
                         className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                       >
                         <td className={`${td} tabular-nums`}>
@@ -622,12 +648,9 @@ const EmployerList = () => {
                             <span className="truncate font-medium text-slate-900">
                               {row.companyName || "-"}
                             </span>
-                            {[row.city, row.state].filter(Boolean).length >
-                              0 && (
+                            {[row.city, row.state].filter(Boolean).length > 0 && (
                               <span className="truncate text-[12px] text-[#6b7a88]">
-                                {[row.city, row.state]
-                                  .filter(Boolean)
-                                  .join(", ")}
+                                {[row.city, row.state].filter(Boolean).join(", ")}
                               </span>
                             )}
                           </span>
@@ -654,19 +677,13 @@ const EmployerList = () => {
                               "bg-gray-600 text-white ring-gray-700"
                             }`}
                           >
-                            <span className="truncate">
-                              {row.orgType || "-"}
-                            </span>
+                            <span className="truncate">{row.orgType || "-"}</span>
                           </span>
                         </td>
 
                         <td className={`${td} whitespace-nowrap`}>
                           <div className="w-full min-w-0 truncate">
-                            <span
-                              className={`${BADGE_BASE} ${
-                                toneOf(row.status).badge
-                              }`}
-                            >
+                            <span className={`${BADGE_BASE} ${toneOf(row.status).badge}`}>
                               {row.status || "-"}
                             </span>
                           </div>
@@ -675,25 +692,17 @@ const EmployerList = () => {
                         <td className={`${td} whitespace-nowrap`}>
                           <span className="tabular-nums">
                             <strong className="font-semibold">
-                              {
-                                (row.jobs ?? []).filter(
-                                  (j) => j.status === "Open",
-                                ).length
-                              }
+                              {(row.jobs ?? []).filter((j) => j.status === "Open").length}
                             </strong>
                             <span className="text-[#6b7a88]">
-                              {" "}
-                              open / {(row.jobs ?? []).length}
+                              {" "}open / {(row.jobs ?? []).length}
                             </span>
                           </span>
                         </td>
 
                         <td className={`${td} whitespace-nowrap`}>
                           {row.email ? (
-                            <span
-                              className="block truncate text-[15px]"
-                              title={row.email}
-                            >
+                            <span className="block truncate text-[15px]" title={row.email}>
                               {row.email}
                             </span>
                           ) : (
@@ -703,9 +712,7 @@ const EmployerList = () => {
 
                         <td className={`${td} whitespace-nowrap`}>
                           {row.mobile ? (
-                            <span className="text-[15px] tabular-nums">
-                              {row.mobile}
-                            </span>
+                            <span className="text-[15px] tabular-nums">{row.mobile}</span>
                           ) : (
                             <span className="text-[#9aa5b1]">-</span>
                           )}
@@ -718,12 +725,8 @@ const EmployerList = () => {
                             <button
                               type="button"
                               title={`View ${row.companyName || "Employer"}`}
-                              aria-label={`View ${
-                                row.companyName || "Employer"
-                              }`}
-                              onClick={() =>
-                                navigate(`/admin/Employers/${row.id}`)
-                              }
+                              aria-label={`View ${row.companyName || "Employer"}`}
+                              onClick={() => navigate(`/admin/Employers/${row.id}`)}
                               className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                             >
                               <ChevronsRight size={14} strokeWidth={2.2} />
@@ -735,12 +738,8 @@ const EmployerList = () => {
                               aria-checked={row.status === "Active"}
                               aria-label={
                                 row.status === "Active"
-                                  ? `Deactivate ${
-                                      row.companyName || "Employer"
-                                    }`
-                                  : `Activate ${
-                                      row.companyName || "Employer"
-                                    }`
+                                  ? `Deactivate ${row.companyName || "Employer"}`
+                                  : `Activate ${row.companyName || "Employer"}`
                               }
                               title={
                                 row.status === "Active"
@@ -800,9 +799,7 @@ const EmployerList = () => {
                 {Math.min(start + pageSize, totalRecords)}
               </strong>{" "}
               of{" "}
-              <strong className="font-semibold text-[#53677f]">
-                {totalRecords}
-              </strong>{" "}
+              <strong className="font-semibold text-[#53677f]">{totalRecords}</strong>{" "}
               entries
             </span>
             <label className="flex items-center gap-1.5">
@@ -816,18 +813,13 @@ const EmployerList = () => {
                 className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[13px] text-[#34445a] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30"
               >
                 {DEFAULT_PAGE_SIZES.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
+                  <option key={n} value={n}>{n}</option>
                 ))}
               </select>
             </label>
           </div>
 
-          <nav
-            aria-label="Pagination"
-            className="flex flex-wrap items-center gap-1"
-          >
+          <nav aria-label="Pagination" className="flex flex-wrap items-center gap-1">
             <button
               type="button"
               onClick={() => setPage(Math.max(1, currentPage - 1))}
@@ -862,7 +854,7 @@ const EmployerList = () => {
           </nav>
         </div>
 
-        {/* DIALOG */}
+        {/* CONFIRM DIALOG */}
         {confirm && (
           <StatusModal
             isOpen
