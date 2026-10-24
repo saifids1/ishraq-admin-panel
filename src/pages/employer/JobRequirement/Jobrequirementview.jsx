@@ -251,6 +251,14 @@ export default function JobRequirementView() {
         <h2 className="font-semibold text-slate-800">View Job Requirement</h2>
       </div>
 
+      <button
+        type="button"
+        onClick={() => navigate(detailEditPath(id))}
+        className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
+      >
+        <Pencil size={15} />
+        Edit Job Requirement
+      </button>
     </div>
   );
 
@@ -381,11 +389,15 @@ export default function JobRequirementView() {
                 </FieldRow>
 
                 <FieldRow label="Created On">
-                  <ReadOnlyValue>{formatDate(job.createdAt, true)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {formatDate(job.createdAt, true)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Last Updated">
-                  <ReadOnlyValue>{formatDate(job.updatedAt, true)}</ReadOnlyValue>
+                  <ReadOnlyValue>
+                    {formatDate(job.updatedAt, true)}
+                  </ReadOnlyValue>
                 </FieldRow>
               </div>
             </section>
@@ -405,7 +417,9 @@ export default function JobRequirementView() {
               <SectionTitle>Description & Attachment</SectionTitle>
               <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
                 <FieldRow label="Job Description" fullWidth>
-                  <ReadOnlyValue multiline>{text(job.description)}</ReadOnlyValue>
+                  <ReadOnlyValue multiline>
+                    {text(job.description)}
+                  </ReadOnlyValue>
                 </FieldRow>
 
                 <FieldRow label="Attachment" fullWidth>
@@ -417,7 +431,9 @@ export default function JobRequirementView() {
                       title="Open attachment in a new tab"
                       className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-[#1e5a7a] transition hover:bg-[#eaf3f7]"
                     >
-                      <span className="min-w-0 break-all">{attachmentName}</span>
+                      <span className="min-w-0 break-all">
+                        {attachmentName}
+                      </span>
                       <ExternalLink size={14} className="shrink-0" />
                     </a>
                   ) : (
@@ -426,26 +442,6 @@ export default function JobRequirementView() {
                 </FieldRow>
               </div>
             </section>
-
-            {/* FOOTER */}
-            <div className="flex justify-between gap-3 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                onClick={() => navigate(LIST_PATH)}
-                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-              >
-                Back to List
-              </button>
-
-              <button
-                type="button"
-                onClick={() => navigate(detailEditPath(id))}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
-              >
-                <Pencil size={15} />
-                Edit Job Requirement
-              </button>
-            </div>
           </div>
         </div>
       </div>

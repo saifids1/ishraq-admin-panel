@@ -855,6 +855,29 @@ export default function JobRequirementEdit() {
                 Edit Job Requirement
               </h2>
             </div>
+             <div className="flex justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(detailPath(id))}
+                disabled={saving}
+                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? (
+                  <LoaderCircle size={15} className="animate-spin" />
+                ) : (
+                  <Save size={15} />
+                )}
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
             
           </div>
 
@@ -1090,29 +1113,7 @@ export default function JobRequirementEdit() {
             </section>
 
             {/* FOOTER */}
-            <div className="flex justify-between gap-3 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                onClick={() => navigate(detailPath(id))}
-                disabled={saving}
-                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? (
-                  <LoaderCircle size={15} className="animate-spin" />
-                ) : (
-                  <Save size={15} />
-                )}
-                {saving ? "Saving..." : "Save Changes"}
-              </button>
-            </div>
+           
           </form>
         </div>
       </div>
