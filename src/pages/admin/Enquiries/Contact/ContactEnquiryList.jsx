@@ -163,7 +163,7 @@ const COLUMNS = [
 /* Visible table columns — matches CareerEnquiryList's shape. */
 const TABLE_COLUMNS = [
   { key: "srNo", label: "Sr.No", width: "60px" },
-  { key: "requestId", label: "Request ID", width: "170px" },
+  { key: "requestId", label: "Contact Enquiry ID", width: "170px" },
   { key: "name", label: "Name", width: "170px" },
   { key: "email", label: "Email", width: "220px" },
   { key: "mobile", label: "Mobile", width: "130px" },
@@ -185,7 +185,7 @@ const cfg = {
   categoryField: null,
   detailPath: "/admin/contact",
   listColumns: [
-    { key: "requestId", label: "Request ID" },
+    { key: "requestId", label: "Contact Enquiry ID" },
     { key: "CN_full_name", label: "Name" },
     { key: "CN_email", label: "Email" },
     { key: "CN_mobile", label: "Mobile" },

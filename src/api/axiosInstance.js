@@ -16,7 +16,7 @@ const axiosInstance = axios.create({
   },
   
   
-  // timeout: 60000,
+  timeout: 60000,
 });
 
 axiosInstance.interceptors.response.use(

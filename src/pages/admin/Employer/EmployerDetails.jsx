@@ -7,16 +7,21 @@ import {
   ExternalLink,
   Inbox,
   ChevronsRight,
-  UserRound,
-  MapPin,
-  Globe,
-  FileCheck2,
-  ShieldCheck,
+  Save,
+  X,
 } from "lucide-react";
-import { getEmployerById } from "../../../api/employerApi";
+import {
+  getEmployerById,
+  updateEmployer,
+} from "../../../api/employerApi";
 import { getJobRequirementsByEmployer } from "../../../api/jobRequirementApi";
+import instituteTypeApi from "../../../api/Services/instituteTypeApi";
+import countryMasterApi from "../../../api/Services/countryMasterApi";
+import stateMasterApi from "../../../api/Services/stateMasterApi";
+import cityMasterApi from "../../../api/Services/cityMasterApi";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 
-/* ---------------- Design tokens ---------------- */
+/* ---------------- Design tokens (same as JobSeekerDetails) ---------------- */
 const T = {
   radius: "rounded-lg",
   border: "border-[#e3e8ee]",
@@ -28,12 +33,12 @@ const T = {
   textFaint: "text-black",
   accent: "text-[#1e5a7a]",
   hover: "hover:bg-[#f3f6f9]",
+  cardShadow: "shadow-[0_1px_2px_rgba(16,24,40,0.04)]",
 };
 
 const val = (v) =>
   v === null || v === undefined || String(v).trim() === "" ? "—" : v;
 
-/** Tolerant Yes/No/— mapper for boolean-ish API fields */
 const toYesNo = (v) => {
   if (v === true || v === 1 || v === "1" || v === "true") return "Yes";
   if (v === false || v === 0 || v === "0" || v === "false") return "No";
@@ -64,30 +69,63 @@ const CARD_STATUS_DOT = {
   Closed: "bg-slate-400",
 };
 
-/* ---------------- Shared class strings ---------------- */
+/* ---------------- Shared field styles (same as JobSeekerDetails) ---------------- */
 const FIELD_LABEL = `text-[13px] font-semibold tracking-wide ${T.textFaint}`;
 const FIELD_BOX = (mono) =>
-  `flex h-9 w-full items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
+  `flex h-9 w-full min-w-0 items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
     mono ? "font-mono text-[12.5px]" : ""
   }`;
 
 const BTN_PRIMARY =
   "inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
+const EDIT_INPUT =
+  "h-9 w-full min-w-0 rounded-md border border-[#c9d5dd] bg-white px-3 text-[13px] text-[#1a2b3c] outline-none focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/20 disabled:bg-slate-100";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MOBILE_RE = /^\d{10}$/;
 
-/* ---------------- Reusable row: label : value ---------------- */
-const FieldRow = ({ label, value, mono = false, children }) => (
-  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-    <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
-    <div className={FIELD_BOX(mono)}>
-      <span
-        className="min-w-0 flex-1 truncate"
-        title={String(children ?? val(value))}
-      >
-        {children ?? val(value)}
-      </span>
+/* ---------------- Card primitive (identical to JobSeekerDetails) ---------------- */
+function Card({ title, action, children, className = "" }) {
+  return (
+    <section
+      className={`${T.surface} ${T.radius} border ${T.border} ${T.cardShadow} ${className}`}
+    >
+      <div className="p-4">
+        {(title || action) && (
+          <div className="mb-3 flex items-center justify-between gap-2">
+            {title && (
+              <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                {title}
+              </h3>
+            )}
+            {action}
+          </div>
+        )}
+        {children}
+      </div>
+    </section>
+  );
+}
+
+/* ---------------- FieldRow (same edit-mode fix as JobSeekerDetails) ---------------- */
+const FieldRow = ({ label, value, mono = false, children }) => {
+  const isEditing = children !== undefined && children !== null;
+
+  return (
+    <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-3">
+      <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
+
+      {isEditing ? (
+        <div className="min-w-0">{children}</div>
+      ) : (
+        <div className={FIELD_BOX(mono)}>
+          <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
+            {val(value)}
+          </span>
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 /* ---------------- Nav ---------------- */
 const NAV = [
@@ -96,12 +134,23 @@ const NAV = [
 ];
 
 /* ---------------- Helpers ---------------- */
+const extractList = (response) => {
+  const root = response?.data ?? response;
+  const candidates = [
+    root?.data?.data,
+    root?.Data?.Data,
+    root?.data,
+    root?.Data,
+    root,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (Array.isArray(candidate?.data)) return candidate.data;
+    if (Array.isArray(candidate?.Data)) return candidate.Data;
+  }
+  return [];
+};
 
-/**
- * Parse a date string safely.
- * - Trims fractional seconds to max 3 digits (V8 handles 7, Safari may not).
- * - Parses bare "YYYY-MM-DD" as local date (avoids UTC off-by-one).
- */
 const parseDate = (value) => {
   if (value === null || value === undefined || String(value).trim() === "")
     return null;
@@ -116,7 +165,6 @@ const parseDate = (value) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
-// dd-mm-yyyy
 const formatDate = (iso) => {
   const d = parseDate(iso);
   if (!d) return "—";
@@ -126,7 +174,6 @@ const formatDate = (iso) => {
   return `${dd}-${mm}-${yyyy}`;
 };
 
-// dd-mm-yyyy hh:mm AM/PM
 const formatDateTime = (iso) => {
   const d = parseDate(iso);
   if (!d) return "—";
@@ -143,7 +190,7 @@ const formatDateTime = (iso) => {
 const formatUser = (v) => val(v);
 
 /* ---------------- Page ---------------- */
-const EmployerProfile = () => {
+const EmployerProfile = ({ mode }) => {
   const navigate = useNavigate();
   const { id } = useParams();
 
@@ -152,8 +199,68 @@ const EmployerProfile = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState("overview");
+  const [isEditing, setIsEditing] = useState(mode === "edit");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [instituteTypes, setInstituteTypes] = useState([]);
+  const [countries, setCountries] = useState([]);
+  const [states, setStates] = useState([]);
+  const [cities, setCities] = useState([]);
+  const [draft, setDraft] = useState({});
 
-  /* ---------------- Fetch employer ---------------- */
+  useEffect(() => {
+    if (!emp) return;
+    setDraft({
+      email: emp.email ?? emp.userName ?? "",
+      mobile: emp.mobile ?? "",
+      fullName: emp.fullName ?? "",
+      organizationName: emp.eM_organization_name ?? "",
+      instituteTypeId: String(emp.eM_institute_type_id ?? ""),
+      contactPerson: emp.eM_contact_person ?? "",
+      designation: emp.eM_designation ?? "",
+      countryId: String(emp.eM_country_id ?? ""),
+      stateId: String(emp.eM_state_id ?? ""),
+      cityId: String(emp.eM_city_id ?? ""),
+      website: emp.eM_website ?? "",
+      consentGiven: Boolean(emp.eM_consent_given),
+    });
+  }, [emp]);
+
+  useEffect(() => {
+    if (!isEditing) return undefined;
+    let cancelled = false;
+    const loadLookups = async () => {
+      setEditError("");
+      try {
+        const [instituteResponse, countryResponse, stateResponse, cityResponse] =
+          await Promise.all([
+            instituteTypeApi.getAllList(),
+            countryMasterApi.getAllList(),
+            stateMasterApi.getAllList(),
+            cityMasterApi.getAllList(),
+          ]);
+        if (cancelled) return;
+        setInstituteTypes(extractList(instituteResponse));
+        setCountries(extractList(countryResponse));
+        setStates(extractList(stateResponse));
+        setCities(extractList(cityResponse));
+      } catch (err) {
+        if (!cancelled) {
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load employer edit options.",
+          );
+        }
+      }
+    };
+    loadLookups();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -207,14 +314,124 @@ const EmployerProfile = () => {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, refreshKey]);
 
-  /* ------------------- Navigation helpers ------------------- */
-  const goToEditProfile = () => navigate(`/admin/employers/${id}/edit`);
+  const goToEditProfile = () => {
+    setDraft({
+      email: emp?.email ?? emp?.userName ?? "",
+      mobile: emp?.mobile ?? "",
+      fullName: emp?.fullName ?? "",
+      organizationName: emp?.eM_organization_name ?? "",
+      instituteTypeId: String(emp?.eM_institute_type_id ?? ""),
+      contactPerson: emp?.eM_contact_person ?? "",
+      designation: emp?.eM_designation ?? "",
+      countryId: String(emp?.eM_country_id ?? ""),
+      stateId: String(emp?.eM_state_id ?? ""),
+      cityId: String(emp?.eM_city_id ?? ""),
+      website: emp?.eM_website ?? "",
+      consentGiven: Boolean(emp?.eM_consent_given),
+    });
+    setEditError("");
+    setIsEditing(true);
+  };
+
+  const updateDraft = (key, value) =>
+    setDraft((current) => ({ ...current, [key]: value }));
+
+  const filteredStates = useMemo(
+    () =>
+      states.filter((state) => String(state.sM_CountryId) === draft.countryId),
+    [states, draft.countryId],
+  );
+  const filteredCities = useMemo(
+    () =>
+      cities.filter((city) => String(city.ctM_StateId) === draft.stateId),
+    [cities, draft.stateId],
+  );
+
+  const saveEmployer = async () => {
+    const userId = Number(getCurrentUserId2());
+    if (!Number.isInteger(userId) || userId <= 0) {
+      setEditError("Unable to identify the current user. Please sign in again.");
+      return;
+    }
+    if (
+      !draft.organizationName.trim() ||
+      !draft.instituteTypeId ||
+      !draft.contactPerson.trim() ||
+      !draft.designation.trim() ||
+      !draft.email.trim() ||
+      !draft.mobile.trim() ||
+      !draft.countryId ||
+      !draft.stateId ||
+      !draft.cityId
+    ) {
+      setEditError("Complete all required employer fields before saving.");
+      return;
+    }
+    if (!MOBILE_RE.test(draft.mobile.trim())) {
+      setEditError("Mobile must be exactly 10 digits.");
+      return;
+    }
+    if (!EMAIL_RE.test(draft.email.trim())) {
+      setEditError("Enter a valid email address.");
+      return;
+    }
+    if (!draft.consentGiven) {
+      setEditError("Please provide consent before submitting.");
+      return;
+    }
+    if (
+      !instituteTypes.some(
+        (type) => String(type.iT_institute_type_id) === draft.instituteTypeId,
+      ) ||
+      !countries.some((country) => String(country.cM_Id) === draft.countryId) ||
+      !filteredStates.some((state) => String(state.sM_Id) === draft.stateId) ||
+      !filteredCities.some((city) => String(city.ctM_Id) === draft.cityId)
+    ) {
+      setEditError("Select valid organization and location options.");
+      return;
+    }
+
+    setSaving(true);
+    setEditError("");
+    try {
+      await updateEmployer(id, {
+        eM_employer_id: Number(id),
+        email: draft.email.trim(),
+        mobile: draft.mobile.trim(),
+        fullName: draft.fullName.trim(),
+        eM_organization_name: draft.organizationName.trim(),
+        eM_institute_type_id: Number(draft.instituteTypeId),
+        eM_contact_person: draft.contactPerson.trim(),
+        eM_designation: draft.designation.trim(),
+        eM_country_id: Number(draft.countryId),
+        eM_state_id: Number(draft.stateId),
+        eM_city_id: Number(draft.cityId),
+        eM_website: draft.website.trim(),
+        eM_consent_given: Boolean(draft.consentGiven),
+        eM_created_by: emp.eM_created_by ?? emp.EM_created_by,
+        eM_updated_by: userId,
+      });
+      setIsEditing(false);
+      setRefreshKey((current) => current + 1);
+      if (mode === "edit") {
+        navigate(`/admin/employers/${id}`, { replace: true });
+      }
+    } catch (err) {
+      setEditError(
+        err?.response?.data?.message ||
+          err?.response?.data?.Message ||
+          err?.message ||
+          "Failed to update employer.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const pageTitle = emp?.eM_organization_name || "Employer";
 
-  /* ---------- Loading ---------- */
   if (loading) {
     return (
       <div className={`min-h-full ${T.bg} p-6`}>
@@ -228,7 +445,6 @@ const EmployerProfile = () => {
     );
   }
 
-  /* ---------- Error / Not found ---------- */
   if (error || !emp) {
     return (
       <div className={`min-h-full ${T.bg} p-6`}>
@@ -270,16 +486,52 @@ const EmployerProfile = () => {
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={goToEditProfile}
-                className={BTN_PRIMARY}
-              >
-                Edit
-              </button>
+            <div className="flex items-center gap-2">
+              {isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditError("");
+                      if (mode === "edit") {
+                        navigate(`/admin/employers/${id}`, { replace: true });
+                      }
+                    }}
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                  >
+                    <X size={15} /> Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveEmployer}
+                    disabled={saving}
+                    className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    <Save size={15} /> {saving ? "Saving..." : "Save"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={goToEditProfile}
+                  className={BTN_PRIMARY}
+                >
+                  Edit
+                </button>
+              )}
             </div>
           </div>
+
+          {editError && (
+            <div
+              role="alert"
+              className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700"
+            >
+              {editError}
+            </div>
+          )}
 
           {/* BODY */}
           <div className="p-4">
@@ -288,7 +540,7 @@ const EmployerProfile = () => {
               <aside className="md:sticky md:top-4 md:h-fit w-[11rem]">
                 <nav
                   aria-label="Employer sections"
-                  className={`${T.surface} ${T.radius} border ${T.border} overflow-hidden p-1.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                  className={`${T.surface} ${T.radius} border ${T.border} overflow-hidden p-1.5 ${T.cardShadow}`}
                 >
                   {NAV.map((n) => {
                     const on = tab === n.id;
@@ -324,136 +576,295 @@ const EmployerProfile = () => {
 
               {/* RIGHT: detail panel */}
               <main className="min-w-0">
-                {/* -------- Overview -------- */}
+                {/* -------- Overview (matches JobSeekerDetails: space-y-6, one Card per section) -------- */}
                 {tab === "overview" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
-                    <div className="space-y-6 p-4">
-                      {/* Organization */}
-                      <div>
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Organization Details
-                        </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Employer ID"
-                            value={emp.eM_request_no}
-                            mono
-                          />
-                          <FieldRow
-                            label="Organization Name"
-                            value={emp.eM_organization_name}
-                          />
-                          <FieldRow
-                            label="Organization Type"
-                            value={emp.instituteTypeName}
-                          />
-                          <FieldRow label="Website">
-                            {emp.eM_website ? (
-                              <a
-                                href={
-                                  /^https?:\/\//i.test(emp.eM_website)
-                                    ? emp.eM_website
-                                    : `https://${emp.eM_website}`
+                  <div className="space-y-6">
+                    {/* Organization Details */}
+                    <Card title="Organization Details">
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        <FieldRow
+                          label="Employer ID"
+                          value={emp.eM_request_no}
+                          mono
+                        />
+                        <FieldRow
+                          label="Organization Name"
+                          value={emp.eM_organization_name}
+                        >
+                          {isEditing ? (
+                            <input
+                              className={EDIT_INPUT}
+                              value={draft.organizationName ?? ""}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "organizationName",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          ) : undefined}
+                        </FieldRow>
+                        <FieldRow
+                          label="Organization Type"
+                          value={emp.instituteTypeName}
+                        >
+                          {isEditing ? (
+                            <select
+                              className={EDIT_INPUT}
+                              value={draft.instituteTypeId ?? ""}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "instituteTypeId",
+                                  event.target.value,
+                                )
+                              }
+                            >
+                              <option value="">Select organization type</option>
+                              {instituteTypes.map((type) => (
+                                <option
+                                  key={type.iT_institute_type_id}
+                                  value={String(type.iT_institute_type_id)}
+                                >
+                                  {type.iT_name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : undefined}
+                        </FieldRow>
+                        <FieldRow label="Website">
+                          {isEditing ? (
+                            <input
+                              className={EDIT_INPUT}
+                              value={draft.website ?? ""}
+                              onChange={(event) =>
+                                updateDraft("website", event.target.value)
+                              }
+                            />
+                          ) : emp.eM_website ? (
+                            <a
+                              href={
+                                /^https?:\/\//i.test(emp.eM_website)
+                                  ? emp.eM_website
+                                  : `https://${emp.eM_website}`
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex min-w-0 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
+                            >
+                              <span className="truncate">
+                                {emp.eM_website}
+                              </span>
+                              <ExternalLink size={11} />
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </FieldRow>
+                        <FieldRow
+                          label="Email / Username"
+                          value={emp.userName}
+                        >
+                          {isEditing ? (
+                            <input
+                              type="email"
+                              className={EDIT_INPUT}
+                              value={draft.email ?? ""}
+                              onChange={(event) =>
+                                updateDraft("email", event.target.value)
+                              }
+                            />
+                          ) : undefined}
+                        </FieldRow>
+                        <FieldRow
+                          label="Status"
+                          value={active ? "Active" : "Inactive"}
+                        />
+                        <FieldRow
+                          label="Consent Given"
+                          value={toYesNo(emp.eM_consent_given)}
+                        >
+                          {isEditing ? (
+                            <label className="flex items-center gap-2 text-[13px]">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(draft.consentGiven)}
+                                onChange={(event) =>
+                                  updateDraft(
+                                    "consentGiven",
+                                    event.target.checked,
+                                  )
                                 }
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex min-w-0 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
-                              >
-                                <span className="truncate">
-                                  {emp.eM_website}
-                                </span>
-                                <ExternalLink size={11} />
-                              </a>
-                            ) : (
-                              "—"
-                            )}
-                          </FieldRow>
-
-                          <FieldRow
-                            label="Email / Username"
-                            value={emp.userName}
-                          />
-                          <FieldRow
-                            label="Status"
-                            value={active ? "Active" : "Inactive"}
-                          />
-                          <FieldRow
-                            label="Consent Given"
-                            value={toYesNo(emp.eM_consent_given)}
-                          />
-                          <FieldRow
-                            label="Consent At"
-                            value={formatDateTime(emp.eM_consent_at)}
-                          />
-                        </div>
+                              />
+                              Consent given
+                            </label>
+                          ) : undefined}
+                        </FieldRow>
+                        <FieldRow
+                          label="Consent At"
+                          value={formatDateTime(emp.eM_consent_at)}
+                        />
                       </div>
+                    </Card>
 
-                      {/* Contact Person */}
-                      <div>
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Contact Person
-                        </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Contact Person"
-                            value={emp.eM_contact_person}
-                          />
-                          <FieldRow
-                            label="Designation"
-                            value={emp.eM_designation}
-                          />
-                          <FieldRow label="Mobile" value={emp.mobile} mono />
-                        </div>
+                    {/* Contact Person */}
+                    <Card title="Contact Person">
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        <FieldRow
+                          label="Contact Person"
+                          value={emp.eM_contact_person}
+                        >
+                          {isEditing ? (
+                            <input
+                              className={EDIT_INPUT}
+                              value={draft.contactPerson ?? ""}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "contactPerson",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          ) : undefined}
+                        </FieldRow>
+                        <FieldRow
+                          label="Designation"
+                          value={emp.eM_designation}
+                        >
+                          {isEditing ? (
+                            <input
+                              className={EDIT_INPUT}
+                              value={draft.designation ?? ""}
+                              onChange={(event) =>
+                                updateDraft("designation", event.target.value)
+                              }
+                            />
+                          ) : undefined}
+                        </FieldRow>
+                        <FieldRow label="Mobile" value={emp.mobile} mono>
+                          {isEditing ? (
+                            <input
+                              className={EDIT_INPUT}
+                              value={draft.mobile ?? ""}
+                              onChange={(event) =>
+                                updateDraft("mobile", event.target.value)
+                              }
+                            />
+                          ) : undefined}
+                        </FieldRow>
                       </div>
+                    </Card>
 
-                      {/* Location */}
-                      <div>
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Location
-                        </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow label="Country" value={emp.countryName} />
-                          <FieldRow label="State" value={emp.stateName} />
-                          <FieldRow label="City" value={emp.cityName} />
-                        </div>
+                    {/* Location */}
+                    <Card title="Location">
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        <FieldRow label="Country" value={emp.countryName}>
+                          {isEditing ? (
+                            <select
+                              className={EDIT_INPUT}
+                              value={draft.countryId ?? ""}
+                              onChange={(event) => {
+                                updateDraft("countryId", event.target.value);
+                                updateDraft("stateId", "");
+                                updateDraft("cityId", "");
+                              }}
+                            >
+                              <option value="">Select country</option>
+                              {countries.map((country) => (
+                                <option
+                                  key={country.cM_Id}
+                                  value={String(country.cM_Id)}
+                                >
+                                  {country.cM_CountryName}
+                                </option>
+                              ))}
+                            </select>
+                          ) : undefined}
+                        </FieldRow>
+                        <FieldRow label="State" value={emp.stateName}>
+                          {isEditing ? (
+                            <select
+                              className={EDIT_INPUT}
+                              value={draft.stateId ?? ""}
+                              disabled={!draft.countryId}
+                              onChange={(event) => {
+                                updateDraft("stateId", event.target.value);
+                                updateDraft("cityId", "");
+                              }}
+                            >
+                              <option value="">Select state</option>
+                              {filteredStates.map((state) => (
+                                <option
+                                  key={state.sM_Id}
+                                  value={String(state.sM_Id)}
+                                >
+                                  {state.sM_StateName}
+                                </option>
+                              ))}
+                            </select>
+                          ) : undefined}
+                        </FieldRow>
+                        <FieldRow label="City" value={emp.cityName}>
+                          {isEditing ? (
+                            <select
+                              className={EDIT_INPUT}
+                              value={draft.cityId ?? ""}
+                              disabled={!draft.stateId}
+                              onChange={(event) =>
+                                updateDraft("cityId", event.target.value)
+                              }
+                            >
+                              <option value="">Select city</option>
+                              {filteredCities.map((city) => (
+                                <option
+                                  key={city.ctM_Id}
+                                  value={String(city.ctM_Id)}
+                                >
+                                  {city.ctM_CityName}
+                                </option>
+                              ))}
+                            </select>
+                          ) : undefined}
+                        </FieldRow>
                       </div>
+                    </Card>
 
-                      {/* Audit Trail */}
-                      <div>
-                      
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Created At"
-                            value={formatDateTime(emp.eM_created_at)}
-                          />
-                          <FieldRow
-                            label="Created By"
-                            value={formatUser(emp.createdByName)}
-                          />
-                          <FieldRow
-                            label="Updated At"
-                            value={formatDateTime(emp.eM_updated_at)}
-                          />
-                          <FieldRow
-                            label="Updated By"
-                            value={formatUser(emp.updatedByName)}
-                          />
-                          <FieldRow
-                            label="Activated At"
-                            value={formatDateTime(emp.eM_activated_at)}
-                          />
-                        </div>
+                    {/* User Log */}
+                    <Card title="User Log">
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        <FieldRow
+                          label="Created At"
+                          value={formatDateTime(emp.eM_created_at)}
+                        />
+                        <FieldRow
+                          label="Created By"
+                          value={formatUser(emp.createdByName)}
+                        />
+                        <FieldRow
+                          label="Updated At"
+                          value={formatDateTime(emp.eM_updated_at)}
+                        />
+                        <FieldRow
+                          label="Updated By"
+                          value={formatUser(emp.updatedByName)}
+                        />
+                        <FieldRow
+                          label="Activated At"
+                          value={formatDateTime(emp.eM_activated_at)}
+                        />
                       </div>
-                    </div>
-                  </section>
+                    </Card>
+                  </div>
                 )}
 
-                {/* -------- Job Requirements -------- */}
+                {/* -------- Job Requirements (single Card, matches JobSeekerDetails tab pattern) -------- */}
                 {tab === "jobs" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border}`}
+                  <Card
+                    title="Job Requirements"
+                    action={
+                      <p className="text-xs text-[#5b6b7c]">
+                        {jobs.length} posting{jobs.length !== 1 ? "s" : ""}
+                      </p>
+                    }
                   >
                     {jobs.length === 0 ? (
                       <div className="px-4 py-12 text-center">
@@ -465,7 +876,7 @@ const EmployerProfile = () => {
                         </p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                         {jobs.map((job) => {
                           const pct = job.vacancies
                             ? Math.round((job.filled / job.vacancies) * 100)
@@ -552,7 +963,7 @@ const EmployerProfile = () => {
                         })}
                       </div>
                     )}
-                  </section>
+                  </Card>
                 )}
               </main>
             </div>

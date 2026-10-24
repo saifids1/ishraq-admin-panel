@@ -62,7 +62,7 @@ const AdminRoutes = (
       <Route path="employers/:id" element={<EmployerProfile />} />
       <Route
         path="employers/:id/edit"
-        element={<CreateEmployer mode="edit" />}
+        element={<EmployerProfile mode="edit" />}
       />
       {/* Settings */}
       <Route path="userList" element={<Navigate to="/admin/users" replace />} />
@@ -73,7 +73,7 @@ const AdminRoutes = (
       <Route path="jobseekers/:id" element={<JobSeekerDetails />} />
       <Route
         path="jobseekers/:id/edit"
-        element={<AddJobSeeker mode="edit" />}
+        element={<JobSeekerDetails mode="edit" />}
       />
       <Route path="job-requirement-list" element={<JobRequirementList />} />
       {/* <Route path="/admin/job-requirements" element={<JobRequirementList />} /> */}

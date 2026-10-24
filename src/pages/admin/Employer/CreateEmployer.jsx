@@ -116,7 +116,7 @@ const MOBILE_RE = /^\d{10}$/;
 
 /* ----------------------------- COMPONENT ----------------------------- */
 
-const CreateEmployer = ({ mode }) => {
+const CreateEmployer = ({ mode, onCancel, onSaved }) => {
   const navigate = useNavigate();
   const { id } = useParams();
 
@@ -438,7 +438,13 @@ const CreateEmployer = ({ mode }) => {
           `Employer ${isCreate ? "created" : "updated"} successfully.`,
         {
           confirmText: "Continue",
-          onConfirm: () => navigate(listPath),
+          onConfirm: () => {
+            if (onSaved) {
+              onSaved();
+              return;
+            }
+            navigate(listPath);
+          },
         },
       );
     } catch (err) {
@@ -550,7 +556,7 @@ const CreateEmployer = ({ mode }) => {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => navigate(listPath)}
+                onClick={() => (onCancel ? onCancel() : navigate(listPath))}
                 title="Back"
                 aria-label="Back"
                 className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
@@ -834,7 +840,7 @@ const CreateEmployer = ({ mode }) => {
             <div className="mt-6 flex justify-between gap-3 border-t border-slate-100 pt-4">
               <button
                 type="button"
-                onClick={() => navigate(listPath)}
+                onClick={() => (onCancel ? onCancel() : navigate(listPath))}
                 className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
               >
                 {isView ? "Back" : "Cancel"}

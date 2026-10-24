@@ -174,7 +174,7 @@ const requestStatusIdOf = (item) => {
 
 const TABLE_COLUMNS = [
   { key: "srNo", label: "Sr.No", width: "60px" },
-  { key: "requestId", label: "Request ID", width: "170px" },
+  { key: "requestId", label: "Complaint ID", width: "170px" },
   { key: "name", label: "Name", width: "180px" },
   { key: "email", label: "Email", width: "200px" },
   { key: "mobile", label: "Mobile", width: "120px" },

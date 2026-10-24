@@ -159,7 +159,7 @@ const requestToneOf = (value) => {
 
 const TABLE_COLUMNS = [
   { key: "srNo", label: "Sr.No", width: "60px" },
-  { key: "requestId", label: "Request ID", width: "170px" },
+  { key: "requestId", label: "Career Enquiry ID", width: "170px" },
   { key: "name", label: "Name", width: "180px" },
   { key: "email", label: "Gmail", width: "230px" },
   { key: "mobile", label: "Mobile", width: "120px" },
@@ -181,7 +181,7 @@ const cfg = {
   searchPlaceholder: "Search by name, email, mobile or course",
   categoryField: null,
   listColumns: [
-    { key: "requestId", label: "Request ID" },
+    { key: "requestId", label: "Career Enquiry ID" },
     { key: "CE_name", label: "Name" },
     { key: "CE_age", label: "Age" },
     { key: "CE_qualification", label: "Qualification" },

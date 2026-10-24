@@ -40,6 +40,7 @@ const TABLE_MIN_WIDTH = 1450;
 
 const COLUMNS = [
   { key: "srNo", width: "60px" },
+  { key: "jobSeekerID", width: "180px" },
   { key: "companyName", width: "230px" },
   { key: "contactPerson", width: "200px" },
   { key: "orgType", width: "170px" },
@@ -49,6 +50,8 @@ const COLUMNS = [
   { key: "mobile", width: "150px" },
   { key: "actions", width: "160px" },
 ];
+
+const COL_SPAN_ALL = COLUMNS.length; // 10
 
 /* ------------------------------ TONES ----------------------------- */
 
@@ -95,6 +98,7 @@ const toListRow = (item, srNo) => ({
   ...item,
   id: item["eM_employer_id"],
   companyName: item["eM_organization_name"],
+  jobSeekerID: item["eM_request_no"],
   contactPerson: item["eM_contact_person"],
   designation: item["eM_designation"],
   email: item["email"],
@@ -165,9 +169,17 @@ const EmployerList = () => {
     setLoading(true);
     setError("");
     try {
-      const response = await employerApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
+      const response = await employerApi.getAll({
+        pageNo: page,
+        pageSize,
+        search: query.search.trim() || undefined,
+        status: query.status === "All" ? undefined : query.status,
+      });
+      const {
+        list,
+        totalRecords: total,
+        totalPages: pages,
+      } = parseListResponse(response, pageSize);
 
       setRows(
         list.map((item, index) =>
@@ -184,7 +196,7 @@ const EmployerList = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, query.search, query.status]);
 
   useEffect(() => {
     load();
@@ -275,9 +287,17 @@ const EmployerList = () => {
     try {
       await employerApi.toggleActive(row.id, isActive);
 
-      const response = await employerApi.getAll({ pageNo: page, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
+      const response = await employerApi.getAll({
+        pageNo: page,
+        pageSize,
+        search: query.search.trim() || undefined,
+        status: query.status === "All" ? undefined : query.status,
+      });
+      const {
+        list,
+        totalRecords: total,
+        totalPages: pages,
+      } = parseListResponse(response, pageSize);
 
       setRows(
         list.map((item, index) =>
@@ -302,44 +322,23 @@ const EmployerList = () => {
 
   /* ---------------------------- QUERY HELPERS ---------------------------- */
 
-  const patchFilter = (patch) => setQuery((q) => ({ ...q, ...patch }));
+  const patchFilter = (patch) => {
+    setQuery((q) => ({ ...q, ...patch }));
+    setPage(1); // reset to first page when filter changes
+  };
 
-  /* ---------------------------- FILTERED ROWS ---------------------------- */
+  /* ---------------------------- PAGINATION ---------------------------- */
 
-  const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((e) => {
-      if (
-        q &&
-        ![
-          "companyName",
-          "contactPerson",
-          "email",
-          "mobile",
-          "city",
-          "state",
-          "orgType",
-        ].some((k) => String(e[k] ?? "").toLowerCase().includes(q))
-      )
-        return false;
-      if (query.status !== "All" && e.status !== query.status) return false;
-      return true;
-    });
-  }, [rows, query]);
-
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
-  const currentPage = Math.min(page, totalPagesLocal);
+  const currentPage = Math.min(page, Math.max(1, totalPages || 1));
   const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
 
   const pageNumbers = useMemo(() => {
     const win = 5;
     let from = Math.max(1, currentPage - Math.floor(win / 2));
-    const to = Math.min(totalPagesLocal, from + win - 1);
+    const to = Math.min(Math.max(1, totalPages), from + win - 1);
     from = Math.max(1, to - win + 1);
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
-  }, [currentPage, totalPagesLocal]);
+  }, [currentPage, totalPages]);
 
   /* ---------------------------- TOAST ---------------------------- */
 
@@ -347,7 +346,7 @@ const EmployerList = () => {
     if (!toast) return undefined;
     const t = setTimeout(() => setToast(null), 2800);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [toast, setToast]);
 
   /* ---------------------------- STATUS TOGGLE ---------------------------- */
 
@@ -399,7 +398,7 @@ const EmployerList = () => {
     "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
 
   const stickyActionsCell =
-    "sticky right-0 z-20 bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
+    "sticky right-0 z-20 border-t border-[#e2e8ee] bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
 
   /* ---------------------------- RENDER ---------------------------- */
 
@@ -501,21 +500,11 @@ const EmployerList = () => {
           </div>
         )}
 
-        {/*
-          TABLE LAYOUT
-          - Outer wrapper: 370px fixed, rounded border
-          - Header strip: fixed, no vertical scrollbar, horizontal-scroll
-            synced from body via ref
-          - Body: vertical scrollbar only here (scrollbarGutter reserves space)
-          - Actions column: sticky right in BOTH header and body
-        */}
+        {/* TABLE LAYOUT */}
         <div className="mt-4 h-[370px] overflow-hidden rounded-lg border border-[#cbe1f4]">
           <div className="flex h-full flex-col">
             {/* Header strip — fixed, no vertical scrollbar */}
-            <div
-              ref={headerScrollRef}
-              className="shrink-0 overflow-hidden"
-            >
+            <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
               <table
                 className="w-full table-fixed border-collapse text-[15px]"
                 style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
@@ -529,6 +518,9 @@ const EmployerList = () => {
                   <tr>
                     <th scope="col" className={thClass}>
                       Sr.No
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Employer ID
                     </th>
                     <th scope="col" className={thClass}>
                       Organization Name
@@ -578,7 +570,7 @@ const EmployerList = () => {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center">
+                      <td colSpan={COL_SPAN_ALL} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center">
                           <span
                             aria-hidden="true"
@@ -590,22 +582,22 @@ const EmployerList = () => {
                         </div>
                       </td>
                     </tr>
-                  ) : pageRows.length === 0 ? (
+                  ) : rows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={COL_SPAN_ALL}
                         className="border-t border-[#e2e8ee] px-4 py-12 text-center"
                       >
                         <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                           <Inbox size={22} />
                         </div>
                         <p className="mt-3 text-[15px] text-[#1e2b36]">
-                          No employers yet
+                          No employers found
                         </p>
                       </td>
                     </tr>
                   ) : (
-                    pageRows.map((row, index) => (
+                    rows.map((row, index) => (
                       <tr
                         key={row.id ?? index}
                         style={{
@@ -618,13 +610,21 @@ const EmployerList = () => {
                         </td>
 
                         <td className={`${td} whitespace-nowrap`}>
-                          <span className="flex flex-col min-w-0">
-                            <span className="font-medium text-slate-900 truncate">
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium text-slate-900">
+                              {row.jobSeekerID || "-"}
+                            </span>
+                          </span>
+                        </td>
+
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium text-slate-900">
                               {row.companyName || "-"}
                             </span>
                             {[row.city, row.state].filter(Boolean).length >
                               0 && (
-                              <span className="text-[12px] text-[#6b7a88] truncate">
+                              <span className="truncate text-[12px] text-[#6b7a88]">
                                 {[row.city, row.state]
                                   .filter(Boolean)
                                   .join(", ")}
@@ -634,12 +634,12 @@ const EmployerList = () => {
                         </td>
 
                         <td className={`${td} whitespace-nowrap`}>
-                          <span className="flex flex-col min-w-0">
-                            <span className="font-medium text-slate-900 truncate">
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium text-slate-900">
                               {row.contactPerson || "-"}
                             </span>
                             {row.designation && (
-                              <span className="text-[12px] text-[#6b7a88] truncate">
+                              <span className="truncate text-[12px] text-[#6b7a88]">
                                 {row.designation}
                               </span>
                             )}
@@ -649,7 +649,7 @@ const EmployerList = () => {
                         <td className={`${td} whitespace-nowrap`}>
                           <span
                             title={row.orgType}
-                            className={`inline-flex h-7 w-[140px] items-center justify-center rounded-md px-2.5 text-[15px] ring-1 ring-inset whitespace-nowrap shadow-sm ${
+                            className={`inline-flex h-7 w-[140px] items-center justify-center rounded-md px-2.5 text-[15px] whitespace-nowrap shadow-sm ring-1 ring-inset ${
                               ORG_TYPE_STYLE[row.orgType] ||
                               "bg-gray-600 text-white ring-gray-700"
                             }`}
@@ -691,7 +691,7 @@ const EmployerList = () => {
                         <td className={`${td} whitespace-nowrap`}>
                           {row.email ? (
                             <span
-                              className="text-[15px] truncate block"
+                              className="block truncate text-[15px]"
                               title={row.email}
                             >
                               {row.email}
@@ -712,14 +712,12 @@ const EmployerList = () => {
                         </td>
 
                         <td
-                          className={`${td} ${stickyActionsCell} text-center`}
+                          className={`${stickyActionsCell} px-3.5 py-2.5 text-center text-[15px] text-slate-900`}
                         >
                           <div className="flex items-center justify-center gap-2">
                             <button
                               type="button"
-                              title={`View ${
-                                row.companyName || "Employer"
-                              }`}
+                              title={`View ${row.companyName || "Employer"}`}
                               aria-label={`View ${
                                 row.companyName || "Employer"
                               }`}
@@ -795,15 +793,15 @@ const EmployerList = () => {
             <span>
               Showing{" "}
               <strong className="font-semibold text-[#53677f]">
-                {count ? start + 1 : 0}
+                {totalRecords ? start + 1 : 0}
               </strong>{" "}
               to{" "}
               <strong className="font-semibold text-[#53677f]">
-                {Math.min(start + pageSize, count)}
+                {Math.min(start + pageSize, totalRecords)}
               </strong>{" "}
               of{" "}
               <strong className="font-semibold text-[#53677f]">
-                {count}
+                {totalRecords}
               </strong>{" "}
               entries
             </span>
@@ -832,7 +830,7 @@ const EmployerList = () => {
           >
             <button
               type="button"
-              onClick={() => setPage(currentPage - 1)}
+              onClick={() => setPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
               className={navBtn}
             >
@@ -855,8 +853,8 @@ const EmployerList = () => {
             ))}
             <button
               type="button"
-              onClick={() => setPage(currentPage + 1)}
-              disabled={currentPage === totalPagesLocal}
+              onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage >= totalPages}
               className={navBtn}
             >
               Next
@@ -866,29 +864,29 @@ const EmployerList = () => {
 
         {/* DIALOG */}
         {confirm && (
-         <StatusModal
-  isOpen
-  type="confirm"
-  title={`Set status to ${confirm.next}?`}
-  message={
-    <>
-      Are you sure you want to set{" "}
-      <strong className="font-semibold text-slate-900">
-        {confirm.row.companyName ||
-          confirm.row.name ||
-          confirm.row.fullName ||
-          confirm.row.organizationName ||
-          "this record"}
-      </strong>{" "}
-      to {confirm.next.toLowerCase()}?
-    </>
-  }
-  showCancel
-  busy={busy}
-  confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
-  onCancel={() => setConfirm(null)}
-  onConfirm={confirmToggle}
-/>
+          <StatusModal
+            isOpen
+            type="confirm"
+            title={`Set status to ${confirm.next}?`}
+            message={
+              <>
+                Are you sure you want to set{" "}
+                <strong className="font-semibold text-slate-900">
+                  {confirm.row.companyName ||
+                    confirm.row.name ||
+                    confirm.row.fullName ||
+                    confirm.row.organizationName ||
+                    "this record"}
+                </strong>{" "}
+                to {confirm.next.toLowerCase()}?
+              </>
+            }
+            showCancel
+            busy={busy}
+            confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+            onCancel={() => setConfirm(null)}
+            onConfirm={confirmToggle}
+          />
         )}
 
         {/* TOAST */}
