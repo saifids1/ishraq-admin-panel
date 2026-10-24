@@ -1,4 +1,5 @@
 import StatusModal from "../../../../components/common/StatusModal";
+import { getAdminStatusRecordLabel } from "../../../../utils/adminStatusConfirmation";
 import { useStatusToast } from "../../../../components/common/StatusModalProvider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -684,21 +685,14 @@ const JobStatusList = () => {
         <StatusModal
           isOpen
           type="confirm"
-          title={`Set status to ${confirm.next}?`}
-          message={`Are you sure you want to set ${
-            confirm.row.name ??
-            confirm.row.fullName ??
-            confirm.row.organizationName ??
-            confirm.row.companyName ??
-            confirm.row.jobCategory ??
-            confirm.row["ctM_CityName"] ??
-            confirm.row["ctM_CountryName"] ??
-            confirm.row["jS_name"] ??
-            "this record"
-          } to ${confirm.next.toLowerCase()}?`}
+          title={`Change Status to ${confirm.next}?`}
+          message={`Are you sure you want to change the status of ${getAdminStatusRecordLabel(
+            confirm.row,
+            ["name", "jS_name"],
+          )} to ${confirm.next}?`}
           showCancel
           busy={busy}
-          confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+          confirmText={`Yes, Change to ${confirm.next}`}
           onCancel={() => setConfirm(null)}
           onConfirm={confirmToggle}
         />

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronDown, ChevronsLeft, FileText } from "lucide-react";
+import { ChevronDown, ChevronsLeft, FileText, History } from "lucide-react";
 import { useStatusToast } from "../../../../components/common/StatusModalProvider";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
 import { getCurrentUserId2 } from "../../../../utils/authUtils";
@@ -455,13 +455,25 @@ const ContactEnquiryDetails = ({ formType = "contact" }) => {
               </div>
             )}
 
-            {record && headerStatusLabel && (
-              <span
-                className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${headerStatusTone.badge}`}
+            <div className="flex items-center gap-2">
+              {record && headerStatusLabel && (
+                <span
+                  className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${headerStatusTone.badge}`}
+                >
+                  {headerStatusLabel}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate(`/admin/contact/${id}/logs`)}
+                title="View status logs"
+                aria-label="View status logs"
+                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#c9d5dd] bg-white px-2.5 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
               >
-                {headerStatusLabel}
-              </span>
-            )}
+                <History size={14} strokeWidth={2.2} />
+                <span className="hidden sm:inline">Logs</span>
+              </button>
+            </div>
           </div>
 
           {error && (

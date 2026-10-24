@@ -20,6 +20,7 @@ import {
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
+import { getAdminStatusRecordLabel } from "../../../utils/adminStatusConfirmation";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -865,23 +866,19 @@ const JobSeekerList = () => {
           <StatusModal
             isOpen
             type="confirm"
-            title={`Set status to ${confirm.next}?`}
+            title={`Change Status to ${confirm.next}?`}
             message={
               <>
-                Are you sure you want to set{" "}
+                Are you sure you want to change the status of{" "}
                 <strong className="font-semibold text-slate-900">
-                  {confirm.row.fullName ||
-                    confirm.row.name ||
-                    confirm.row.position ||
-                    confirm.row.organizationName ||
-                    "this record"}
+                  {getAdminStatusRecordLabel(confirm.row, ["fullName"])}
                 </strong>{" "}
-                to {confirm.next.toLowerCase()}?
+                to {confirm.next}?
               </>
             }
             showCancel
             busy={busy}
-            confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+            confirmText={`Yes, Change to ${confirm.next}`}
             onCancel={() => setConfirm(null)}
             onConfirm={confirmToggle}
           />

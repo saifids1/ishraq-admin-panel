@@ -19,6 +19,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { adminEnquiryService } from "../../../../api/Services/adminEnquiryService";
+import { getAdminStatusRecordLabel } from "../../../../utils/adminStatusConfirmation";
 import { getCurrentUserId2 } from "../../../../utils/authUtils";
 
 /* ------------------------------ HELPERS ------------------------------ */
@@ -828,13 +829,14 @@ const ContactEnquiryList = ({ formType = "contact" }) => {
         <StatusModal
           isOpen
           type="confirm"
-          title={`Set status to ${confirm.next}?`}
-          message={`Are you sure you want to set ${
-            confirm.row[cfg.titleField] || "this record"
-          } to ${confirm.next.toLowerCase()}?`}
+          title={`Change Status to ${confirm.next}?`}
+          message={`Are you sure you want to change the status of ${getAdminStatusRecordLabel(
+            confirm.row,
+            [cfg.titleField],
+          )} to ${confirm.next}?`}
           showCancel
           busy={busy}
-          confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+          confirmText={`Yes, Change to ${confirm.next}`}
           onCancel={() => setConfirm(null)}
           onConfirm={confirmToggle}
         />

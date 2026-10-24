@@ -6,24 +6,28 @@ export const ENDPOINTS = {
     detail: "/Complaint",
     activeStatus: "/Complaint",
     file: "/Complaint",
+    statusHistory: "/Complaint",
     idField: "cP_complaint_id",
   },
   career: {
     list: "/CareerEnquiry",
     detail: "/CareerEnquiry",
     activeStatus: "/CareerEnquiry",
+    statusHistory: "/CareerEnquiry",
     idField: "cE_career_enquiry_id",
   },
   contact: {
     list: "/ContactEnquiry",
     detail: "/ContactEnquiry",
     activeStatus: null,
+    statusHistory: "/ContactEnquiry",
     idField: "cN_contact_enquiry_id",
   },
   feedback: {
     list: "/Feedback/GetAllFeedbackPagination",
     detail: "/Feedback",
     activeStatus: null,
+    statusHistory: "/Feedback",
     idField: "fB_feedback_id",
   },
 };
@@ -255,6 +259,34 @@ export const adminEnquiryService = {
       },
     );
     return res.data;
+  },
+
+  getStatusLogs: async (formType, enquiryId) => {
+    const { statusHistory } = getEndpoints(formType);
+    if (!statusHistory) {
+      throw new Error(`Status history is not available for ${formType}.`);
+    }
+    if (enquiryId === null || enquiryId === undefined || enquiryId === "") {
+      throw new Error("An enquiry ID is required to load status history.");
+    }
+
+    const res = await axiosInstance.get(
+      `${statusHistory}/${encodeURIComponent(enquiryId)}/status-history`,
+    );
+    const body = res.data;
+
+    if (body?.success === false || body?.Success === false) {
+      throw new Error(
+        body?.message ?? body?.Message ?? "Unable to load status history.",
+      );
+    }
+
+    const logs = body?.data ?? body?.Data ?? body;
+    if (!Array.isArray(logs)) {
+      throw new Error("Unexpected status history response from the server.");
+    }
+
+    return logs.map(normalizeKeys);
   },
 
   getRequestStatuses: async () => {

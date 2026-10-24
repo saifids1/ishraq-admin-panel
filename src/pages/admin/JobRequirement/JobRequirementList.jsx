@@ -28,6 +28,7 @@ import jobRoleApi from "../../../api/Services/jobRoleApi";
 import jobCategoryApi from "../../../api/Services/jobCategoryApi";
 import instituteTypeApi from "../../../api/Services/instituteTypeApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
+import { getAdminStatusRecordLabel } from "../../../utils/adminStatusConfirmation";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
@@ -1264,25 +1265,22 @@ const JobRequirementList = () => {
           </div>
         )}
 
-        {confirm && (
-          <StatusModal
-            isOpen
-            type="confirm"
-            title={`Set status to ${confirm.next}?`}
-            message={`Are you sure you want to set ${
-              confirm.row.name ??
-              confirm.row.fullName ??
-              confirm.row.position ??
-              confirm.row.organizationName ??
-              "this record"
-            } to ${confirm.next.toLowerCase()}?`}
-            showCancel
-            busy={busy}
-            confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
-            onCancel={() => setConfirm(null)}
-            onConfirm={confirmToggle}
-          />
-        )}
+       {confirm && (
+  <StatusModal
+    isOpen
+    type="confirm"
+    title={`Change Status to ${confirm.next}?`}
+    message={`Are you sure you want to change the status of ${getAdminStatusRecordLabel(
+      confirm.row,
+      ["position", "organizationName"],
+    )} to ${confirm.next}?`}
+    showCancel
+    busy={busy}
+    confirmText={`Yes, Change to ${confirm.next}`}
+    onCancel={() => setConfirm(null)}
+    onConfirm={confirmToggle}
+  />
+)}
 
         {toast && (
           <div

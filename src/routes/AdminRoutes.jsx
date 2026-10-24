@@ -49,6 +49,7 @@ import ComplaintList from "../pages/admin/Enquiries/Complaints/ComplaintList";
 import ComplaintDetails from "../pages/admin/Enquiries/Complaints/ComplaintDetails";
 import FeedbackList from "../pages/admin/Enquiries/Feedback/FeedbackList";
 import FeedbackDetails from "../pages/admin/Enquiries/Feedback/FeedbackDetails";
+import StatusLogsList from "../pages/admin/Enquiries/StatusLogsList";
 import CreateEmployer from "../pages/admin/Employer/CreateEmployer.jsx";
 
 const AdminRoutes = (
@@ -251,14 +252,30 @@ const AdminRoutes = (
         path="complaints/:id"
         element={<ComplaintDetails />}
       />
+      <Route
+        path="complaints/:id/logs"
+        element={<StatusLogsList formType="complaint" />}
+      />
       <Route path="career" element={<CareerEnquiryList />} />
       <Route
         path="contact/:id"
         element={<ContactEnquiryDetails />}
       />
+      <Route
+        path="contact/:id/logs"
+        element={<StatusLogsList formType="contact" />}
+      />
       <Route path="career/:id" element={<CareerEnquiryDetails />} />
+      <Route
+        path="career/:id/logs"
+        element={<StatusLogsList formType="career" />}
+      />
       <Route path="contact" element={<ContactEnquiryList />} />
       <Route path="feedback" element={<FeedbackList />} />
+      <Route
+        path="feedback/:id/logs"
+        element={<StatusLogsList formType="feedback" />}
+      />
       <Route path="feedback/:id" element={<FeedbackDetails />} />
     </Route>
   </Route>

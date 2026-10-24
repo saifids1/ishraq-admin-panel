@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import jobCategoryApi from "../../../../api/Services/jobCategoryApi";
 import { getApiErrorMessage } from "../../../../api/utils/apiHelpers";
+import { getAdminStatusRecordLabel } from "../../../../utils/adminStatusConfirmation";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
@@ -723,13 +724,14 @@ const JobCategoryList = () => {
         <StatusModal
           isOpen
           type="confirm"
-          title={`Set status to ${confirm.next}?`}
-          message={`Are you sure you want to set ${
-            confirm.row.name || "this record"
-          } to ${confirm.next.toLowerCase()}?`}
+          title={`Change Status to ${confirm.next}?`}
+          message={`Are you sure you want to change the status of ${getAdminStatusRecordLabel(
+            confirm.row,
+            ["name", "jC_name"],
+          )} to ${confirm.next}?`}
           showCancel
           busy={busy}
-          confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+          confirmText={`Yes, Change to ${confirm.next}`}
           onCancel={() => {
             if (!busy) setConfirm(null);
           }}

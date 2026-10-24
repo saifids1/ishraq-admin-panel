@@ -27,6 +27,7 @@ import {
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
 import employerApi from "../../../api/Services/adminemployeelistApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
+import { getAdminStatusRecordLabel } from "../../../utils/adminStatusConfirmation";
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -859,23 +860,19 @@ const EmployerList = () => {
           <StatusModal
             isOpen
             type="confirm"
-            title={`Set status to ${confirm.next}?`}
+            title={`Change Status to ${confirm.next}?`}
             message={
               <>
-                Are you sure you want to set{" "}
+                Are you sure you want to change the status of{" "}
                 <strong className="font-semibold text-slate-900">
-                  {confirm.row.companyName ||
-                    confirm.row.name ||
-                    confirm.row.fullName ||
-                    confirm.row.organizationName ||
-                    "this record"}
+                  {getAdminStatusRecordLabel(confirm.row, ["companyName"])}
                 </strong>{" "}
-                to {confirm.next.toLowerCase()}?
+                to {confirm.next}?
               </>
             }
             showCancel
             busy={busy}
-            confirmText={`Yes, set ${confirm.next.toLowerCase()}`}
+            confirmText={`Yes, Change to ${confirm.next}`}
             onCancel={() => setConfirm(null)}
             onConfirm={confirmToggle}
           />
