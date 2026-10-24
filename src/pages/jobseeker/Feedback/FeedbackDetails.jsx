@@ -24,21 +24,21 @@ const displayText = (value) =>
     : "";
 
 /* ---------- STATUS (same colors as the feedback list) ---------- */
-
 const STATUS_BADGE = {
-  open: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  active: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  new: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  hold: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  paused: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  pending: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  closed: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
-  resolved: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
+  new: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/30",
+  open: "bg-blue-600 text-white ring-blue-700 shadow-blue-600/20",
+  "in-progress":
+    "bg-orange-500 text-white ring-orange-600 shadow-orange-500/20",
+  hold: "bg-red-600 text-white ring-red-700 shadow-red-600/20",
+  closed: "bg-emerald-600 text-white ring-emerald-700 shadow-emerald-600/20",
 };
 
 const statusBadgeClass = (value) =>
-  STATUS_BADGE[String(value ?? "").trim().toLowerCase()] ??
-  "bg-slate-500 ring-slate-600 shadow-slate-500/20";
+  STATUS_BADGE[
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+  ] ?? "bg-slate-500 ring-slate-600 shadow-slate-500/20";
 
 /* ------------------------------ STYLES ------------------------------ */
 
@@ -57,8 +57,8 @@ const Stars = ({ value }) => (
 
 /* Field definitions. Rendering type decides how each value is shown. */
 const FIELDS = [
-  { key: "fB_feedback_id", label: "Feedback ID" },
-  { key: "fB_request_no", label: "Request No." },
+  // { key: "fB_feedback_id", label: "Feedback ID" },
+  // { key: "fB_request_no", label: "Request No." },
   { key: "fB_name", label: "Full Name" },
   { key: "userTypeName", label: "User Type" },
   { key: "fB_contact", label: "Contact / Email" },
@@ -103,7 +103,9 @@ const FeedbackDetails = () => {
 
         if (response?.success === false || response?.Success === false) {
           throw new Error(
-            response?.message || response?.Message || "Failed to load feedback.",
+            response?.message ||
+              response?.Message ||
+              "Failed to load feedback.",
           );
         }
 
@@ -209,6 +211,7 @@ const FeedbackDetails = () => {
 
               <h2 className="font-semibold text-slate-800">View Feedback</h2>
             </div>
+              <h2 className="font-semibold text-slate-800">{record.fB_request_no}</h2>
 
             {record && statusLabel && (
               <span
@@ -245,8 +248,8 @@ const FeedbackDetails = () => {
                   {FIELDS.map((field) => (
                     <div
                       key={field.key}
-                      className={`grid grid-cols-[130px_1fr] items-center gap-3 ${
-                        field.type === "multiline" ? "md:col-span-2" : ""
+                      className={`grid grid-cols-[130px_1fr]  gap-3 ${
+                        field.type === "multiline" ? "md:col-span-2 items-top mt-1" : "items-center"
                       }`}
                     >
                       <span className="text-[14px] font-semibold text-black">
@@ -261,8 +264,8 @@ const FeedbackDetails = () => {
               </div>
 
               {/* Response (read-only) */}
-              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
-                <p className="mb-1.5 text-sm font-medium text-slate-700">
+              <div className="mt-4 rounded-lg border flex border-slate-200 bg-white p-4">
+                <p className="mb-1.5 text-sm font-medium text-slate-900 mr-[8%]">
                   Response
                 </p>
                 <div className="w-full whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
@@ -274,16 +277,7 @@ const FeedbackDetails = () => {
                 </div>
               </div>
 
-              {/* Footer */}
-              <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
-                <button
-                  type="button"
-                  onClick={() => navigate(-1)}
-                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                >
-                  Back
-                </button>
-              </div>
+              
             </div>
           ) : null}
         </div>
