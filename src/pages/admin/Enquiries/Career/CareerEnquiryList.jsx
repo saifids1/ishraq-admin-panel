@@ -80,67 +80,43 @@ const STATUS_TONES = { Active: "success", Inactive: "danger" };
 const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
 
 const REQUEST_STATUS_LABELS = {
-  1: "In Progress",
-  2: "On Hold",
-  3: "Closed",
-};
-
-const requestStatusIdOf = (item) => {
-  const knownStatusId =
-    readField(item, "requestStatusId") ??
-    readField(item, "statusId") ??
-    readField(item, "RequestStatusId") ??
-    readField(item, "CE_status_id") ??
-    readField(item, "cE_status_id") ??
-    readField(item, "enquiry_status_id");
-  if (knownStatusId != null) return knownStatusId;
-
-  const statusIdEntry = Object.entries(item ?? {}).find(([key, value]) => {
-    const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
-    return (
-      /^(?:ce)?(?:request|enquiry)?statusid$/.test(normalizedKey) &&
-      value != null &&
-      String(value).trim() !== "" &&
-      Number.isFinite(Number(value))
-    );
-  });
-  return statusIdEntry?.[1];
-};
-
-const requestStatusOf = (item) => {
-  const statusId = requestStatusIdOf(item);
-  const statusName =
-    readField(item, "statusName") ??
-    readField(item, "status") ??
-    readField(item, "enquiry_status");
-  if (statusName) return String(statusName);
-  if (statusId != null && REQUEST_STATUS_LABELS[Number(statusId)])
-    return REQUEST_STATUS_LABELS[Number(statusId)];
-  return "-";
+  1: "NEW",
+  2: "OPEN",
+  3: "IN-PROGRESS",
+  4: "HOLD",
+  5: "CLOSED",
 };
 
 const REQUEST_STATUS_TONES = {
   new: {
-    badge: "bg-sky-600 ring-sky-700 shadow-sky-600/20",
+    badge: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/50",
     icon: Clock3,
   },
+  open: {
+    badge: "bg-blue-600 ring-blue-700 shadow-blue-600/20",
+    icon: ShieldCheck,
+  },
   inprogress: {
-    badge: "bg-indigo-600 ring-indigo-700 shadow-indigo-600/20",
+    badge: "bg-orange-500 ring-orange-600 shadow-orange-500/20",
     icon: Loader2,
   },
   hold: {
-    badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
+    badge: "bg-red-600 ring-red-700 shadow-red-600/20",
     icon: PauseCircle,
   },
   closed: {
-    badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20",
+    badge: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
     icon: CheckCircle2,
   },
 };
 
 const normalizeRequestStatus = (value) => {
-  const raw = String(value ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
   if (raw === "new") return "new";
+  if (["open", "opened"].includes(raw)) return "open";
   if (["inprogress", "inprocess", "processing", "ongoing"].includes(raw))
     return "inprogress";
   if (["hold", "onhold", "paused", "pending"].includes(raw)) return "hold";
@@ -151,8 +127,50 @@ const normalizeRequestStatus = (value) => {
 
 const requestToneOf = (value) => {
   const key = normalizeRequestStatus(value);
-  if (!key) return { badge: TONES.neutral.badge, icon: ShieldAlert, key: null };
+  if (!key)
+    return {
+      badge: TONES.neutral.badge,
+      icon: ShieldAlert,
+      key: null,
+    };
   return { ...REQUEST_STATUS_TONES[key], key };
+};
+
+const requestStatusOf = (item) => {
+  const statusId = requestStatusIdOf(item);
+  const statusName =
+    item?.statusName ?? item?.status ?? item?.enquiry_status;
+  if (statusName) return String(statusName);
+  if (statusId != null && REQUEST_STATUS_LABELS[Number(statusId)])
+    return REQUEST_STATUS_LABELS[Number(statusId)];
+  return "-";
+};
+
+const requestStatusIdOf = (item) => {
+  const knownStatusId =
+    item?.requestStatusId ??
+    item?.statusId ??
+    item?.CE_status_id ??
+    item?.cE_status_id ??
+    item?.enquiry_status_id;
+  if (knownStatusId != null) return knownStatusId;
+
+  const statusIdEntry = Object.entries(item ?? {}).find(([key, value]) => {
+    const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    return (
+      /^(?:[a-z]{2})?(?:request|enquiry)?statusid$/.test(normalizedKey) &&
+      value != null &&
+      String(value).trim() !== "" &&
+      Number.isFinite(Number(value))
+    );
+  });
+  return statusIdEntry?.[1];
+};
+
+const isNewStatus = (item, statusName) => {
+  const id = Number(requestStatusIdOf(item));
+  if (Number.isFinite(id) && id === 1) return true;
+  return normalizeRequestStatus(statusName) === "new";
 };
 
 /* --------------------------- COLUMN DEFINITION --------------------------- */
@@ -163,7 +181,6 @@ const TABLE_COLUMNS = [
   { key: "name", label: "Name", width: "180px" },
   { key: "email", label: "Gmail", width: "230px" },
   { key: "mobile", label: "Mobile", width: "120px" },
-  // { key: "status", label: "Status", width: "140px" },
   { key: "statusName", label: "Request Status", width: "150px" },
   { key: "submittedAt", label: "Submitted", width: "130px" },
   { key: "course", label: "Career / Course", width: "140px" },
@@ -256,11 +273,8 @@ const CareerEnquiryList = ({ formType = "career" }) => {
   const [toast, setToast] = useStatusToast();
   const [exporting, setExporting] = useState(false);
 
-  /* refs for horizontal scroll sync */
   const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
-
-  /* Track successful and in-flight status updates to avoid duplicate PUTs. */
   const statusPushedRef = useRef(new Set());
   const statusUpdateInProgressRef = useRef(new Set());
 
@@ -304,7 +318,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
     load();
   }, [load]);
 
-  /* sync header & body horizontal scroll */
   useEffect(() => {
     const body = bodyScrollRef.current;
     const header = headerScrollRef.current;
@@ -317,7 +330,7 @@ const CareerEnquiryList = ({ formType = "career" }) => {
     return () => body.removeEventListener("scroll", onScroll);
   }, []);
 
-  /* --------------------------- REFRESH (silent) --------------------------- */
+  /* --------------------------- REFRESH --------------------------- */
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
@@ -370,11 +383,25 @@ const CareerEnquiryList = ({ formType = "career" }) => {
     });
   }, [rows, query, cfg]);
 
-  const count = filteredRows.length;
+  /* --------------------------- SORT: NEW FIRST --------------------------- */
+
+  const isRowNew = (row) =>
+    isNewStatus(row, row.statusName) ||
+    Number(requestStatusIdOf(row)) === 1;
+
+  const sortedRows = useMemo(() => {
+    const list = [...filteredRows];
+    return [
+      ...list.filter((r) => isRowNew(r)),
+      ...list.filter((r) => !isRowNew(r)),
+    ];
+  }, [filteredRows]);
+
+  const count = sortedRows.length;
   const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const pageRows = sortedRows.slice(start, start + pageSize);
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -469,7 +496,7 @@ const CareerEnquiryList = ({ formType = "career" }) => {
           setRows((prev) =>
             prev.map((r) =>
               r.id === enquiryId
-                ? { ...r, statusId: 2, statusName: "Open" }
+                ? { ...r, statusId: 2, statusName: "OPEN" }
                 : r,
             ),
           );
@@ -540,7 +567,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
 
-  /* Sticky actions column — header + cells */
   const stickyActionsHead =
     "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
 
@@ -573,48 +599,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
             />
           </div>
 
-          <div className="relative min-w-[200px] flex-1 xl:flex-none">
-            <select
-              aria-label="Status"
-              value={query.status}
-              onChange={(e) => patchFilter({ status: e.target.value })}
-              className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[15px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
-            >
-              <option value="All">Status: All</option>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-            <ChevronDown
-              size={15}
-              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
-            />
-          </div>
-
-          {cfg.categoryField && (
-            <div className="relative min-w-[200px] flex-1 xl:flex-none">
-              <select
-                aria-label={cfg.categoryLabel || "Category"}
-                value={query.category}
-                onChange={(e) => patchFilter({ category: e.target.value })}
-                className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[15px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
-              >
-                <option value="All">
-                  {cfg.categoryLabel || "Category"}: All
-                </option>
-                {categories.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={15}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
-              />
-            </div>
-          )}
-
-          {/* Refresh — silent, only reloads table */}
           <button
             type="button"
             title="Refresh table"
@@ -641,7 +625,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
         className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent"
       />
 
-      {/* ERROR */}
       {error && (
         <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <span>{error}</span>
@@ -657,10 +640,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
 
       <div className="mt-4 h-[470px] overflow-hidden rounded-lg border border-[#cbe1f4]">
         <div className="flex h-full flex-col">
-          {/* Header strip — fixed, no vertical scrollbar */}
-          {/* FIX: added style={{ scrollbarGutter: "stable" }} so the header
-              reserves the same horizontal gutter as the body — prevents
-              column jiggle when the body's horizontal scrollbar appears */}
           <div
             ref={headerScrollRef}
             className="shrink-0 overflow-hidden"
@@ -693,7 +672,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
             </table>
           </div>
 
-          {/* Body — vertical scrollbar lives here only */}
           <div
             ref={bodyScrollRef}
             className="common-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto"
@@ -744,13 +722,18 @@ const CareerEnquiryList = ({ formType = "career" }) => {
                 ) : (
                   pageRows.map((row, index) => {
                     const reqTone = requestToneOf(row.statusName);
+                    const rowIsNew = isRowNew(row);
                     return (
                       <tr
                         key={row.id ?? index}
                         style={{
                           animationDelay: `${Math.min(index, 12) * 35}ms`,
                         }}
-                        className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                        className={`js-row group transition-colors ${
+                          rowIsNew
+                            ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
+                            : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                        }`}
                       >
                         <td className={`${td} tabular-nums`}>
                           {start + index + 1}
@@ -779,22 +762,12 @@ const CareerEnquiryList = ({ formType = "career" }) => {
                           </div>
                         </td>
 
-                        {/* <td className={`${td} whitespace-nowrap text-center`}>
-                          <div className="w-full min-w-0 truncate">
-                            <span
-                              className={`${BADGE_BASE} ${
-                                toneOf(row.status).badge
-                              }`}
-                            >
-                              {row.status || "-"}
-                            </span>
-                          </div>
-                        </td> */}
-
                         <td className={`${td} whitespace-nowrap text-center`}>
                           <div className="w-full min-w-0 truncate">
                             <span
-                              className={`${BADGE_BASE} ${reqTone.badge} gap-1`}
+                              className={`${BADGE_BASE} ${reqTone.badge} ${
+                                rowIsNew ? "js-badge-new" : ""
+                              } gap-1`}
                             >
                               {row.statusName || "-"}
                             </span>
@@ -813,7 +786,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
                           </div>
                         </td>
 
-                        {/* Actions — sticky right */}
                         <td
                           className={`${td} ${stickyActionsCell} text-center`}
                         >
@@ -831,54 +803,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
                             >
                               <ChevronsRight size={14} strokeWidth={2.2} />
                             </button>
-
-                            {/* <button
-                              type="button"
-                              role="switch"
-                              aria-checked={row.status === "Active"}
-                              aria-label={
-                                row.status === "Active"
-                                  ? `Deactivate ${
-                                      row[cfg.titleField] || "Record"
-                                    }`
-                                  : `Activate ${
-                                      row[cfg.titleField] || "Record"
-                                    }`
-                              }
-                              title={
-                                row.status === "Active"
-                                  ? "Active. Click to deactivate"
-                                  : "Not active. Click to activate"
-                              }
-                              onClick={() => askToggle(row)}
-                              className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
-                                row.status === "Active"
-                                  ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                                  : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                              }`}
-                            >
-                              <span
-                                className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                                  row.status === "Active"
-                                    ? "translate-x-[18px]"
-                                    : "translate-x-0"
-                                }`}
-                              >
-                                {row.status === "Active" ? (
-                                  <UserRoundCheck
-                                    size={13}
-                                    strokeWidth={2.7}
-                                    className="text-emerald-700"
-                                  />
-                                ) : (
-                                  <UserRoundX
-                                    size={13}
-                                    strokeWidth={2.7}
-                                    className="text-rose-700"
-                                  />
-                                )}
-                              </span>
-                            </button> */}
                           </div>
                         </td>
                       </tr>
@@ -963,7 +887,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
         </nav>
       </div>
 
-      {/* CONFIRM DIALOG */}
       {confirm && (
         <StatusModal
           isOpen
@@ -980,7 +903,6 @@ const CareerEnquiryList = ({ formType = "career" }) => {
         />
       )}
 
-      {/* TOAST */}
       {toast && (
         <div
           key={toast.id}

@@ -159,3 +159,47 @@ code {
   }
 }
 main{background-color :aliceblue}
+
+
+/* Enquery List new status row blink  css on admin screens */
+/* Flash animation for NEW row + badge */
+@keyframes jsNewFlash {
+  0%, 100% {
+    background-color: rgba(253, 224, 71, 0.55); /* yellow-200/55 */
+  }
+  50% {
+    background-color: rgba(250, 204, 21, 0.85); /* yellow-400/85 */
+  }
+}
+
+@keyframes jsBadgeFlash {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(250, 204, 21, 0);
+    transform: scale(1.04);
+  }
+}
+
+.js-row-new {
+  animation: jsNewFlash 1.6s ease-in-out infinite;
+}
+
+.js-row-new:hover {
+  animation: none;
+  background-color: rgba(250, 204, 21, 0.9); /* steady yellow on hover */
+}
+
+.js-badge-new {
+  animation: jsBadgeFlash 1.2s ease-in-out infinite;
+}
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .js-row-new,
+  .js-badge-new {
+    animation: none;
+  }
+}
