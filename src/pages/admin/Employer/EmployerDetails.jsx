@@ -20,6 +20,7 @@ import countryMasterApi from "../../../api/Services/countryMasterApi";
 import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import { getCurrentUserId2 } from "../../../utils/authUtils";
+import StatusModal from "../../../components/common/StatusModal";
 
 /* ---------------- Design tokens (same as JobSeekerDetails) ---------------- */
 const T = {
@@ -208,6 +209,52 @@ const EmployerProfile = ({ mode }) => {
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
   const [draft, setDraft] = useState({});
+  const [modal, setModal] = useState(null);
+
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      message,
+      confirmText: extra.confirmText || "OK",
+      cancelText: extra.cancelText || "Cancel",
+      showCancel: false,
+      title: extra.title,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        extra.onCancel?.();
+      },
+    });
+  };
+
+  const openConfirm = ({
+    title,
+    message,
+    confirmText,
+    cancelText,
+    onConfirm,
+    onCancel,
+  }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: cancelText || "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        onCancel?.();
+      },
+    });
+  };
 
   useEffect(() => {
     if (!emp) return;
@@ -393,41 +440,50 @@ const EmployerProfile = ({ mode }) => {
       return;
     }
 
-    setSaving(true);
-    setEditError("");
-    try {
-      await updateEmployer(id, {
-        eM_employer_id: Number(id),
-        email: draft.email.trim(),
-        mobile: draft.mobile.trim(),
-        fullName: draft.fullName.trim(),
-        eM_organization_name: draft.organizationName.trim(),
-        eM_institute_type_id: Number(draft.instituteTypeId),
-        eM_contact_person: draft.contactPerson.trim(),
-        eM_designation: draft.designation.trim(),
-        eM_country_id: Number(draft.countryId),
-        eM_state_id: Number(draft.stateId),
-        eM_city_id: Number(draft.cityId),
-        eM_website: draft.website.trim(),
-        eM_consent_given: Boolean(draft.consentGiven),
-        eM_created_by: emp.eM_created_by ?? emp.EM_created_by,
-        eM_updated_by: userId,
-      });
-      setIsEditing(false);
-      setRefreshKey((current) => current + 1);
-      if (mode === "edit") {
-        navigate(`/admin/employers/${id}`, { replace: true });
+    const doSave = async () => {
+      setSaving(true);
+      setEditError("");
+      try {
+        await updateEmployer(id, {
+          eM_employer_id: Number(id),
+          email: draft.email.trim(),
+          mobile: draft.mobile.trim(),
+          fullName: draft.fullName.trim(),
+          eM_organization_name: draft.organizationName.trim(),
+          eM_institute_type_id: Number(draft.instituteTypeId),
+          eM_contact_person: draft.contactPerson.trim(),
+          eM_designation: draft.designation.trim(),
+          eM_country_id: Number(draft.countryId),
+          eM_state_id: Number(draft.stateId),
+          eM_city_id: Number(draft.cityId),
+          eM_website: draft.website.trim(),
+          eM_consent_given: Boolean(draft.consentGiven),
+          eM_created_by: emp.eM_created_by,
+          EM_updated_by: userId,
+        });
+        setIsEditing(false);
+        setRefreshKey((current) => current + 1);
+        if (mode === "edit") {
+          navigate(`/admin/employers/${id}`, { replace: true });
+        }
+      } catch (err) {
+        setEditError(
+          err?.response?.data?.message ||
+            err?.response?.data?.Message ||
+            err?.message ||
+            "Failed to update employer.",
+        );
+      } finally {
+        setSaving(false);
       }
-    } catch (err) {
-      setEditError(
-        err?.response?.data?.message ||
-          err?.response?.data?.Message ||
-          err?.message ||
-          "Failed to update employer.",
-      );
-    } finally {
-      setSaving(false);
-    }
+    };
+
+    openConfirm({
+      title: "Confirm update",
+      message: "Are you sure you want to update this employer?",
+      confirmText: "Update",
+      onConfirm: doSave,
+    });
   };
 
   const pageTitle = emp?.eM_organization_name || "Employer";
@@ -509,7 +565,7 @@ const EmployerProfile = ({ mode }) => {
                     disabled={saving}
                     className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-60`}
                   >
-                    <Save size={15} /> {saving ? "Saving..." : "Save"}
+                    {saving ? "Saving..." : "Save"}
                   </button>
                 </>
               ) : (
@@ -631,35 +687,38 @@ const EmployerProfile = ({ mode }) => {
                             </select>
                           ) : undefined}
                         </FieldRow>
-                        <FieldRow label="Website">
-                          {isEditing ? (
-                            <input
-                              className={EDIT_INPUT}
-                              value={draft.website ?? ""}
-                              onChange={(event) =>
-                                updateDraft("website", event.target.value)
-                              }
-                            />
-                          ) : emp.eM_website ? (
-                            <a
-                              href={
-                                /^https?:\/\//i.test(emp.eM_website)
-                                  ? emp.eM_website
-                                  : `https://${emp.eM_website}`
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex min-w-0 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
-                            >
-                              <span className="truncate">
-                                {emp.eM_website}
-                              </span>
-                              <ExternalLink size={11} />
-                            </a>
-                          ) : (
-                            "—"
-                          )}
-                        </FieldRow>
+                       <FieldRow label="Website">
+  {isEditing ? (
+    <input
+      className={EDIT_INPUT}
+      value={draft.website ?? ""}
+      onChange={(event) =>
+        updateDraft("website", event.target.value)
+      }
+    />
+  ) : (
+    <div className={FIELD_BOX(false)}>
+      {emp.eM_website ? (
+        <a
+          href={
+            /^https?:\/\//i.test(emp.eM_website)
+              ? emp.eM_website
+              : `https://${emp.eM_website}`
+          }
+          target="_blank"
+          rel="noreferrer"
+          title={emp.eM_website}
+          className="inline-flex min-w-0 flex-1 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
+        >
+          <span className="min-w-0 truncate">{emp.eM_website}</span>
+          <ExternalLink size={11} className="shrink-0" />
+        </a>
+      ) : (
+        <span className="min-w-0 flex-1 truncate">—</span>
+      )}
+    </div>
+  )}
+</FieldRow>
                         <FieldRow
                           label="Email / Username"
                           value={emp.userName}
@@ -970,6 +1029,18 @@ const EmployerProfile = ({ mode }) => {
           </div>
         </div>
       </div>
+      <StatusModal
+        isOpen={Boolean(modal)}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
     </div>
   );
 };

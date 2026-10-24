@@ -32,18 +32,21 @@ import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
-const TABLE_MIN_WIDTH = 1400;
+const TABLE_MIN_WIDTH = 1560; // widened to accommodate new column
 
+/* Column definitions — order matches the JSX.
+   `sticky` marks the actions column that must always stay visible on the right. */
 const COLUMNS = [
   { key: "srNo", width: "60px" },
+  { key: "requestId", width: "170px" },   // ← NEW: Job Request ID
   { key: "organization", width: "200px" },
-  { key: "position", width: "170px" },
+  { key: "position", width: "180px" },
   { key: "status", width: "120px" },
-  { key: "requirementStatus", width: "140px" },
-  { key: "jobCategory", width: "140px" },
+  { key: "requirementStatus", width: "150px" },
+  { key: "jobCategory", width: "160px" },
   { key: "vacancies", width: "100px" },
   { key: "applicants", width: "110px" },
-  { key: "actions", width: "160px" },
+  { key: "actions", width: "160px", sticky: true },
 ];
 
 /* ------------------------------ TONES ----------------------------- */
@@ -159,6 +162,15 @@ const toListRow = (item, srNo) => {
       "JQ_id",
       "jobRequirementId",
       "id",
+    ),
+    /** The user-facing request number (e.g. IR-JD-24102026-001) */
+    requestId: firstValue(
+      item,
+      "jQ_job_re_id",
+      "JQ_job_re_id",
+      "jQ_request_no",
+      "requestNo",
+      "requestId",
     ),
     organizationName: firstValue(
       item,
@@ -358,7 +370,9 @@ const JobRequirementList = () => {
     load();
   }, [load]);
 
-  /* sync header & body horizontal scroll */
+  /* Sync header & body horizontal scroll.
+     Only the horizontal position of the BODY is mirrored to the HEADER.
+     Vertical scrolling of the body does NOT move the header. */
   useEffect(() => {
     const body = bodyScrollRef.current;
     const header = headerScrollRef.current;
@@ -613,7 +627,6 @@ const JobRequirementList = () => {
           </h1>
 
           <div className="flex w-full flex-wrap items-center gap-2.5 xl:w-auto">
-            {/* Search */}
             <div className="relative min-w-[280px] flex-1 xl:flex-none">
               <SearchIcon
                 size={15}
@@ -629,7 +642,6 @@ const JobRequirementList = () => {
               />
             </div>
 
-            {/* Filter toggle */}
             <button
               type="button"
               title={showFilters ? "Hide filters" : "Show filters"}
@@ -642,7 +654,6 @@ const JobRequirementList = () => {
               <span className="hidden sm:inline">Filter</span>
             </button>
 
-            {/* Refresh */}
             <button
               type="button"
               title="Refresh table"
@@ -663,7 +674,6 @@ const JobRequirementList = () => {
               </span>
             </button>
 
-            {/* Add */}
             <button
               type="button"
               title="Add"
@@ -680,11 +690,10 @@ const JobRequirementList = () => {
           </div>
         </div>
 
-        {/* FILTER PANEL — collapsible, inside same card */}
+        {/* FILTER PANEL */}
         {showFilters && (
           <div className="mt-3 rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] p-3.5">
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {/* Status */}
               <div className="relative">
                 <select
                   aria-label="Status"
@@ -702,7 +711,6 @@ const JobRequirementList = () => {
                 />
               </div>
 
-              {/* Job Role */}
               <div className="relative">
                 <select
                   aria-label="Job Role"
@@ -726,7 +734,6 @@ const JobRequirementList = () => {
                 />
               </div>
 
-              {/* Institute Type */}
               <div className="relative">
                 <select
                   aria-label="Institute Type"
@@ -752,7 +759,6 @@ const JobRequirementList = () => {
                 />
               </div>
 
-              {/* Job Category */}
               <div className="relative">
                 <select
                   aria-label="Job Category"
@@ -786,7 +792,6 @@ const JobRequirementList = () => {
           className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent"
         />
 
-        {/* ERROR */}
         {error && (
           <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <span>{error}</span>
@@ -800,15 +805,21 @@ const JobRequirementList = () => {
           </div>
         )}
 
-        {/* TABLE */}
-        <div className="mt-4 overflow-hidden rounded-lg border h-[370px] border-[#cbe1f4]">
+        {/* ============================================================
+            TABLE — fixed layout:
+              - Header row: horizontal scroll only, NO vertical scroll
+              - Body:        horizontal + vertical scroll
+              - Actions col: sticky right in both header and body
+            ============================================================ */}
+        <div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
+          {/* HEADER (fixed height, no vertical scrollbar) */}
           <div
             ref={headerScrollRef}
             className="overflow-hidden"
             style={{ scrollbarGutter: "stable" }}
           >
             <table
-              className="w-full text-[15px]"
+              className="w-full border-collapse text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
             >
               <colgroup>
@@ -820,6 +831,9 @@ const JobRequirementList = () => {
                 <tr>
                   <th scope="col" className={thClass}>
                     Sr.No
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Job Request ID
                   </th>
                   <th scope="col" className={thClass}>
                     Organization
@@ -850,7 +864,7 @@ const JobRequirementList = () => {
             </table>
           </div>
 
-          {/* Body */}
+          {/* BODY (vertical + horizontal scroll) */}
           <div
             ref={bodyScrollRef}
             className="common-scrollbar h-[330px] overflow-y-auto overflow-x-auto"
@@ -868,7 +882,7 @@ const JobRequirementList = () => {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center">
+                    <td colSpan={10} className="px-4 py-12 text-center">
                       <div className="flex flex-col items-center">
                         <span
                           aria-hidden="true"
@@ -883,7 +897,7 @@ const JobRequirementList = () => {
                 ) : pageRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={10}
                       className="border-t border-[#e2e8ee] px-4 py-12 text-center"
                     >
                       <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
@@ -905,6 +919,16 @@ const JobRequirementList = () => {
                     >
                       <td className={`${td} tabular-nums`}>
                         {start + index + 1}
+                      </td>
+
+                      {/* Job Request ID */}
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span
+                          className="block truncate  text-[15px] font-medium "
+                          title={row.requestId || "-"}
+                        >
+                          {row.requestId || "-"}
+                        </span>
                       </td>
 
                       <td className={`${td} whitespace-nowrap`}>
@@ -969,11 +993,12 @@ const JobRequirementList = () => {
                         </strong>
                       </td>
 
-                      {/* ---------- APPLICANTS: Same styling as status ---------- */}
                       <td className={`${td} whitespace-nowrap text-center`}>
                         <button
                           type="button"
-                          onClick={() => navigate(`/admin/job-applicant/${row.id}`)}
+                          onClick={() =>
+                            navigate(`/admin/job-applicant/${row.id}`)
+                          }
                           title={`View applicants for ${row.position || "this job"}`}
                           aria-label={`View applicants for ${row.position || "this job"}`}
                           className={`${BADGE_BASE} bg-sky-500 ring-sky-600 shadow-sky-500/20`}
