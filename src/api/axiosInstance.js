@@ -2,7 +2,7 @@
 import axios from "axios";
 
 const axiosInstance = axios.create({
-  // baseURL:
+   // baseURL:
   //   process.env.REACT_APP_API_BASE_URL ||
   //   "/api",
   // headers: {
@@ -10,13 +10,13 @@ const axiosInstance = axios.create({
   // },
    baseURL:
     process.env.REACT_APP_API_BASE_URL ||
-    "/api",
+    "https://localhost:44367/api",
   headers: {
     "Content-Type": "application/json",
   },
   
   
-  // timeout: 60000,
+  timeout: 60000,
 });
 
 axiosInstance.interceptors.response.use(

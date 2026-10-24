@@ -40,7 +40,8 @@ const TABLE_MIN_WIDTH = 1000;
 
 const COLUMNS = [
   { key: "srNo", width: "60px", minWidth: "50px" },
-  { key: "fullName", width: "230px", minWidth: "150px" },
+  { key: "fullName", width: "230px", minWidth: "130px" },
+  { key: "jobSeekerId", width: "230px", minWidth: "150px" },
   { key: "jobCategory", width: "180px", minWidth: "130px" },
   { key: "status", width: "130px", minWidth: "100px" },
   { key: "experience", width: "120px", minWidth: "90px" },
@@ -48,6 +49,8 @@ const COLUMNS = [
   { key: "mobile", width: "160px", minWidth: "120px" },
   { key: "actions", width: "160px", minWidth: "120px" },
 ];
+
+const COL_SPAN_ALL = COLUMNS.length; // 9
 
 /* ------------------------------ TONES ----------------------------- */
 
@@ -99,6 +102,7 @@ const toListRow = (item, srNo) => ({
     item["jS_id"] ??
     item.id,
   fullName: item["fullName"] ?? item["jS_full_name"] ?? item["jS_name"] ?? "",
+  jobSeekerId: item["jB_jobseeker_no"] ?? "",
   email: item["email"] ?? item["jS_email"] ?? "",
   mobile: item["mobile"] ?? item["jS_mobile"] ?? "",
   city: item["cityName"] ?? item["city"] ?? "",
@@ -331,7 +335,7 @@ const JobSeekerList = () => {
     return rows.filter((u) => {
       if (
         q &&
-        !["fullName", "email", "mobile", "jobCategory", "city", "state"].some(
+        !["jobSeekerId", "fullName", "email", "mobile", "jobCategory", "city", "state"].some(
           (k) =>
             String(u[k] ?? "")
               .toLowerCase()
@@ -364,7 +368,7 @@ const JobSeekerList = () => {
     if (!toast) return undefined;
     const t = setTimeout(() => setToast(null), 2800);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [toast, setToast]);
 
   /* ---------------------------- STATUS TOGGLE ---------------------------- */
 
@@ -410,6 +414,14 @@ const JobSeekerList = () => {
 
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
+
+  /* Sticky Actions header — pinned to the right edge of the header table */
+  const stickyActionsHead =
+    "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.35)]";
+
+  /* Sticky Actions body cell — pinned to the right edge of the body table */
+  const stickyActionsCell =
+    "sticky right-0 z-20 border-t border-[#e2e8ee] bg-white px-3.5 py-2.5 text-center text-[15px] text-slate-900 shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.18)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
 
   /* ---------------------------- RENDER ---------------------------- */
 
@@ -511,16 +523,13 @@ const JobSeekerList = () => {
           </div>
         )}
 
-        {/*
-          TABLE — vertical scrollbar only on the body.
-          - Header wrapper: overflow-hidden, NO scrollbarGutter (so no gap)
-          - Body wrapper: overflow-y-auto with scrollbarGutter: "stable"
-            so header width = body content width exactly
-        */}
         {/* TABLE */}
         <div className="mt-4 h-[370px] overflow-hidden rounded-lg border border-[#cbe1f4]">
           <div className="flex h-full flex-col">
-            {/* Header — hidden scrollbar, synced with body */}
+            {/* Header — hidden scrollbar, synced with body via JS.
+                Sticky right-0 on the Actions <th> works because the header
+                table itself is wider than this overflow-hidden wrapper and
+                scrollLeft is being driven. */}
             <div ref={headerScrollRef} className="shrink-0 overflow-hidden">
               <table
                 className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
@@ -540,6 +549,9 @@ const JobSeekerList = () => {
                       Sr.No
                     </th>
                     <th scope="col" className={thClass}>
+                      JobSeeker ID
+                    </th>
+                    <th scope="col" className={thClass}>
                       Full Name
                     </th>
                     <th scope="col" className={thClass}>
@@ -557,7 +569,7 @@ const JobSeekerList = () => {
                     <th scope="col" className={thClass}>
                       Mobile
                     </th>
-                    <th scope="col" className={thClass}>
+                    <th scope="col" className={stickyActionsHead}>
                       Actions
                     </th>
                   </tr>
@@ -565,7 +577,7 @@ const JobSeekerList = () => {
               </table>
             </div>
 
-            {/* Body — scrolls horizontally on small screens */}
+            {/* Body — real scroll container in both axes */}
             <div
               ref={bodyScrollRef}
               className="common-scrollbar min-h-0 flex-1 overflow-auto"
@@ -586,7 +598,7 @@ const JobSeekerList = () => {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center">
+                      <td colSpan={COL_SPAN_ALL} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center">
                           <span
                             aria-hidden="true"
@@ -601,14 +613,14 @@ const JobSeekerList = () => {
                   ) : pageRows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={COL_SPAN_ALL}
                         className="border-t border-[#e2e8ee] px-4 py-12 text-center"
                       >
                         <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                           <Inbox size={22} />
                         </div>
                         <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
-                          No jobseekers yet
+                          No jobseekers found
                         </p>
                       </td>
                     </tr>
@@ -628,9 +640,16 @@ const JobSeekerList = () => {
                         <td className={`${td} whitespace-nowrap`}>
                           <span className="flex min-w-0 flex-col">
                             <span className="truncate font-medium text-slate-900">
+                              {row.jobSeekerId || "-"}
+                            </span>
+                          </span>
+                        </td>
+
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium text-slate-900">
                               {row.fullName || "-"}
                             </span>
-                           
                           </span>
                         </td>
 
@@ -688,7 +707,8 @@ const JobSeekerList = () => {
                           )}
                         </td>
 
-                        <td className={`${td} text-center`}>
+                        {/* Sticky actions cell */}
+                        <td className={stickyActionsCell}>
                           <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                             <button
                               type="button"
@@ -755,6 +775,7 @@ const JobSeekerList = () => {
             </div>
           </div>
         </div>
+
         {/* PAGINATION */}
         <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
@@ -828,7 +849,6 @@ const JobSeekerList = () => {
           </nav>
         </div>
 
-        {/* DIALOG */}
         {/* DIALOG */}
         {confirm && (
           <StatusModal

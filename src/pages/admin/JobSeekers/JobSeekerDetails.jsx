@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   FileText as FileIcon,
@@ -16,9 +16,17 @@ import {
   ExternalLink,
   Building2,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import applicationApi from "../../../api/applicationApi";
+import jobCategoryApi from "../../../api/Services/jobCategoryApi";
+import instituteTypeApi from "../../../api/Services/instituteTypeApi";
+import jobRoleApi from "../../../api/Services/jobRoleApi";
+import countryMasterApi from "../../../api/Services/countryMasterApi";
+import stateMasterApi from "../../../api/Services/stateMasterApi";
+import cityMasterApi from "../../../api/Services/cityMasterApi";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 
 /* ---------------- Design tokens (match EmployerProfile) ---------------- */
 const T = {
@@ -42,6 +50,8 @@ const toYesNo = (v) => {
   if (v === false || v === 0 || v === "0" || v === "false") return "No";
   return "—";
 };
+const toBoolean = (value) =>
+  value === true || value === 1 || ["true", "1", "yes"].includes(String(value).toLowerCase());
 
 /** Tolerant boolean check (true/1/"true"/"yes" → true) */
 const truthy = (v) => {
@@ -60,6 +70,8 @@ const FIELD_BOX = (mono) =>
 
 const BTN_PRIMARY =
   "inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
+const EDIT_INPUT =
+  "h-9 w-full rounded-md border border-[#c9d5dd] bg-white px-3 text-[13px] text-[#1a2b3c] outline-none focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/20";
 
 const NAV = [
   { id: "overview", label: "Overview", icon: UserRound },
@@ -73,14 +85,15 @@ const NAV = [
 const FieldRow = ({ label, value, mono = false, children }) => (
   <div className="grid grid-cols-[160px_1fr] items-center gap-3">
     <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
-    <div className={FIELD_BOX(mono)}>
-      <span
-        className="min-w-0 flex-1 truncate"
-        title={String(children ?? val(value))}
-      >
-        {children ?? val(value)}
-      </span>
-    </div>
+    {children ? (
+      <div className="min-w-0">{children}</div>
+    ) : (
+      <div className={FIELD_BOX(mono)}>
+        <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
+          {val(value)}
+        </span>
+      </div>
+    )}
   </div>
 );
 
@@ -165,6 +178,13 @@ const EMPTY_FORM = {
   mobile: "",
   whatsapp: "",
   email: "",
+  instituteTypeId: "",
+  jobCategoryId: "",
+  jobRoleId: "",
+  countryId: "",
+  stateId: "",
+  cityId: "",
+  preferredLocationId: "",
   jobType: "",
   jobCategory: "",
   jobRole: "",
@@ -217,6 +237,31 @@ const extractRecord = (response) => {
 };
 
 /**
+ * Extract an array from a variety of API envelopes:
+ *   [ ... ]  |  { data: [...] }  |  { Data: [...] }  |  { data: { data: [...] } }
+ */
+const extractList = (response) => {
+  const root = response?.data ?? response;
+  const list = root?.data ?? root?.Data ?? root;
+  if (Array.isArray(list)) return list;
+  if (Array.isArray(list?.data)) return list.data;
+  if (Array.isArray(list?.Data)) return list.Data;
+  return [];
+};
+
+/**
+ * Normalize a lookup list into `{ id, name }` objects so selects never crash
+ * on malformed API items.
+ */
+const normalizeLookup = (list, idKeys, nameKeys) =>
+  (Array.isArray(list) ? list : [])
+    .map((item) => ({
+      id: idKeys.map((k) => item?.[k]).find((v) => v != null),
+      name: nameKeys.map((k) => item?.[k]).find((v) => v != null),
+    }))
+    .filter((item) => item.id != null && item.name != null);
+
+/**
  * Map the GET /jobseeker/:id response (jB_* fields) into the view model.
  */
 const toJobseekerView = (item, id) => {
@@ -231,6 +276,13 @@ const toJobseekerView = (item, id) => {
     mobile: item?.mobile ?? "",
     whatsapp: item?.jB_whatsapp ?? "",
     email: item?.email ?? "",
+    instituteTypeId: String(item?.jB_institute_type_id ?? ""),
+    jobCategoryId: String(item?.jB_job_category_id ?? ""),
+    jobRoleId: String(item?.jB_job_role_id ?? ""),
+    countryId: String(item?.jB_country_id ?? ""),
+    stateId: String(item?.jB_state_id ?? ""),
+    cityId: String(item?.jB_city_id ?? ""),
+    preferredLocationId: String(item?.jB_preferred_location ?? ""),
 
     jobType: item?.instituteTypeName ?? "",
     jobCategory: item?.jobCategoryName ?? "",
@@ -403,7 +455,7 @@ const DocumentBox = ({ doc }) => {
 };
 
 /* ---------------- Page ---------------- */
-const JobSeekerDetails = () => {
+const JobSeekerDetails = ({ mode }) => {
   const navigate = useNavigate();
   const { id } = useParams();
 
@@ -412,6 +464,23 @@ const JobSeekerDetails = () => {
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isEditing, setIsEditing] = useState(mode === "edit");
+  const [draft, setDraft] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [instituteTypes, setInstituteTypes] = useState([]);
+  const [jobCategories, setJobCategories] = useState([]);
+  const [jobRoles, setJobRoles] = useState([]);
+  const [countries, setCountries] = useState([]);
+  const [states, setStates] = useState([]);
+  const [cities, setCities] = useState([]);
+  const [uploadFile, setUploadFile] = useState(null);
+
+  useEffect(() => {
+    setIsEditing(mode === "edit");
+  }, [mode]);
 
   /* Applied jobs state */
   const [appliedJobs, setAppliedJobs] = useState([]);
@@ -455,7 +524,137 @@ const JobSeekerDetails = () => {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, refreshKey]);
+
+  useEffect(() => {
+    if (!isEditing) return undefined;
+    let cancelled = false;
+    const loadLookups = async () => {
+      try {
+        const [
+          instituteResponse,
+          countryResponse,
+          stateResponse,
+          cityResponse,
+        ] = await Promise.all([
+          instituteTypeApi.getAllList(),
+          countryMasterApi.getAllList(),
+          stateMasterApi.getAllList(),
+          cityMasterApi.getAllList(),
+        ]);
+        if (!cancelled) {
+          setInstituteTypes(
+            normalizeLookup(
+              extractList(instituteResponse),
+              ["iT_institute_type_id", "IT_institute_type_id"],
+              ["iT_name", "IT_name", "name"],
+            ),
+          );
+          setCountries(
+            normalizeLookup(
+              extractList(countryResponse),
+              ["cM_Id"],
+              ["cM_CountryName"],
+            ),
+          );
+          setStates(
+            normalizeLookup(
+              extractList(stateResponse),
+              ["sM_Id"],
+              ["sM_StateName"],
+            ),
+          );
+          setCities(
+            normalizeLookup(
+              extractList(cityResponse),
+              ["ctM_Id"],
+              ["ctM_CityName"],
+            ),
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load jobseeker edit options.",
+          );
+        }
+      }
+    };
+    loadLookups();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing]);
+
+  useEffect(() => {
+    if (!isEditing || !draft.instituteTypeId) {
+      setJobCategories([]);
+      return undefined;
+    }
+    let cancelled = false;
+    jobCategoryApi
+      .getByInstituteType(Number(draft.instituteTypeId))
+      .then((response) => {
+        if (!cancelled) {
+          setJobCategories(
+            extractList(response)
+              .map((item) => ({
+                id: item.jC_job_category_id ?? item.JC_job_category_id,
+                name: item.jC_name ?? item.JC_name ?? item.name,
+              }))
+              .filter((item) => item.id != null && item.name),
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load job categories.",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.instituteTypeId, isEditing]);
+
+  useEffect(() => {
+    if (!isEditing || !draft.jobCategoryId) {
+      setJobRoles([]);
+      return undefined;
+    }
+    let cancelled = false;
+    jobRoleApi
+      .getByJobCategory(Number(draft.jobCategoryId))
+      .then((response) => {
+        if (!cancelled) {
+          setJobRoles(
+            extractList(response)
+              .map((item) => ({
+                id: item.jR_job_role_id ?? item.JR_job_role_id,
+                name: item.jR_name ?? item.JR_name ?? item.name,
+              }))
+              .filter((item) => item.id != null && item.name),
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load job roles.",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.jobCategoryId, isEditing]);
 
   /* Load applied jobs for this jobseeker */
   useEffect(() => {
@@ -495,10 +694,163 @@ const JobSeekerDetails = () => {
     };
   }, [id, page, pageSize]);
 
-  /* Navigation helpers */
-  const goToEditProfile = () => navigate(`/admin/jobseekers/${id}/edit`);
+  const filteredStates = useMemo(
+    () =>
+      states.filter(
+        (state) => String(state.sM_CountryId) === draft.countryId,
+      ),
+    [states, draft.countryId],
+  );
+  const filteredCities = useMemo(
+    () => cities.filter((city) => String(city.ctM_StateId) === draft.stateId),
+    [cities, draft.stateId],
+  );
+
+  const updateDraft = (key, value) =>
+    setDraft((current) => ({ ...current, [key]: value }));
+
+  /* Navigation and edit helpers */
+  const goToEditProfile = () => {
+    setDraft({ ...form });
+    setUploadFile(null);
+    setEditError("");
+    setSuccessMessage("");
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setDraft({ ...form });
+    setUploadFile(null);
+    setEditError("");
+    setIsEditing(false);
+    if (mode === "edit") {
+      navigate(`/admin/jobseekers/${id}`, { replace: true });
+    }
+  };
+
+  const saveJobseeker = async () => {
+    const currentUserId = Number(getCurrentUserId2());
+    if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
+      setEditError("Unable to identify the current user. Please sign in again.");
+      return;
+    }
+    if (!draft.fullName.trim() || !draft.mobile.trim() || !draft.email.trim()) {
+      setEditError("Full name, mobile number, and email are required.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) {
+      setEditError("Enter a valid email address.");
+      return;
+    }
+    if (
+      !draft.instituteTypeId ||
+      !draft.jobCategoryId ||
+      !draft.jobRoleId ||
+      !draft.countryId ||
+      !draft.stateId ||
+      !draft.cityId
+    ) {
+      setEditError("Select valid institute, profession, role, and location values.");
+      return;
+    }
+
+    setSaving(true);
+    setEditError("");
+    setSuccessMessage("");
+    try {
+      const payload = {
+        JB_jobseeker_id: Number(id),
+        JB_full_name: draft.fullName.trim(),
+        Email: draft.email.trim(),
+        JB_mobile: draft.mobile.replace(/\D/g, ""),
+        JB_whatsapp: (draft.whatsapp || draft.mobile).replace(/\D/g, ""),
+        JB_city_id: Number(draft.cityId),
+        JB_state_id: Number(draft.stateId),
+        JB_country_id: Number(draft.countryId),
+        JB_institute_type_id: Number(draft.instituteTypeId),
+        JB_job_category_id: Number(draft.jobCategoryId),
+        JB_job_role_id: Number(draft.jobRoleId),
+        JB_highest_qualification: draft.highestQualification.trim(),
+        JB_speciality: draft.speciality.trim(),
+        JB_registration_number: draft.professionalRegistrationNumber.trim(),
+        JB_total_experience: Number(draft.totalExperience) || 0,
+        JB_current_designation: draft.currentDesignation.trim(),
+        JB_current_employer: draft.currentEmployment.trim(),
+        JB_current_salary: Number(draft.currentSalary) || 0,
+        JB_expected_salary: Number(draft.expectedSalary) || 0,
+        JB_preferred_location:
+          Number(draft.preferredLocationId) || Number(draft.cityId),
+        JB_willing_to_relocate: toBoolean(draft.willingToRelocate),
+        JB_availability_to_join: draft.availabilityToJoin
+          ? `${draft.availabilityToJoin}T00:00:00`
+          : "",
+        JB_consent_given: toBoolean(draft.consentGiven),
+        JB_updated_by: currentUserId,
+        jB_updated_by: currentUserId,
+      };
+      const createdBy = Number(form.createdBy);
+      if (Number.isInteger(createdBy) && createdBy > 0) {
+        payload.JB_created_by = createdBy;
+        payload.jB_created_by = createdBy;
+      }
+
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        formData.append(key, String(value));
+      });
+      if (uploadFile) {
+        formData.append("CVFile", uploadFile, uploadFile.name);
+      }
+
+      await jobseekerApi.update(id, formData);
+      setIsEditing(false);
+      setUploadFile(null);
+      setSuccessMessage("Jobseeker updated successfully.");
+      setRefreshKey((current) => current + 1);
+      if (mode === "edit") {
+        navigate(`/admin/jobseekers/${id}`, { replace: true });
+      }
+    } catch (err) {
+      setEditError(
+        err?.response?.data?.message ||
+          err?.response?.data?.Message ||
+          err?.message ||
+          "Failed to update jobseeker.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const pageTitle = form.fullName || "Jobseeker";
+  const editInput = (key, type = "text") =>
+    isEditing ? (
+      <input
+        type={type}
+        className={EDIT_INPUT}
+        value={draft[key] ?? ""}
+        onChange={(event) => updateDraft(key, event.target.value)}
+      />
+    ) : undefined;
+  const editSelect = (key, options, placeholder, onChange) =>
+    isEditing ? (
+      <select
+        className={EDIT_INPUT}
+        value={draft[key] ?? ""}
+        onChange={(event) =>
+          onChange
+            ? onChange(event.target.value)
+            : updateDraft(key, event.target.value)
+        }
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.id} value={String(option.id)}>
+            {option.name}
+          </option>
+        ))}
+      </select>
+    ) : undefined;
 
   /* Loading */
   if (loading) {
@@ -565,16 +917,50 @@ const JobSeekerDetails = () => {
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={goToEditProfile}
-                className={BTN_PRIMARY}
-              >
-                Edit
-              </button>
+            <div className="flex items-center gap-2">
+              {isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                  >
+                    <X size={15} /> Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveJobseeker}
+                    disabled={saving}
+                    className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {saving ? "Saving..." : "Save"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={goToEditProfile}
+                  className={BTN_PRIMARY}
+                >
+                  Edit
+                </button>
+              )}
             </div>
           </div>
+
+          {(editError || successMessage) && (
+            <div
+              role={editError ? "alert" : "status"}
+              className={`mx-6 mt-4 rounded-lg border px-4 py-2.5 text-sm ${
+                editError
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+              }`}
+            >
+              {editError || successMessage}
+            </div>
+          )}
 
           {/* BODY */}
           <div className="p-4">
@@ -621,12 +1007,11 @@ const JobSeekerDetails = () => {
               <main className="min-w-0">
                 {/* -------- Overview -------- */}
                 {tab === "overview" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
-                    <div className="space-y-6 p-4">
+                  <section>
+                    <div className="space-y-6 ">
                       {/* Personal / Professional details */}
-                      <div>
+                      <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                      <div className="p-4">
                         <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                           Personal & Professional Details
                         </h3>
@@ -636,17 +1021,23 @@ const JobSeekerDetails = () => {
                             value={form.jobseekerNo}
                           />
 
-                          <FieldRow label="Full Name" value={form.fullName} />
+                          <FieldRow label="Full Name" value={form.fullName}>
+                            {editInput("fullName")}
+                          </FieldRow>
                           <FieldRow
                             label="Mobile Number"
                             value={form.mobile}
                             mono
-                          />
+                          >
+                            {editInput("mobile", "tel")}
+                          </FieldRow>
                           <FieldRow
                             label="WhatsApp Number"
                             value={form.whatsapp}
                             mono
-                          />
+                          >
+                            {editInput("whatsapp", "tel")}
+                          </FieldRow>
 
                           <div className="grid grid-cols-[160px_1fr] items-center gap-3">
                             <label
@@ -654,52 +1045,89 @@ const JobSeekerDetails = () => {
                             >
                               Email Address
                             </label>
-                            <div className={FIELD_BOX()}>
-                              <span className="min-w-0 flex-1 truncate">
-                                {form.email ? (
-                                  <a
-                                    href={`mailto:${form.email}`}
-                                    className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
-                                  >
-                                    {form.email}
-                                  </a>
-                                ) : (
-                                  "—"
-                                )}
-                              </span>
-                            </div>
+                            {isEditing ? (
+                              editInput("email", "email")
+                            ) : (
+                              <div className={FIELD_BOX()}>
+                                <span className="min-w-0 flex-1 truncate">
+                                  {form.email ? (
+                                    <a
+                                      href={`mailto:${form.email}`}
+                                      className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
+                                    >
+                                      {form.email}
+                                    </a>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </span>
+                              </div>
+                            )}
                           </div>
 
                           <FieldRow
                             label="Institute Type"
                             value={form.jobType}
-                          />
+                          >
+                            {editSelect(
+                              "instituteTypeId",
+                              instituteTypes,
+                              "Select institute type",
+                              (value) => {
+                                updateDraft("instituteTypeId", value);
+                                updateDraft("jobCategoryId", "");
+                                updateDraft("jobRoleId", "");
+                              },
+                            )}
+                          </FieldRow>
                           <FieldRow
                             label="Job Category"
                             value={form.jobCategory}
-                          />
-                          <FieldRow label="Role" value={form.jobRole} />
+                          >
+                            {editSelect(
+                              "jobCategoryId",
+                              jobCategories,
+                              "Select profession",
+                              (value) => {
+                                updateDraft("jobCategoryId", value);
+                                updateDraft("jobRoleId", "");
+                              },
+                            )}
+                          </FieldRow>
+                          <FieldRow label="Role" value={form.jobRole}>
+                            {editSelect("jobRoleId", jobRoles, "Select role")}
+                          </FieldRow>
                           <FieldRow
                             label="Highest Qualification"
                             value={form.highestQualification}
-                          />
+                          >
+                            {editInput("highestQualification")}
+                          </FieldRow>
                           <FieldRow
                             label="Speciality / Department"
                             value={form.speciality}
-                          />
+                          >
+                            {editInput("speciality")}
+                          </FieldRow>
                           <FieldRow
                             label="Professional Reg. No."
                             value={form.professionalRegistrationNumber}
                             mono
-                          />
+                          >
+                            {editInput("professionalRegistrationNumber")}
+                          </FieldRow>
                           <FieldRow
                             label="Total Experience (Years)"
                             value={form.totalExperience}
-                          />
+                          >
+                            {editInput("totalExperience", "number")}
+                          </FieldRow>
                           <FieldRow
                             label="Current Designation"
                             value={form.currentDesignation}
-                          />
+                          >
+                            {editInput("currentDesignation")}
+                          </FieldRow>
                           <FieldRow
                             label="Status"
                             value={active ? "Active" : "Inactive"}
@@ -707,12 +1135,30 @@ const JobSeekerDetails = () => {
                           <FieldRow
                             label="Consent Given"
                             value={form.consentGiven}
-                          />
+                          >
+                            {isEditing ? (
+                              <select
+                                className={EDIT_INPUT}
+                                value={toBoolean(draft.consentGiven) ? "true" : "false"}
+                                onChange={(event) =>
+                                  updateDraft(
+                                    "consentGiven",
+                                    event.target.value === "true",
+                                  )
+                                }
+                              >
+                                <option value="true">Yes</option>
+                                <option value="false">No</option>
+                              </select>
+                            ) : undefined}
+                          </FieldRow>
                         </div>
+                      </div>
                       </div>
 
                       {/* Current Location */}
-                      <div>
+                      <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                      <div className="p-4">
                         <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                           Current Location
                         </h3>
@@ -720,14 +1166,46 @@ const JobSeekerDetails = () => {
                           <FieldRow
                             label="Country"
                             value={form.currentCountry}
-                          />
-                          <FieldRow label="State" value={form.currentState} />
-                          <FieldRow label="City" value={form.currentCity} />
+                          >
+                            {editSelect(
+                              "countryId",
+                              countries,
+                              "Select country",
+                              (value) => {
+                                updateDraft("countryId", value);
+                                updateDraft("stateId", "");
+                                updateDraft("cityId", "");
+                              },
+                            )}
+                          </FieldRow>
+                          <FieldRow label="State" value={form.currentState}>
+                            {editSelect(
+                              "stateId",
+                              filteredStates,
+                              "Select state",
+                              (value) => {
+                                updateDraft("stateId", value);
+                                updateDraft("cityId", "");
+                              },
+                            )}
+                          </FieldRow>
+                          <FieldRow label="City" value={form.currentCity}>
+                            {editSelect(
+                              "cityId",
+                              filteredCities,
+                              "Select city",
+                            )}
+                          </FieldRow>
                         </div>
+                      </div>
                       </div>
 
                       {/* ---------- Audit Trail ---------- */}
-                      <div>
+                      <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                      <div className="p-4">
+                          <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                          User Log
+                        </h3>
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
                           <FieldRow
                             label="Created At"
@@ -749,11 +1227,8 @@ const JobSeekerDetails = () => {
                             label="Activated At"
                             value={formatDateTime(form.activatedAt)}
                           />
-                          {/* <FieldRow
-                            label="Consent At"
-                            value={formatDateTime(form.consentAt)}
-                          /> */}
                         </div>
+                      </div>
                       </div>
                     </div>
                   </section>
@@ -772,20 +1247,34 @@ const JobSeekerDetails = () => {
                         <FieldRow
                           label="Current Employer"
                           value={form.currentEmployment}
-                        />
+                        >
+                          {editInput("currentEmployment")}
+                        </FieldRow>
                         <FieldRow
                           label="Current Designation"
                           value={form.currentDesignation}
-                        />
+                        >
+                          {editInput("currentDesignation")}
+                        </FieldRow>
                         <FieldRow
                           label="Current Salary"
                           value={form.currentSalary}
-                        />
+                        >
+                          {editInput("currentSalary", "number")}
+                        </FieldRow>
                         <FieldRow
                           label="Total Experience (Years)"
                           value={form.totalExperience}
-                        />
-                        <FieldRow label="Job Type" value={form.jobType} />
+                        >
+                          {editInput("totalExperience", "number")}
+                        </FieldRow>
+                        <FieldRow label="Job Type" value={form.jobType}>
+                          {editSelect(
+                            "instituteTypeId",
+                            instituteTypes,
+                            "Select institute type",
+                          )}
+                        </FieldRow>
                       </div>
                     </div>
                   </section>
@@ -804,15 +1293,39 @@ const JobSeekerDetails = () => {
                         <FieldRow
                           label="Preferred Location"
                           value={form.preferredJobLocation}
-                        />
+                        >
+                          {editSelect(
+                            "preferredLocationId",
+                            cities,
+                            "Select preferred location",
+                          )}
+                        </FieldRow>
                         <FieldRow
                           label="Expected Salary"
                           value={form.expectedSalary}
-                        />
+                        >
+                          {editInput("expectedSalary", "number")}
+                        </FieldRow>
                         <FieldRow
                           label="Willing to Relocate?"
                           value={form.willingToRelocate}
-                        />
+                        >
+                          {isEditing ? (
+                            <select
+                              className={EDIT_INPUT}
+                              value={toBoolean(draft.willingToRelocate) ? "true" : "false"}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "willingToRelocate",
+                                  event.target.value === "true",
+                                )
+                              }
+                            >
+                              <option value="true">Yes</option>
+                              <option value="false">No</option>
+                            </select>
+                          ) : undefined}
+                        </FieldRow>
                         <FieldRow
                           label="Availability to Join"
                           value={
@@ -820,11 +1333,19 @@ const JobSeekerDetails = () => {
                               ? formatDate(form.availabilityToJoin)
                               : form.availabilityToJoin
                           }
-                        />
+                        >
+                          {editInput("availabilityToJoin", "date")}
+                        </FieldRow>
                         <FieldRow
                           label="Job Category"
                           value={form.jobCategory}
-                        />
+                        >
+                          {editSelect(
+                            "jobCategoryId",
+                            jobCategories,
+                            "Select profession",
+                          )}
+                        </FieldRow>
                       </div>
                     </div>
                   </section>
@@ -843,7 +1364,19 @@ const JobSeekerDetails = () => {
                           >
                             Resume / CV
                           </label>
-                          <DocumentBox doc={form.resume} />
+                          <div>
+                            <DocumentBox doc={form.resume} />
+                            {isEditing && (
+                              <input
+                                type="file"
+                                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                className="mt-2 block w-full text-xs text-slate-600"
+                                onChange={(event) =>
+                                  setUploadFile(event.target.files?.[0] ?? null)
+                                }
+                              />
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

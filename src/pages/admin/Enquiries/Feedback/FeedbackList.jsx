@@ -176,7 +176,7 @@ const requestStatusIdOf = (item) => {
 
 const TABLE_COLUMNS = [
   { key: "srNo", label: "Sr.No", width: "60px" },
-  { key: "requestId", label: "Request ID", width: "170px" },
+  { key: "requestId", label: "Feedback ID", width: "170px" },
   { key: "name", label: "Name", width: "200px" },
   { key: "contact", label: "Contact", width: "180px" },
   { key: "userType", label: "User Type", width: "140px" },
