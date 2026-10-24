@@ -59,7 +59,7 @@ const Stars = ({ value }) => (
 const FIELDS = [
   { key: "fB_feedback_id", label: "Feedback ID" },
   { key: "fB_request_no", label: "Request No." },
-  { key: "fB_name", label: "Organization Name" },
+  { key: "fB_name", label: "Full Name" },
   { key: "userTypeName", label: "User Type" },
   { key: "fB_contact", label: "Contact / Email" },
   { key: "fB_created_at", label: "Submitted", type: "date" },

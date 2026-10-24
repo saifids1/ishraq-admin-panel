@@ -300,7 +300,7 @@ const FeedbackList = () => {
   const headers = [
     { key: "srNo", label: "Sr.No", className: thClass },
     { key: "requestNo", label: "Request No.", className: thClass },
-    { key: "name", label: "Organization Name", className: thClass },
+    { key: "name", label: "Full Name", className: thClass },
     { key: "rating", label: "Rating", className: thClass },
     { key: "experience", label: "Overall Experience", className: thClass },
     { key: "createdAt", label: "Submit Date", className: thClass },

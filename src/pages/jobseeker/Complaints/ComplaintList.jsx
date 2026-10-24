@@ -20,7 +20,7 @@ const TABLE_COLUMNS = [
   { key: "srNo", width: "70px" },
   { key: "referenceNo", width: "170px" },
   { key: "fullName", width: "200px" },
-  { key: "complaintCategory", width: "190px" },
+  // { key: "complaintCategory", width: "190px" },
   { key: "details", width: "280px" },
   { key: "createdAt", width: "130px" },
   { key: "status", width: "120px" },
@@ -376,7 +376,7 @@ const ComplaintList = () => {
     { key: "referenceNo", label: "Request No.", className: thClass },
     { key: "fullName", label: "Full Name", className: thClass },
     { key: "complaintCategory", label: "Complaint Category", className: thClass },
-    { key: "details", label: "Complaint Details", className: thClass },
+    // { key: "details", label: "Complaint Details", className: thClass },
     { key: "createdAt", label: "Submit Date", className: thClass },
     { key: "status", label: "Status", className: thClass },
     { key: "actions", label: "Action", className: stickyActionsHead },
@@ -582,11 +582,7 @@ const ComplaintList = () => {
                         </span>
                       </td>
 
-                      <td className={td}>
-                        <span className="block truncate" title={item.details}>
-                          {item.details}
-                        </span>
-                      </td>
+                      
 
                       <td className={`${td} whitespace-nowrap tabular-nums`}>
                         {item.createdAt}
