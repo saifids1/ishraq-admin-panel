@@ -86,12 +86,19 @@ const formatDate = (value, withTime = false) => {
 
   if (Number.isNaN(date.getTime())) return "-";
 
-  return date.toLocaleString("en-GB", {
+  const options = {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
-  });
+    ...(withTime
+      ? { hour: "2-digit", minute: "2-digit", hour12: false }
+      : {}),
+  };
+
+  return date
+    .toLocaleString("en-GB", options)
+    .replace(/\//g, "-")
+    .replace(",", "");
 };
 
 const fileNameFromPath = (path) =>
@@ -637,11 +644,11 @@ export default function JobRequirementDetails() {
                   </ReadOnlyValue>
                 </FieldRow>
 
-                <FieldRow label="Last Updated">
+                {/* <FieldRow label="Last Updated">
                   <ReadOnlyValue>
                     {formatDate(job.updatedAt, true)}
                   </ReadOnlyValue>
-                </FieldRow>
+                </FieldRow> */}
               </div>
             </section>
 
