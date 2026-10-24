@@ -29,7 +29,6 @@ export function useCountUp(value, duration = 800) {
   return Math.round(v);
 }
 
-
 /* item: { title, value,  icon, color, color2,  } */
 export const GradientStatCard = ({ item, index, selected, onSelect }) => {
   const Icon = item.icon;
@@ -66,10 +65,9 @@ export const GradientStatCard = ({ item, index, selected, onSelect }) => {
       <div className="relative mt-1.5 flex items-end justify-between gap-2">
         <div className="min-w-0">
           <span className="text-[26px] font-extrabold leading-none tabular-nums tracking-tight">
-            {fmt(n)}
+            {fmt(n)} {item.title === "Profile Completion" ? "%" : ""}
           </span>
-          <div className="mt-1.5 flex items-center gap-1.5 text-[10px]">
-          </div>
+          <div className="mt-1.5 flex items-center gap-1.5 text-[10px]"></div>
         </div>
       </div>
     </Tag>

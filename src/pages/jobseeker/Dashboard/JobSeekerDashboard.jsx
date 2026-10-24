@@ -273,7 +273,7 @@ const JobSeekerDashboard = () => {
 
  const kpis = [
   {
-    title: "Profile completion in %",
+    title: "Profile Completion",
     value: toCount(profileLoading ? 0 : percent),
     note: `${doneCount} of ${checksTotal} sections`,
     icon: UserRound,
