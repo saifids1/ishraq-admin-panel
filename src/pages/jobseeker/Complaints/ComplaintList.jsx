@@ -31,14 +31,11 @@ const BADGE_BASE =
   "inline-flex h-7 min-w-[96px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
 const STATUS_BADGE = {
-  open: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  active: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  new: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  hold: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  paused: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  pending: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  closed: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
-  resolved: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
+  new: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/30",
+  open: "bg-blue-600 text-white ring-blue-700 shadow-blue-600/20",
+  "in-progress": "bg-orange-500 text-white ring-orange-600 shadow-orange-500/20",
+  hold: "bg-red-600 text-white ring-red-700 shadow-red-600/20",
+  closed: "bg-emerald-600 text-white ring-emerald-700 shadow-emerald-600/20",
 };
 
 const statusBadgeClass = (value) =>

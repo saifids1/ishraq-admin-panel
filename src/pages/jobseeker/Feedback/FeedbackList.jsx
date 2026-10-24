@@ -67,14 +67,11 @@ const mapFeedback = (item) => ({
 });
 
 const STATUS_BADGE = {
-  open: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  active: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  new: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-  hold: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  paused: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  pending: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-  closed: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
-  resolved: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
+  new: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/30",
+  open: "bg-blue-600 text-white ring-blue-700 shadow-blue-600/20",
+  "in-progress": "bg-orange-500 text-white ring-orange-600 shadow-orange-500/20",
+  hold: "bg-red-600 text-white ring-red-700 shadow-red-600/20",
+  closed: "bg-emerald-600 text-white ring-emerald-700 shadow-emerald-600/20",
 };
 
 const statusBadgeClass = (value) =>
@@ -285,7 +282,7 @@ const FeedbackList = () => {
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
   const td =
-    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
+    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] font-semibold text-slate-900";
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2";
   const btnRefresh =
