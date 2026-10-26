@@ -366,7 +366,7 @@ const EmployerDashboard = () => {
           action={
             <button
               type="button"
-              onClick={() => navigate("/employer/job-requirements")}
+              onClick={() => navigate("/employer/job-requirement-list")}
               className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
             >
               View all
