@@ -1,7 +1,7 @@
 // src/pages/admin/employer/CreateEmployer.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronsLeft, Eye, EyeOff } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import employerApi from "../../../api/Services/adminemployeelistApi";
 import instituteTypeApi from "../../../api/Services/instituteTypeApi";
 import countryMasterApi from "../../../api/Services/countryMasterApi";
@@ -17,16 +17,16 @@ const selectClass =
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
-/* ---------- field row: label : input ---------- */
+/* ---------- field row: label : input (responsive) ---------- */
 const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
 
 const FieldRow = ({ label, required, error, children, fullWidth }) => (
   <div
-    className={`grid grid-cols-[160px_1fr] items-start gap-3 ${
+    className={`grid grid-cols-1 gap-1.5 sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3 ${
       fullWidth ? "md:col-span-2" : ""
     }`}
   >
-    <label className={`${FIELD_LABEL} pt-2`}>
+    <label className={`${FIELD_LABEL} sm:pt-2`}>
       {label} {required && <span className="text-red-500">*</span>}
     </label>
     <div className="min-w-0">
@@ -43,12 +43,6 @@ const FieldRow = ({ label, required, error, children, fullWidth }) => (
 const config = {
   singular: "Employer",
   api: employerApi,
-  idField: "eM_employer_id",
-
-  emailField: "email",
-  passwordField: "password",
-  mobileField: "mobile",
-  fullNameField: "fullName",
 
   organizationField: "eM_organization_name",
   instituteTypeField: "eM_institute_type_id",
@@ -64,24 +58,6 @@ const config = {
 const listPath = "/admin/employer";
 
 /* --------------------------- HELPERS ------------------------- */
-
-const extractRecord = (response) => {
-  let result = response?.data ?? response;
-
-  if (result?.data !== undefined) {
-    result = result.data;
-  } else if (result?.Data !== undefined) {
-    result = result.Data;
-  }
-
-  if (result?.data && !Array.isArray(result.data)) {
-    result = result.data;
-  } else if (result?.Data && !Array.isArray(result.Data)) {
-    result = result.Data;
-  }
-
-  return result;
-};
 
 const extractList = (response) => {
   const root = response?.data ?? response;
@@ -116,19 +92,14 @@ const MOBILE_RE = /^\d{10}$/;
 
 /* ----------------------------- COMPONENT ----------------------------- */
 
-const CreateEmployer = ({ mode, onCancel, onSaved }) => {
+const CreateEmployer = ({ onCancel, onSaved }) => {
   const navigate = useNavigate();
-  const { id } = useParams();
 
-  const isCreate = mode === "create";
-
-  const [isView, setIsView] = useState(mode === "view");
-  const [isEdit, setIsEdit] = useState(mode === "edit");
-
-  // Form state (13 fields)
+  // Form state
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mobile, setMobile] = useState("");
+  const [whatsappNumber, setWhatsappNumber] = useState("");
   const [fullName, setFullName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [instituteTypeId, setInstituteTypeId] = useState("");
@@ -139,9 +110,7 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
   const [cityId, setCityId] = useState("");
   const [website, setWebsite] = useState("");
   const [consentGiven, setConsentGiven] = useState(false);
-  const [createdBy, setCreatedBy] = useState(null);
 
-  // Password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
 
   // Dropdown sources
@@ -150,15 +119,12 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
 
-  const [loadingInstituteTypes, setLoadingInstituteTypes] = useState(false);
-  const [loadingCountries, setLoadingCountries] = useState(false);
-  const [loadingStates, setLoadingStates] = useState(false);
-  const [loadingCities, setLoadingCities] = useState(false);
-
-  const [loading, setLoading] = useState(false);
+  const [loadingLookups, setLoadingLookups] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [modal, setModal] = useState(null);
+
+  /* --------------------------- MODAL --------------------------- */
 
   const openStatus = (type, message, extra = {}) => {
     setModal({
@@ -179,200 +145,90 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
     });
   };
 
-  const openConfirm = ({
-    title,
-    message,
-    confirmText,
-    cancelText,
-    onConfirm,
-    onCancel,
-  }) => {
-    setModal({
-      type: "confirm",
-      title,
-      message,
-      confirmText: confirmText || "Confirm",
-      cancelText: cancelText || "Cancel",
-      showCancel: true,
-      onConfirm: () => {
-        setModal(null);
-        onConfirm?.();
-      },
-      onCancel: () => {
-        setModal(null);
-        onCancel?.();
-      },
-    });
-  };
-
-  /* --------------------------- LOOKUPS --------------------------- */
+  /* --------------------------- LOOKUPS (parallel) --------------------------- */
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      setLoadingInstituteTypes(true);
-      try {
-        const r = await instituteTypeApi.getAllList();
-        if (!cancelled) setInstituteTypes(extractList(r));
-      } catch (err) {
-        if (!cancelled) {
-          setError(getErrorMessage(err, "Unable to load institute types."));
-        }
-      } finally {
-        if (!cancelled) setLoadingInstituteTypes(false);
+
+    const fetchAll = async () => {
+      setLoadingLookups(true);
+      const results = await Promise.allSettled([
+        instituteTypeApi.getAllList(),
+        countryMasterApi.getAllList(),
+        stateMasterApi.getAllList(),
+        cityMasterApi.getAllList(),
+      ]);
+
+      if (cancelled) return;
+
+      const [types, countryRes, stateRes, cityRes] = results;
+
+      if (types.status === "fulfilled") {
+        setInstituteTypes(extractList(types.value));
+      } else {
+        setError(
+          (prev) =>
+            prev ||
+            getErrorMessage(types.reason, "Unable to load institute types."),
+        );
       }
+
+      if (countryRes.status === "fulfilled") {
+        setCountries(extractList(countryRes.value));
+      } else {
+        setError(
+          (prev) =>
+            prev ||
+            getErrorMessage(countryRes.reason, "Unable to load countries."),
+        );
+      }
+
+      if (stateRes.status === "fulfilled") {
+        setStates(extractList(stateRes.value));
+      } else {
+        setError(
+          (prev) =>
+            prev ||
+            getErrorMessage(stateRes.reason, "Unable to load states."),
+        );
+      }
+
+      if (cityRes.status === "fulfilled") {
+        setCities(extractList(cityRes.value));
+      } else {
+        setError(
+          (prev) =>
+            prev || getErrorMessage(cityRes.reason, "Unable to load cities."),
+        );
+      }
+
+      setLoadingLookups(false);
     };
-    load();
+
+    fetchAll();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoadingCountries(true);
-      try {
-        const r = await countryMasterApi.getAllList();
-        if (!cancelled) setCountries(extractList(r));
-      } catch (err) {
-        if (!cancelled) {
-          setError(getErrorMessage(err, "Unable to load countries."));
-        }
-      } finally {
-        if (!cancelled) setLoadingCountries(false);
-      }
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  /* --------------------------- DERIVED LISTS --------------------------- */
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoadingStates(true);
-      try {
-        const r = await stateMasterApi.getAllList();
-        if (!cancelled) setStates(extractList(r));
-      } catch (err) {
-        if (!cancelled) {
-          setError(getErrorMessage(err, "Unable to load states."));
-        }
-      } finally {
-        if (!cancelled) setLoadingStates(false);
-      }
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const filteredStates = useMemo(
+    () => states.filter((s) => String(s.sM_CountryId) === String(countryId)),
+    [states, countryId],
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoadingCities(true);
-      try {
-        const r = await cityMasterApi.getAllList();
-        if (!cancelled) setCities(extractList(r));
-      } catch (err) {
-        if (!cancelled) {
-          setError(getErrorMessage(err, "Unable to load cities."));
-        }
-      } finally {
-        if (!cancelled) setLoadingCities(false);
-      }
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  /* --------------------------- RECORD LOAD --------------------------- */
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (isCreate) {
-      setEmail("");
-      setPassword("");
-      setMobile("");
-      setFullName("");
-      setOrganizationName("");
-      setInstituteTypeId("");
-      setContactPerson("");
-      setDesignation("");
-      setCountryId("");
-      setStateId("");
-      setCityId("");
-      setWebsite("");
-      setConsentGiven(false);
-      setCreatedBy(null);
-
-      setError("");
-      setLoading(false);
-      return;
-    }
-
-    if (!id) {
-      setError("Record ID is missing.");
-      return;
-    }
-
-    const loadRecord = async () => {
-      setLoading(true);
-      setError("");
-
-      try {
-        const response = await config.api.getById(id);
-        const item = extractRecord(response);
-
-        if (cancelled) return;
-
-        if (!item || typeof item !== "object" || item.email === undefined) {
-          throw new Error("Record not found in API response.");
-        }
-
-        setEmail(item.email ?? "");
-        setPassword("");
-        setMobile(item.mobile ?? "");
-        setFullName(item.fullName ?? "");
-        setOrganizationName(item[config.organizationField] ?? "");
-        setInstituteTypeId(String(item[config.instituteTypeField] ?? ""));
-        setContactPerson(item[config.contactPersonField] ?? "");
-        setDesignation(item[config.designationField] ?? "");
-        setCountryId(String(item[config.countryField] ?? ""));
-        setStateId(String(item[config.stateField] ?? ""));
-        setCityId(String(item[config.cityField] ?? ""));
-        setWebsite(item[config.websiteField] ?? "");
-        setConsentGiven(Boolean(item[config.consentField]));
-        setCreatedBy(item.eM_created_by ?? item.EM_created_by ?? null);
-      } catch (err) {
-        if (!cancelled) {
-          setError(getErrorMessage(err, "Failed to load record."));
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    loadRecord();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id, isCreate]);
+  const filteredCities = useMemo(
+    () => cities.filter((c) => String(c.ctM_StateId) === String(stateId)),
+    [cities, stateId],
+  );
 
   /* --------------------------- SUBMIT --------------------------- */
 
-  const save = async () => {
+  const save = useCallback(async () => {
     setSaving(true);
     setError("");
     try {
-      // Resolve the currently logged-in user id (from login response / JWT / storage).
       const currentUserId = Number(getCurrentUserId2());
       if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
         throw new Error(
@@ -380,62 +236,31 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
         );
       }
 
-      let response;
+      const payload = {
+        email: email.trim(),
+        password,
+        mobile: mobile.trim(),
+        whatsapp_number: whatsappNumber.trim() || null,
+        fullName: fullName.trim(),
+        eM_created_by: currentUserId,
+        [config.organizationField]: organizationName.trim(),
+        [config.instituteTypeField]: Number(instituteTypeId),
+        [config.contactPersonField]: contactPerson.trim(),
+        [config.designationField]: designation.trim(),
+        [config.countryField]: Number(countryId),
+        [config.stateField]: Number(stateId),
+        [config.cityField]: Number(cityId),
+        [config.websiteField]: website.trim(),
+        [config.consentField]: Boolean(consentGiven),
+      };
 
-      if (isCreate) {
-        const payload = {
-          email: email.trim(),
-          password,
-          mobile: mobile.trim(),
-          fullName: fullName.trim(),
-          [config.organizationField]: organizationName.trim(),
-          [config.instituteTypeField]: Number(instituteTypeId),
-          [config.contactPersonField]: contactPerson.trim(),
-          [config.designationField]: designation.trim(),
-          [config.countryField]: Number(countryId),
-          [config.stateField]: Number(stateId),
-          [config.cityField]: Number(cityId),
-          [config.websiteField]: website.trim(),
-          [config.consentField]: Boolean(consentGiven),
-          // On create, both created/updated by = current user
-          eM_created_by: currentUserId,
-          eM_updated_by: currentUserId,
-        };
-
-        response = await config.api.create(payload);
-      } else {
-        // On update: always set updated_by; only include created_by when it
-        // has a real value, so we don't accidentally wipe the original creator.
-        const payload = {
-          [config.idField]: Number(id),
-          email: email.trim(),
-          mobile: mobile.trim(),
-          fullName: fullName.trim(),
-          [config.organizationField]: organizationName.trim(),
-          [config.instituteTypeField]: Number(instituteTypeId),
-          [config.contactPersonField]: contactPerson.trim(),
-          [config.designationField]: designation.trim(),
-          [config.countryField]: Number(countryId),
-          [config.stateField]: Number(stateId),
-          [config.cityField]: Number(cityId),
-          [config.websiteField]: website.trim(),
-          [config.consentField]: Boolean(consentGiven),
-          eM_updated_by: currentUserId,
-        };
-
-        if (createdBy != null && createdBy !== "") {
-          payload.eM_created_by = Number(createdBy);
-        }
-
-        response = await config.api.update(id, payload);
-      }
-
+      const response = await config.api.create(payload);
       const responseMessage =
         response?.data?.message || response?.data?.Message;
+
       openStatus(
-        isCreate ? "success" : "update",
-        responseMessage ||
-          `Employer ${isCreate ? "created" : "updated"} successfully.`,
+        "success",
+        responseMessage || "Employer created successfully.",
         {
           confirmText: "Continue",
           onConfirm: () => {
@@ -448,16 +273,30 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
         },
       );
     } catch (err) {
-      const message = getErrorMessage(
-        err,
-        `Failed to ${isCreate ? "create" : "update"} employer.`,
-      );
+      const message = getErrorMessage(err, "Failed to create employer.");
       setError(message);
       openStatus("error", message);
     } finally {
       setSaving(false);
     }
-  };
+  }, [
+    email,
+    password,
+    mobile,
+    whatsappNumber,
+    fullName,
+    organizationName,
+    instituteTypeId,
+    contactPerson,
+    designation,
+    countryId,
+    stateId,
+    cityId,
+    website,
+    consentGiven,
+    onSaved,
+    navigate,
+  ]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -472,9 +311,11 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
       validationMessage = "Contact Person is required.";
     } else if (!MOBILE_RE.test(mobile.trim())) {
       validationMessage = "Mobile must be exactly 10 digits.";
+    } else if (whatsappNumber && !MOBILE_RE.test(whatsappNumber.trim())) {
+      validationMessage = "WhatsApp number must be exactly 10 digits.";
     } else if (!EMAIL_RE.test(email.trim())) {
       validationMessage = "Enter a valid email address.";
-    } else if (isCreate && password.trim().length < 6) {
+    } else if (password.trim().length < 6) {
       validationMessage = "Password must be at least 6 characters.";
     } else if (!countryId) {
       validationMessage = "Country is required.";
@@ -510,72 +351,49 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
       return;
     }
 
-    if (!isCreate) {
-      openConfirm({
-        title: "Confirm update",
-        message: "Are you sure you want to update this employer?",
-        confirmText: "Update",
-        onConfirm: save,
-      });
-      return;
-    }
     await save();
   };
 
-  const handleEditClick = () => {
-    setIsView(false);
-    setIsEdit(true);
-    setError("");
-  };
+  /* --------------------------- STYLES --------------------------- */
 
-  const title = config.singular;
-  const disabled = isView || loading || saving;
+  const disabled = loadingLookups || saving;
 
-  const pageTitle = isCreate
-    ? `Create ${title}`
-    : isEdit
-      ? `Update ${title}`
-      : `View ${title}`;
+  const handleBack = () => (onCancel ? onCancel() : navigate(listPath));
 
-  // Derived filtered lists (memoized for stability)
-  const filteredStates = useMemo(
-    () => states.filter((s) => String(s.sM_CountryId) === String(countryId)),
-    [states, countryId],
-  );
-
-  const filteredCities = useMemo(
-    () => cities.filter((c) => String(c.ctM_StateId) === String(stateId)),
-    [cities, stateId],
-  );
+  /* --------------------------- RENDER --------------------------- */
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex justify-between border-b border-slate-200 px-6 py-4">
-            <div className="flex items-center gap-3">
+          {/* HEADER */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                onClick={() => (onCancel ? onCancel() : navigate(listPath))}
+                onClick={handleBack}
                 title="Back"
                 aria-label="Back"
                 className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
               >
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
-
-              <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
+              <h2 className="truncate font-semibold text-slate-800">
+                Create {config.singular}
+              </h2>
             </div>
           </div>
 
+          {/* ERROR */}
           {error && (
-            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600 sm:mx-6">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="p-4">
-            <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+          {/* FORM */}
+          <form onSubmit={handleSubmit} className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
               {/* Organization Name */}
               <FieldRow label="Organization Name" required>
                 <input
@@ -583,24 +401,24 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
                   value={organizationName}
                   onChange={(e) => setOrganizationName(e.target.value)}
                   disabled={disabled}
-                  required={!isView}
+                  required
                   placeholder="Enter organization name"
                   className={inputClass}
                 />
               </FieldRow>
 
-              {/* Organization Type (Institute Type) */}
+              {/* Organization Type */}
               <FieldRow label="Organization Type" required>
                 <div className="relative">
                   <select
                     value={instituteTypeId}
                     onChange={(e) => setInstituteTypeId(e.target.value)}
-                    disabled={disabled || loadingInstituteTypes}
-                    required={!isView}
+                    disabled={disabled}
+                    required
                     className={selectClass}
                   >
                     <option value="">
-                      {loadingInstituteTypes
+                      {loadingLookups
                         ? "Loading..."
                         : "Select Organization Type"}
                     </option>
@@ -627,7 +445,7 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
                   value={contactPerson}
                   onChange={(e) => setContactPerson(e.target.value)}
                   disabled={disabled}
-                  required={!isView}
+                  required
                   placeholder="Full name of contact person"
                   className={inputClass}
                 />
@@ -645,7 +463,20 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
                 />
               </FieldRow>
 
-              {/* Mobile Number */}
+              {/* Full Name */}
+              <FieldRow label="Full Name" required>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  disabled={disabled}
+                  required
+                  placeholder="Enter full name"
+                  className={inputClass}
+                />
+              </FieldRow>
+
+              {/* Mobile */}
               <FieldRow label="Mobile Number" required>
                 <input
                   type="tel"
@@ -654,59 +485,74 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
                     setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))
                   }
                   disabled={disabled}
-                  required={!isView}
+                  required
                   inputMode="numeric"
                   placeholder="10-digit mobile number"
                   className={inputClass}
                 />
               </FieldRow>
 
-              {/* Email Address */}
+              {/* WhatsApp Number */}
+              <FieldRow label="WhatsApp Number">
+                <input
+                  type="tel"
+                  value={whatsappNumber}
+                  onChange={(e) =>
+                    setWhatsappNumber(
+                      e.target.value.replace(/\D/g, "").slice(0, 10),
+                    )
+                  }
+                  disabled={disabled}
+                  inputMode="numeric"
+                  placeholder="10-digit WhatsApp number (optional)"
+                  className={inputClass}
+                />
+              </FieldRow>
+
+              {/* Email */}
               <FieldRow label="Email Address" required>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={disabled}
-                  required={!isView}
+                  required
                   placeholder="Enter your email"
                   className={inputClass}
                 />
               </FieldRow>
 
-              {/* Password — create only, with show/hide toggle */}
-              {isCreate && (
-                <FieldRow label="Password" required>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      disabled={disabled}
-                      required
-                      autoComplete="new-password"
-                      placeholder="Minimum 6 characters"
-                      className={`${inputClass} pr-10`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      disabled={disabled}
-                      title={showPassword ? "Hide password" : "Show password"}
-                      aria-label={
-                        showPassword ? "Hide password" : "Show password"
-                      }
-                      className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {showPassword ? (
-                        <EyeOff size={16} strokeWidth={2} />
-                      ) : (
-                        <Eye size={16} strokeWidth={2} />
-                      )}
-                    </button>
-                  </div>
-                </FieldRow>
-              )}
+              {/* Password */}
+              <FieldRow label="Password" required>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={disabled}
+                    required
+                    autoComplete="new-password"
+                    placeholder="Minimum 6 characters"
+                    className={`${inputClass} pr-10`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    disabled={disabled}
+                    title={showPassword ? "Hide password" : "Show password"}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                    className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {showPassword ? (
+                      <EyeOff size={16} strokeWidth={2} />
+                    ) : (
+                      <Eye size={16} strokeWidth={2} />
+                    )}
+                  </button>
+                </div>
+              </FieldRow>
 
               {/* Country */}
               <FieldRow label="Country" required>
@@ -718,12 +564,12 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
                       setStateId("");
                       setCityId("");
                     }}
-                    disabled={disabled || loadingCountries}
-                    required={!isView}
+                    disabled={disabled}
+                    required
                     className={selectClass}
                   >
                     <option value="">
-                      {loadingCountries ? "Loading..." : "Select Country"}
+                      {loadingLookups ? "Loading..." : "Select Country"}
                     </option>
                     {countries.map((c) => (
                       <option key={c.cM_Id} value={String(c.cM_Id)}>
@@ -747,16 +593,12 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
                       setStateId(e.target.value);
                       setCityId("");
                     }}
-                    disabled={disabled || !countryId || loadingStates}
-                    required={!isView}
+                    disabled={disabled || !countryId}
+                    required
                     className={selectClass}
                   >
                     <option value="">
-                      {!countryId
-                        ? "Select Country first"
-                        : loadingStates
-                          ? "Loading..."
-                          : "Select State"}
+                      {!countryId ? "Select Country first" : "Select State"}
                     </option>
                     {filteredStates.map((s) => (
                       <option key={s.sM_Id} value={String(s.sM_Id)}>
@@ -777,16 +619,12 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
                   <select
                     value={cityId}
                     onChange={(e) => setCityId(e.target.value)}
-                    disabled={disabled || !stateId || loadingCities}
-                    required={!isView}
+                    disabled={disabled || !stateId}
+                    required
                     className={selectClass}
                   >
                     <option value="">
-                      {!stateId
-                        ? "Select State first"
-                        : loadingCities
-                          ? "Loading..."
-                          : "Select City"}
+                      {!stateId ? "Select State first" : "Select City"}
                     </option>
                     {filteredCities.map((c) => (
                       <option key={c.ctM_Id} value={String(c.ctM_Id)}>
@@ -814,8 +652,8 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
               </FieldRow>
 
               {/* Consent */}
-              <div className="grid grid-cols-[160px_1fr] items-start gap-3 md:col-span-2">
-                <label className={`${FIELD_LABEL} pt-2`}>Consent</label>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3 md:col-span-2">
+                <label className={`${FIELD_LABEL} sm:pt-2`}>Consent</label>
                 <div>
                   <label className="flex items-start gap-2 text-[13px] text-slate-700">
                     <input
@@ -823,48 +661,36 @@ const CreateEmployer = ({ mode, onCancel, onSaved }) => {
                       checked={consentGiven}
                       onChange={(e) => setConsentGiven(e.target.checked)}
                       disabled={disabled}
-                      required={!isView}
+                      required
                       className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#2f6b8a] focus:ring-[#2f6b8a]"
                     />
                     <span>
                       I agree to the Privacy Policy and Terms of Service of
                       Ishraq HR.
-                      {!isView && <span className="ml-1 text-red-500">*</span>}
+                      <span className="ml-1 text-red-500">*</span>
                     </span>
                   </label>
                 </div>
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="mt-6 flex justify-between gap-3 border-t border-slate-100 pt-4">
+            {/* FOOTER */}
+            <div className="mt-6 flex flex-col-reverse gap-2.5 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
               <button
                 type="button"
-                onClick={() => (onCancel ? onCancel() : navigate(listPath))}
-                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                onClick={handleBack}
+                className="w-full rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 sm:w-auto"
               >
-                {isView ? "Back" : "Cancel"}
+                Cancel
               </button>
 
-              {isView && (
-                <button
-                  type="button"
-                  onClick={handleEditClick}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
-                >
-                  Edit
-                </button>
-              )}
-
-              {!isView && (
-                <button
-                  type="submit"
-                  disabled={disabled}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {saving ? "Saving..." : isCreate ? "Create" : "Update"}
-                </button>
-              )}
+              <button
+                type="submit"
+                disabled={disabled}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              >
+                {saving ? "Saving..." : "Create"}
+              </button>
             </div>
           </form>
         </div>

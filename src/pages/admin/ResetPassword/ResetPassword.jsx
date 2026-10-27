@@ -171,8 +171,8 @@ const PasswordField = ({
 }) => {
   const [show, setShow] = useState(false);
   return (
-    <div className="grid grid-cols-[130px_1fr] items-start gap-3">
-      <label htmlFor={id} className={`${FIELD_LABEL} pt-2`}>
+    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[130px_1fr] sm:items-start sm:gap-3">
+      <label htmlFor={id} className={`${FIELD_LABEL} sm:pt-2`}>
         {label}
       </label>
       <div className="min-w-0">
@@ -421,7 +421,7 @@ const ResetPassword = () => {
   const listId = "reset-user-listbox";
 
   return (
-    <div className="rp-page bg-[#f7f9fb] text-[#1e2b36]">
+    <div className="rp-page w-full min-w-0 bg-[#f7f9fb] text-[#1e2b36]">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
         .rp-page { font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif; }
@@ -432,20 +432,21 @@ const ResetPassword = () => {
         @media (prefers-reduced-motion: reduce) { .rp-pop, .rp-halo { animation: none !important; } }
       `}</style>
 
-      <div className="mx-auto rounded-[12px] border border-[#e2e8ee] bg-white shadow-sm">
+      <div className="mx-auto w-full min-w-0 rounded-[12px] border border-[#e2e8ee] bg-white shadow-sm">
         {/* ---------- page header ---------- */}
-        <div className="flex items-center gap-3.5 border-b border-[#e2e8ee] px-4 py-3 sm:px-5 sm:py-4">
-          <div className="relative grid h-12 w-12 shrink-0 place-items-center">
+        <div className="flex items-start gap-3 border-b border-[#e2e8ee] px-4 py-3.5 sm:items-center sm:gap-3.5 sm:px-5 sm:py-4">
+          <div className="relative grid h-10 w-10 shrink-0 place-items-center sm:h-12 sm:w-12">
             <span className="rp-halo absolute inset-0 rounded-2xl bg-[#e8f1f6]" />
-            <span className="relative grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#2c6b8a] to-[#5ba6bd] text-white shadow-md">
-              <KeyRound size={19} />
+            <span className="relative grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-[#2c6b8a] to-[#5ba6bd] text-white shadow-md sm:h-10 sm:w-10">
+              <KeyRound size={17} className="sm:hidden" />
+              <KeyRound size={19} className="hidden sm:block" />
             </span>
           </div>
-          <div>
-            <h1 className="m-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[24px]">
+          <div className="min-w-0">
+            <h1 className="m-0 text-[20px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[24px]">
               Reset a password
             </h1>
-            <p className="mt-0.5 text-[13px] text-[#6b7a88]">
+            <p className="mt-0.5 text-[12.5px] text-[#6b7a88] sm:text-[13px]">
               Search for the account, then set a new password for it.
             </p>
           </div>
@@ -453,12 +454,12 @@ const ResetPassword = () => {
 
         <form
           onSubmit={onSubmit}
-          className="space-y-6 px-4 py-4 sm:px-5 sm:py-5"
+          className="space-y-5 px-4 py-4 sm:space-y-6 sm:px-5 sm:py-5"
         >
           {/* ---------- step 1 — pick a user ---------- */}
           <section>
             <div className="mb-3 flex items-center gap-2">
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-[#2c6b8a] text-[12px] font-bold text-white">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#2c6b8a] text-[12px] font-bold text-white">
                 1
               </span>
               <h2 className="text-[15px] font-bold text-[#1e2b36]">
@@ -474,10 +475,10 @@ const ResetPassword = () => {
             ) : apiError ? (
               <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                {apiError}
+                <span className="min-w-0 break-words">{apiError}</span>
               </div>
             ) : selected ? (
-              <div className="rp-pop flex flex-wrap items-center gap-3 rounded-xl border border-[#2c6b8a]/30 bg-[#e8f1f6]/60 p-3">
+              <div className="rp-pop flex flex-col gap-3 rounded-xl border border-[#2c6b8a]/30 bg-[#e8f1f6]/60 p-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <Avatar user={selected} size="h-11 w-11" text="text-[14px]" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -486,13 +487,13 @@ const ResetPassword = () => {
                     </p>
                     <RoleBadge role={selected.role} />
                   </div>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12.5px] text-[#6b7a88]">
-                    <span className="inline-flex items-center gap-1 break-all">
-                      <Mail size={12} />
-                      {selected.email}
+                  <p className="mt-0.5 flex flex-col gap-y-0.5 text-[12.5px] text-[#6b7a88] sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
+                    <span className="inline-flex min-w-0 items-center gap-1">
+                      <Mail size={12} className="shrink-0" />
+                      <span className="truncate">{selected.email}</span>
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <Phone size={12} />
+                      <Phone size={12} className="shrink-0" />
                       {selected.phone}
                     </span>
                   </p>
@@ -501,7 +502,7 @@ const ResetPassword = () => {
                   type="button"
                   onClick={clearSelected}
                   disabled={submitting}
-                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-medium text-[#34445a] transition hover:border-[#d64545] hover:text-[#d64545] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-9 w-full shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-medium text-[#34445a] transition hover:border-[#d64545] hover:text-[#d64545] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   <X size={14} />
                   Pick another
@@ -509,9 +510,9 @@ const ResetPassword = () => {
               </div>
             ) : (
               <>
-                {/* role filter tabs */}
+                {/* role filter tabs — scrolls horizontally if needed */}
                 <div
-                  className="mb-3 inline-flex rounded-lg bg-[#f1f5f8] p-1"
+                  className="mb-3 inline-flex max-w-full overflow-x-auto rounded-lg bg-[#f1f5f8] p-1"
                   role="group"
                   aria-label="Filter by account type"
                 >
@@ -527,7 +528,7 @@ const ResetPassword = () => {
                           setRoleFilter(f.value);
                           inputRef.current?.focus();
                         }}
-                        className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] ${
+                        className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] ${
                           on
                             ? "bg-white text-[#2c6b8a] shadow-sm"
                             : "text-[#6b7a88] hover:text-[#34445a]"
@@ -623,18 +624,20 @@ const ResetPassword = () => {
                               <p className="truncate text-[13.5px] font-semibold text-[#1e2b36]">
                                 {u.name}
                               </p>
-                              <p className="flex flex-wrap items-center gap-x-3 text-[12px] text-[#6b7a88]">
-                                <span className="inline-flex items-center gap-1 truncate">
-                                  <Mail size={11} />
-                                  {u.email}
+                              <p className="flex flex-col gap-y-0.5 text-[12px] text-[#6b7a88] sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
+                                <span className="inline-flex min-w-0 items-center gap-1">
+                                  <Mail size={11} className="shrink-0" />
+                                  <span className="truncate">{u.email}</span>
                                 </span>
                                 <span className="inline-flex items-center gap-1">
-                                  <Phone size={11} />
+                                  <Phone size={11} className="shrink-0" />
                                   {u.phone}
                                 </span>
                               </p>
                             </div>
-                            <RoleBadge role={u.role} />
+                            <span className="hidden sm:inline-flex">
+                              <RoleBadge role={u.role} />
+                            </span>
                           </li>
                         ))
                       )}
@@ -653,7 +656,7 @@ const ResetPassword = () => {
           >
             <div className="mb-3 flex items-center gap-2">
               <span
-                className={`grid h-6 w-6 place-items-center rounded-full text-[12px] font-bold text-white ${
+                className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-bold text-white ${
                   selected ? "bg-[#2c6b8a]" : "bg-[#9aa5b1]"
                 }`}
               >
@@ -723,20 +726,20 @@ const ResetPassword = () => {
               className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700"
             >
               <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              {error}
+              <span className="min-w-0 break-words">{error}</span>
             </div>
           )}
 
           {/* ---------- footer ---------- */}
           <div className="flex flex-col-reverse gap-2.5 border-t border-[#e2e8ee] pt-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="flex items-center gap-1.5 text-[12.5px] text-[#6b7a88]">
-              <ShieldCheck size={14} className="text-[#2c6b8a]" />
+              <ShieldCheck size={14} className="shrink-0 text-[#2c6b8a]" />
               Their old password stops working the moment you save.
             </p>
             <button
               type="submit"
               disabled={!selected || submitting}
-              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-5 text-[13.5px] font-semibold text-white shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
+              className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-5 text-[13.5px] font-semibold text-white shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100 sm:w-auto"
             >
               {submitting ? (
                 <>

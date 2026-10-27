@@ -90,9 +90,9 @@ function Card({ title, action, children, className = "" }) {
     <section
       className={`${T.surface} ${T.radius} border ${T.border} ${T.cardShadow} ${className}`}
     >
-      <div className="p-4">
+      <div className="p-3.5 sm:p-4">
         {(title || action) && (
-          <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             {title && (
               <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                 {title}
@@ -107,13 +107,13 @@ function Card({ title, action, children, className = "" }) {
   );
 }
 
-/* ---------------- FieldRow (same edit-mode fix as JobSeekerDetails) ---------------- */
+/* ---------------- FieldRow (responsive: stacks on mobile) ---------------- */
 const FieldRow = ({ label, value, mono = false, children }) => {
   const isEditing = children !== undefined && children !== null;
 
   return (
-    <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-3">
-      <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
+    <div className="grid grid-cols-1 items-start gap-1 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-center sm:gap-3">
+      <label className={`${FIELD_LABEL} text-left sm:text-right`}>{label}</label>
 
       {isEditing ? (
         <div className="min-w-0">{children}</div>
@@ -490,8 +490,8 @@ const EmployerProfile = ({ mode }) => {
 
   if (loading) {
     return (
-      <div className={`min-h-full ${T.bg} p-6`}>
-        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+      <div className={`min-h-full ${T.bg} p-4 sm:p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-8 text-center sm:p-12">
           <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#2f6b8a] border-t-transparent" />
           <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
             Loading employer…
@@ -503,8 +503,8 @@ const EmployerProfile = ({ mode }) => {
 
   if (error || !emp) {
     return (
-      <div className={`min-h-full ${T.bg} p-6`}>
-        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+      <div className={`min-h-full ${T.bg} p-4 sm:p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-8 text-center sm:p-12">
           <Building2 size={28} className="mx-auto text-[#8895a4]" />
           <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
             {error || "Employer not found"}
@@ -527,8 +527,8 @@ const EmployerProfile = ({ mode }) => {
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* MAIN HEADER */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={() => navigate(-1)}
@@ -539,10 +539,12 @@ const EmployerProfile = ({ mode }) => {
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
 
-              <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
+              <h2 className="truncate font-semibold text-slate-800">
+                {pageTitle}
+              </h2>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {isEditing ? (
                 <>
                   <button
@@ -555,9 +557,9 @@ const EmployerProfile = ({ mode }) => {
                       }
                     }}
                     disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:gap-2 sm:px-4 sm:py-2.5"
                   >
-                    <X size={15} /> Cancel
+                    <X size={15} /> <span className="hidden xs:inline">Cancel</span>
                   </button>
                   <button
                     type="button"
@@ -583,58 +585,60 @@ const EmployerProfile = ({ mode }) => {
           {editError && (
             <div
               role="alert"
-              className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700"
+              className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 sm:mx-6"
             >
               {editError}
             </div>
           )}
 
           {/* BODY */}
-          <div className="p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
-              {/* LEFT: vertical nav */}
-              <aside className="md:sticky md:top-4 md:h-fit w-[11rem]">
+          <div className="p-3 sm:p-4">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[200px_1fr]">
+              {/* LEFT: vertical nav — becomes horizontal on mobile */}
+              <aside className="md:sticky md:top-4 md:h-fit md:w-[11rem]">
                 <nav
                   aria-label="Employer sections"
-                  className={`${T.surface} ${T.radius} border ${T.border} overflow-hidden p-1.5 ${T.cardShadow}`}
+                  className={`${T.surface} ${T.radius} border ${T.border} overflow-x-auto p-1.5 ${T.cardShadow}`}
                 >
-                  {NAV.map((n) => {
-                    const on = tab === n.id;
-                    const Icon = n.icon;
-                    return (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => setTab(n.id)}
-                        aria-current={on ? "page" : undefined}
-                        className={`group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition ${
-                          on
-                            ? "bg-[#eaf2f7] text-[#1e5a7a]"
-                            : "text-[#5b6b7c] hover:bg-[#f3f6f9] hover:text-[#1a2b3c]"
-                        }`}
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <Icon
-                            size={15}
-                            className={
-                              on
-                                ? "text-[#1e5a7a]"
-                                : "text-[#8895a4] group-hover:text-[#5b6b7c]"
-                            }
-                          />
-                          {n.label}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  <div className="flex min-w-max gap-1 md:min-w-0 md:flex-col">
+                    {NAV.map((n) => {
+                      const on = tab === n.id;
+                      const Icon = n.icon;
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => setTab(n.id)}
+                          aria-current={on ? "page" : undefined}
+                          className={`group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition ${
+                            on
+                              ? "bg-[#eaf2f7] text-[#1e5a7a]"
+                              : "text-[#5b6b7c] hover:bg-[#f3f6f9] hover:text-[#1a2b3c]"
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5 whitespace-nowrap">
+                            <Icon
+                              size={15}
+                              className={
+                                on
+                                  ? "text-[#1e5a7a]"
+                                  : "text-[#8895a4] group-hover:text-[#5b6b7c]"
+                              }
+                            />
+                            {n.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </nav>
               </aside>
 
               {/* RIGHT: detail panel */}
               <main className="min-w-0">
-                {/* -------- Overview (matches JobSeekerDetails: space-y-6, one Card per section) -------- */}
+                {/* -------- Overview -------- */}
                 {tab === "overview" && (
-                  <div className="space-y-6">
+                  <div className="space-y-4 sm:space-y-6">
                     {/* Organization Details */}
                     <Card title="Organization Details">
                       <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
@@ -687,38 +691,45 @@ const EmployerProfile = ({ mode }) => {
                             </select>
                           ) : undefined}
                         </FieldRow>
-                       <FieldRow label="Website">
-  {isEditing ? (
-    <input
-      className={EDIT_INPUT}
-      value={draft.website ?? ""}
-      onChange={(event) =>
-        updateDraft("website", event.target.value)
-      }
-    />
-  ) : (
-    <div className={FIELD_BOX(false)}>
-      {emp.eM_website ? (
-        <a
-          href={
-            /^https?:\/\//i.test(emp.eM_website)
-              ? emp.eM_website
-              : `https://${emp.eM_website}`
-          }
-          target="_blank"
-          rel="noreferrer"
-          title={emp.eM_website}
-          className="inline-flex min-w-0 flex-1 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
-        >
-          <span className="min-w-0 truncate">{emp.eM_website}</span>
-          <ExternalLink size={11} className="shrink-0" />
-        </a>
-      ) : (
-        <span className="min-w-0 flex-1 truncate">—</span>
-      )}
-    </div>
-  )}
-</FieldRow>
+                        <FieldRow label="Website">
+                          {isEditing ? (
+                            <input
+                              className={EDIT_INPUT}
+                              value={draft.website ?? ""}
+                              onChange={(event) =>
+                                updateDraft("website", event.target.value)
+                              }
+                            />
+                          ) : (
+                            <div className={FIELD_BOX(false)}>
+                              {emp.eM_website ? (
+                                <a
+                                  href={
+                                    /^https?:\/\//i.test(emp.eM_website)
+                                      ? emp.eM_website
+                                      : `https://${emp.eM_website}`
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={emp.eM_website}
+                                  className="inline-flex min-w-0 flex-1 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
+                                >
+                                  <span className="min-w-0 truncate">
+                                    {emp.eM_website}
+                                  </span>
+                                  <ExternalLink
+                                    size={11}
+                                    className="shrink-0"
+                                  />
+                                </a>
+                              ) : (
+                                <span className="min-w-0 flex-1 truncate">
+                                  —
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </FieldRow>
                         <FieldRow
                           label="Email / Username"
                           value={emp.userName}
@@ -915,7 +926,7 @@ const EmployerProfile = ({ mode }) => {
                   </div>
                 )}
 
-                {/* -------- Job Requirements (single Card, matches JobSeekerDetails tab pattern) -------- */}
+                {/* -------- Job Requirements -------- */}
                 {tab === "jobs" && (
                   <Card
                     title="Job Requirements"
@@ -935,7 +946,7 @@ const EmployerProfile = ({ mode }) => {
                         </p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         {jobs.map((job) => {
                           const pct = job.vacancies
                             ? Math.round((job.filled / job.vacancies) * 100)
@@ -973,7 +984,7 @@ const EmployerProfile = ({ mode }) => {
                                 </span>
                               </div>
 
-                              <div className="mt-3 flex items-center gap-2">
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <span
                                   className={`${BADGE} ${
                                     CATEGORY_STYLE[job.category] ||
@@ -997,7 +1008,7 @@ const EmployerProfile = ({ mode }) => {
                                     style={{ width: `${pct}%` }}
                                   />
                                 </div>
-                                <span className="text-[11.5px] tabular-nums text-[#5b6b7c]">
+                                <span className="shrink-0 text-[11.5px] tabular-nums text-[#5b6b7c]">
                                   {job.filled ?? 0}/{job.vacancies ?? 0} filled
                                 </span>
                               </div>

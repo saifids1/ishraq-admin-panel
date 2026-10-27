@@ -276,7 +276,6 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
 
     switch (field.type) {
       case "date":
-        return formatDateTime(value);
       case "datetime":
         return formatDateTime(value);
       default:
@@ -447,7 +446,7 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
   };
 
   const title = cfg?.singular || cfg?.title || "Complaint";
-  const pageTitle = `View ${title}`;
+  const pageTitle = `View Detail`;
 
   const headerStatusLabel = useMemo(() => requestStatusLabel(record), [record]);
   const headerStatusTone = useMemo(
@@ -473,12 +472,12 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
   const responseDisabled = saving || isClosed || responseLocked;
 
   return (
-    <div className="min-h-full bg-[#f4f8fb]">
-      <div className="mx-auto">
+    <div className="min-h-full w-full min-w-0 bg-[#f4f8fb]">
+      <div className="mx-auto w-full min-w-0">
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* Sticky header bar */}
-          <div className="sticky top-0 z-20 relative flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-            <div className="flex items-center gap-3">
+          <div className="sticky top-0 z-20 relative flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-3 sm:px-6 sm:py-4">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={() => navigate(-1)}
@@ -489,20 +488,29 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
 
-              <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
+              <h2 className="truncate text-[14px] font-semibold text-slate-800 sm:text-base">
+                {pageTitle}
+              </h2>
             </div>
 
-            {/* Request ID — centered, plain text, 16px */}
+            {/* Request ID — centered on desktop; inline below on mobile */}
             {headerRequestId && (
-              <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center">
-                <span className="text-[16px]">{headerRequestId}</span>
-              </div>
+              <>
+                <div className="pointer-events-none absolute inset-x-0 top-1/2 hidden -translate-y-1/2 text-center sm:block">
+                  <span className="text-[14px] font-semibold text-slate-800 sm:text-base">Complaints ID : {headerRequestId}</span>
+                </div>
+                <div className="order-3 w-full text-center sm:hidden">
+                  <span className="text-[14px] font-semibold text-slate-800 sm:text-base">
+                   Complaints ID :  {headerRequestId}
+                  </span>
+                </div>
+              </>
             )}
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {record && headerStatusLabel && (
                 <span
-                  className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${headerStatusTone.badge}`}
+                  className={`inline-flex h-7 min-w-[80px] items-center justify-center rounded-md px-2 text-[12px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm sm:min-w-[110px] sm:px-2.5 sm:text-[15px] ${headerStatusTone.badge}`}
                 >
                   {headerStatusLabel}
                 </span>
@@ -512,7 +520,7 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
                 onClick={() => navigate(`/admin/complaints/${id}/logs`)}
                 title="View status logs"
                 aria-label="View status logs"
-                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#c9d5dd] bg-white px-2.5 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#c9d5dd] bg-white px-2 text-[12px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:px-2.5 sm:text-[13px]"
               >
                 <History size={14} strokeWidth={2.2} />
                 <span className="hidden sm:inline">Logs</span>
@@ -521,7 +529,7 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
           </div>
 
           {error && (
-            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+            <div className="mx-3 mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600 sm:mx-4 sm:mt-4">
               {error}
             </div>
           )}
@@ -531,23 +539,23 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
               Loading details...
             </div>
           ) : record ? (
-            <div className="p-4">
+            <div className="p-3 sm:p-4">
               {/* Details list */}
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
-                <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
+              <div className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2 md:gap-y-4">
                   {cfg.detailFields.map((field) => (
                     <div
                       key={field.key}
-                      className={`grid grid-cols-[130px_1fr] gap-3 ${
+                      className={`grid grid-cols-1 gap-1.5 sm:grid-cols-[130px_1fr] sm:gap-3 ${
                         field.type === "multiline"
-                          ? "md:col-span-2 items-start"
-                          : "items-center"
+                          ? "md:col-span-2 sm:items-start"
+                          : "sm:items-center"
                       }`}
                     >
                       <label
                         htmlFor={`field-${field.key}`}
-                        className={`text-[14px] font-semibold text-black ${
-                          field.type === "multiline" ? "pt-2.5" : ""
+                        className={`text-[13px] font-semibold text-black sm:text-[14px] ${
+                          field.type === "multiline" ? "sm:pt-2.5" : ""
                         }`}
                       >
                         {field.label}
@@ -561,13 +569,13 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
               </div>
 
               {/* ---- Response 70% | Status 30%, same row ---- */}
-              <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
+              <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-[7fr_3fr]">
                   {/* Response — label : textarea (70%) */}
-                  <div className="grid grid-cols-[120px_1fr] items-start gap-3">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[120px_1fr] sm:items-start sm:gap-3">
                     <label
                       htmlFor="admin-response"
-                      className="pt-2.5 text-[14px] font-semibold text-black"
+                      className="text-[13px] font-semibold text-black sm:pt-2.5 sm:text-[14px]"
                     >
                       Response
                     </label>
@@ -617,10 +625,10 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
                   </div>
 
                   {/* Status — label : select (30%), aligned to top */}
-                  <div className="grid grid-cols-[90px_1fr] items-start gap-3">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[90px_1fr] sm:items-start sm:gap-3">
                     <label
                       htmlFor="status-select"
-                      className="pt-2.5 text-[14px] font-semibold text-black"
+                      className="text-[13px] font-semibold text-black sm:pt-2.5 sm:text-[14px]"
                     >
                       Status
                     </label>
@@ -653,12 +661,12 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
                 </div>
 
                 {/* Single Submit button */}
-                <div className="flex justify-end">
+                <div className="mt-3 flex justify-end">
                   <button
                     type="button"
                     onClick={handleSubmit}
                     disabled={saving || isClosed}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                   >
                     {saving ? "Submitting..." : "Submit"}
                   </button>

@@ -536,9 +536,9 @@ const MasterDataForm = ({ mode }) => {
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
-      <div className="mx-auto">
+      <div className="mx-auto min-w-0">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex justify-between border-b border-slate-200 px-6 py-4">
+          <div className="flex justify-between border-b border-slate-200 px-4 py-4 sm:px-6">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -560,7 +560,7 @@ const MasterDataForm = ({ mode }) => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="p-4">
+          <form onSubmit={handleSubmit} className="p-3 sm:p-4">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
              
 

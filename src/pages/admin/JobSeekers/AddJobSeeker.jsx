@@ -22,11 +22,11 @@ const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
 
 const FieldRow = ({ label, required, error, children, fullWidth }) => (
   <div
-    className={`grid grid-cols-[160px_1fr] items-start gap-3 ${
+    className={`flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3 ${
       fullWidth ? "md:col-span-2" : ""
     }`}
   >
-    <label className={`${FIELD_LABEL} pt-2`}>
+    <label className={`${FIELD_LABEL} sm:pt-2 text-left`}>
       {label} {required && <span className="text-red-500">*</span>}
     </label>
     <div className="min-w-0">
@@ -117,15 +117,6 @@ const EMPTY_FORM = {
   consentGiven: false,
   isActive: false,
   document: null,
-
-  jobseekerNo: "",
-  createdAt: "",
-  createdBy: "",
-  updatedAt: "",
-  updatedBy: "",
-  activatedAt: "",
-  activatedBy: "",
-  consentAt: "",
 };
 
 const toForm = (item) => ({
@@ -163,15 +154,6 @@ const toForm = (item) => ({
   consentGiven: item?.jB_consent_given === true,
   isActive: item?.jB_is_active === true,
 
-  jobseekerNo: firstValue(item, "jB_jobseeker_no"),
-  createdAt: firstValue(item, "jB_created_at"),
-  createdBy: firstValue(item, "jB_created_by"),
-  updatedAt: firstValue(item, "jB_updated_at"),
-  updatedBy: firstValue(item, "jB_updated_by"),
-  activatedAt: firstValue(item, "jB_activated_at"),
-  activatedBy: firstValue(item, "jB_activated_by"),
-  consentAt: firstValue(item, "jB_consent_at"),
-
   document: (() => {
     const path = firstValue(item, "jB_cv_file_path");
     if (!path) return null;
@@ -190,7 +172,7 @@ const ALLOWED_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
-const validate = (form, requireDocument = true) => {
+const validate = (form, isCreate) => {
   const errors = {};
 
   if (!form.fullName.trim()) errors.fullName = "Full name is required";
@@ -208,7 +190,7 @@ const validate = (form, requireDocument = true) => {
     errors.email = "Enter a valid email address";
   }
 
-  if (requireDocument && !form.password.trim()) {
+  if (isCreate && !form.password.trim()) {
     errors.password = "Password is required";
   } else if (form.password && form.password.length < 6) {
     errors.password = "Password must be at least 6 characters";
@@ -221,11 +203,11 @@ const validate = (form, requireDocument = true) => {
   if (!form.stateId) errors.stateId = "Select a state";
   if (!form.cityId) errors.cityId = "Select a city";
 
-  if (requireDocument && !form.document) {
+  if (isCreate && !form.document) {
     errors.document = "Upload a document";
   }
 
-  if (requireDocument && !form.consentGiven) {
+  if (isCreate && !form.consentGiven) {
     errors.consentGiven = "You must give consent to continue";
   }
 
@@ -236,16 +218,12 @@ const AddJobSeeker = ({ mode }) => {
   const navigate = useNavigate();
   const { id } = useParams();
   const isCreate = mode === "create" || !id;
-  const [isView, setIsView] = useState(
-    mode === "view" || (!mode && Boolean(id)),
-  );
-  const isEdit = !isCreate && !isView;
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [serverError, setServerError] = useState("");
-  const [loadingRecord, setLoadingRecord] = useState(isView);
+  const [loadingRecord, setLoadingRecord] = useState(!isCreate);
   const [showPassword, setShowPassword] = useState(false);
   const [modal, setModal] = useState(null);
 
@@ -295,10 +273,6 @@ const AddJobSeeker = ({ mode }) => {
       },
     });
   };
-
-  useEffect(() => {
-    setIsView(mode === "view" || (!mode && Boolean(id)));
-  }, [id, mode]);
 
   const [instituteTypes, setInstituteTypes] = useState([]);
   const [loadingInstituteTypes, setLoadingInstituteTypes] = useState(true);
@@ -581,27 +555,8 @@ const AddJobSeeker = ({ mode }) => {
     try {
       setSaving(true);
 
-      // Resolve the currently logged-in user id.
-      // Login response: { userId: 1, ... } → persistLoginUser writes { id: 1, userId: 1, ... }
-      // getCurrentUserId2() reads user.id ?? user.userId.
       const currentUserId = Number(getCurrentUserId2());
       if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
-        // Diagnostic: tell the developer exactly what's wrong
-        // (visible in DevTools → Console during testing)
-        // eslint-disable-next-line no-console
-        console.warn(
-          "[AddJobSeeker] Cannot resolve current user id.",
-          {
-            rawUser: (() => {
-              try {
-                return JSON.parse(localStorage.getItem("user") || "null");
-              } catch {
-                return null;
-              }
-            })(),
-            directUserId: localStorage.getItem("userId"),
-          },
-        );
         throw new Error(
           "Unable to identify the current user. Please sign in again.",
         );
@@ -635,9 +590,6 @@ const AddJobSeeker = ({ mode }) => {
           : null,
         JB_consent_given: Boolean(form.consentGiven),
 
-        // ---------- AUDIT ----------
-        // NOTE: send BOTH casing variants so the API binder finds one of them
-        // (FormData keys are case-sensitive; GET response uses `jB_*`).
         JB_created_by: currentUserId,
         JB_updated_by: currentUserId,
         jB_created_by: currentUserId,
@@ -681,7 +633,7 @@ const AddJobSeeker = ({ mode }) => {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (isView || saving) return;
+    if (saving) return;
 
     setServerError("");
     const foundErrors = validate(form, isCreate);
@@ -710,16 +662,20 @@ const AddJobSeeker = ({ mode }) => {
     }
     if (
       form.stateId &&
-      !filteredStates.some(
-        (state) => String(state.sM_Id) === String(form.stateId),
+      !states.some(
+        (state) =>
+          String(state.sM_Id) === String(form.stateId) &&
+          String(state.sM_CountryId) === String(form.countryId),
       )
     ) {
       foundErrors.stateId = "Select a state for the selected country.";
     }
     if (
       form.cityId &&
-      !filteredCities.some(
-        (city) => String(city.ctM_Id) === String(form.cityId),
+      !cities.some(
+        (city) =>
+          String(city.ctM_Id) === String(form.cityId) &&
+          String(city.ctM_StateId) === String(form.stateId),
       )
     ) {
       foundErrors.cityId = "Select a city for the selected state.";
@@ -735,7 +691,7 @@ const AddJobSeeker = ({ mode }) => {
       return;
     }
 
-    if (isEdit) {
+    if (!isCreate) {
       openConfirm({
         title: "Confirm update",
         message: "Are you sure you want to update this job seeker?",
@@ -753,40 +709,13 @@ const AddJobSeeker = ({ mode }) => {
   const filteredCities = cities.filter(
     (city) => String(city.ctM_StateId) === String(form.stateId),
   );
-  const lookupName = (items, idValue, idKey, nameKey) =>
-    items.find((item) => String(item[idKey]) === String(idValue))?.[nameKey] ||
-    "";
-
-  const viewValue = (value) =>
-    value === null || value === undefined || String(value).trim() === ""
-      ? "—"
-      : value;
-
-  const yesNo = (v) => (v ? "Yes" : "No");
-
-  const formatDateTime = (value) => {
-    if (!value) return "—";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const formatUser = (v) =>
-    v === null || v === undefined || String(v).trim() === ""
-      ? "—"
-      : String(v);
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex justify-between border-b border-slate-200 px-6 py-4">
+          {/* HEADER */}
+          <div className="flex flex-col sm:flex-row justify-between border-b border-slate-200 px-4 py-4 sm:px-6">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -799,11 +728,7 @@ const AddJobSeeker = ({ mode }) => {
               </button>
 
               <h2 className="font-semibold text-slate-800">
-                {isCreate
-                  ? "Add User"
-                  : isEdit
-                    ? "Edit User"
-                    : "Jobseeker Details"}
+                {isCreate ? "Add User" : "Edit User"}
               </h2>
             </div>
           </div>
@@ -817,90 +742,6 @@ const AddJobSeeker = ({ mode }) => {
           {loadingRecord ? (
             <div className="p-8 text-center text-sm text-slate-500">
               Loading jobseeker details...
-            </div>
-          ) : isView ? (
-            <div className="p-4">
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
-                <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                  {[
-                    ["Full Name", form.fullName],
-                    ["Institute Type", form.instituteTypeName],
-                    ["Job Category", form.jobCategoryName],
-                    ["Job Role", form.jobRoleName],
-                    ["Email Address", form.email],
-                    ["Mobile Number", form.mobile],
-                    ["WhatsApp Number", form.whatsapp],
-                    ["Country", form.countryName],
-                    ["State", form.stateName],
-                    ["City", form.cityName],
-                    ["Highest Qualification", form.highestQualification],
-                    ["Speciality", form.speciality],
-                    ["Registration Number", form.registrationNumber],
-                    ["Total Experience (Years)", form.totalExperience],
-                    ["Current Designation", form.currentDesignation],
-                    ["Current Employer", form.currentEmployer],
-                    ["Current Salary", form.currentSalary],
-                    ["Expected Salary", form.expectedSalary],
-                    ["Preferred Location", form.preferredLocationName],
-                    ["Willing to Relocate", yesNo(form.willingToRelocate)],
-                    ["Availability to Join", form.availabilityToJoin],
-                    ["Consent Given", yesNo(form.consentGiven)],
-                    ["Status", form.isActive ? "Active" : "Inactive"],
-                  ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="grid grid-cols-[160px_1fr] items-center gap-3"
-                    >
-                      <label className={FIELD_LABEL}>{label}</label>
-                      <div className="flex min-h-9 items-center rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 text-[13px] font-medium text-[#1a2b3c]">
-                        <span className="min-w-0 flex-1 truncate">
-                          {viewValue(value)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="grid grid-cols-[160px_1fr] items-start gap-3 md:col-span-2">
-                    <label className={`${FIELD_LABEL} pt-2`}>
-                      Document (CV)
-                    </label>
-                    <div className="flex min-h-9 items-center rounded-md border border-[#e3e8ee] bg-[#fbfcfd] px-3 text-[13px] font-medium text-[#1a2b3c]">
-                      {form.document?.url ? (
-                        <a
-                          href={form.document.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[#2f6b8a] hover:underline"
-                        >
-                          {form.document.name || "View document"}
-                        </a>
-                      ) : (
-                        viewValue(form.document?.name)
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 flex justify-between gap-3 border-t border-slate-100 pt-4">
-                <button
-                  type="button"
-                  onClick={() => navigate("/admin/jobseekers")}
-                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsView(false);
-                    setServerError("");
-                  }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
-                >
-                  Edit
-                </button>
-              </div>
             </div>
           ) : (
             <form onSubmit={submit} noValidate className="p-4 space-y-6">
@@ -1313,11 +1154,11 @@ const AddJobSeeker = ({ mode }) => {
                         type="button"
                         onClick={() => fileRef.current?.click()}
                         disabled={saving}
-                        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-4 py-2 text-sm font-medium text-[#2f6b8a] transition hover:bg-[#eaf2f7] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex w-full sm:w-auto cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#2f6b8a] bg-white px-4 py-2 text-sm font-medium text-[#2f6b8a] transition hover:bg-[#eaf2f7] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {form.document ? "Change file" : "Choose file"}
                       </button>
-                      <span className="truncate text-sm text-slate-600">
+                      <span className="truncate text-sm text-slate-600 w-full sm:w-auto text-center sm:text-left mt-1 sm:mt-0">
                         {form.document ? form.document.name : "No file chosen"}
                       </span>
                     </div>
@@ -1329,7 +1170,7 @@ const AddJobSeeker = ({ mode }) => {
               </section>
 
               <section>
-                <div className="grid grid-cols-[160px_1fr] items-start gap-3">
+                <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3">
                   <label className={FIELD_LABEL}>Consent</label>
                   <div>
                     <label className="flex items-start gap-2 text-[13px] text-slate-700">
@@ -1360,12 +1201,12 @@ const AddJobSeeker = ({ mode }) => {
                 </div>
               </section>
 
-              <div className="flex justify-between gap-3 border-t border-slate-100 pt-4">
+              <div className="flex flex-col-reverse sm:flex-row justify-between gap-3 border-t border-slate-100 pt-4">
                 <button
                   type="button"
                   onClick={() => navigate("/admin/jobseekers")}
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full sm:w-auto rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Cancel
                 </button>
@@ -1373,7 +1214,7 @@ const AddJobSeeker = ({ mode }) => {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full sm:w-auto inline-flex justify-center items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? "Saving..." : isCreate ? "Add User" : "Update"}
                 </button>

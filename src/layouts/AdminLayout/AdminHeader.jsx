@@ -1,21 +1,43 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Search,
-  Bell,
   ChevronDown,
   ChevronUp,
-  Settings,
   LogOut,
   UserRound,
+  Menu,
 } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
-const AdminHeader = () => {
+/* ---- live clock helper (12-hour with AM/PM) ---- */
+const formatNow = () => {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+
+  let hours = d.getHours();
+  const meridiem = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+  const hh = String(hours).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+
+  return `${dd}-${mm}-${yyyy}, ${hh}:${min}:${ss} ${meridiem}`;
+};
+
+const AdminHeader = ({ onOpenMenu }) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [now, setNow] = useState(formatNow());
+
+  /* tick every second */
+  useEffect(() => {
+    const id = setInterval(() => setNow(formatNow()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -24,54 +46,39 @@ const AdminHeader = () => {
 
   return (
     <header
-      className="h-[62px] shrink-0 bg-white border-b border-gray-200
-      flex items-center justify-between px-4 sm:px-6 relative z-40"
+      className="h-[64px] shrink-0 bg-white border-b border-gray-200
+      grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:px-6
+      relative z-40"
     >
-      {/* LEFT SIDE - SEARCH */}
-      {/* <div className="flex items-center flex-1 min-w-0">
-        <div className="relative w-full max-w-[320px]">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
-
-          <input
-            type="text"
-            placeholder="Search jobs, candidates, or anything..."
-            className="w-full h-[34px] pl-9 pr-3 rounded-lg
-              bg-gray-50 border border-gray-100
-              text-xs text-gray-700
-              placeholder:text-gray-400
-              outline-none transition-all
-              focus:bg-white focus:border-[#2f6b8a]
-              focus:ring-2 focus:ring-[#2f6b8a]/10"
-          />
-        </div>
-      </div> */}
-      <div></div>
-
-      {/* RIGHT SIDE */}
-      <div className="flex items-center gap-3 sm:gap-5 ml-3">
-        {/* NOTIFICATION */}
+      {/* ---------- LEFT: hamburger ---------- */}
+      <div className="flex min-w-0 items-center">
         <button
           type="button"
-          title="Notifications"
-          className="relative flex items-center justify-center
-            w-8 h-8 rounded-lg text-[#526581]
-            hover:bg-gray-100 hover:text-[#2f6b8a]
-            transition-colors"
+          onClick={onOpenMenu}
+          aria-label="Open navigation menu"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#526581] transition-colors hover:bg-gray-100 hover:text-[#2f6b8a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6b8a] md:hidden"
         >
-          <Bell size={17} strokeWidth={1.8} />
-
-          {/* Notification Indicator */}
-          <span
-            className="absolute top-1 right-1 w-1.5 h-1.5
-            rounded-full bg-[#2f6b8a] ring-2 ring-white"
-          />
+          <Menu size={20} />
         </button>
+      </div>
+
+      {/* ---------- CENTER: heading ---------- */}
+      <h1 className="truncate text-center text-[24px] font-extrabold tracking-tight text-[#2f6b8a]">
+        Ishraq HR Admin
+      </h1>
+
+      {/* ---------- RIGHT: date/time + profile ---------- */}
+      <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-4">
+        {/* Live date/time */}
+        <span
+          className="hidden truncate text-[12px] font-medium tabular-nums text-gray-500 sm:inline"
+          title="Current date and time"
+        >
+          {now}
+        </span>
 
         {/* DIVIDER */}
-        <div className="h-7 w-px bg-gray-200" />
+        <div className="hidden h-7 w-px bg-gray-200 sm:block" />
 
         {/* PROFILE */}
         <div className="relative">
@@ -108,7 +115,6 @@ const AdminHeader = () => {
           {/* PROFILE DROPDOWN */}
           {profileOpen && (
             <>
-              {/* Outside click area */}
               <button
                 type="button"
                 aria-label="Close profile menu"
@@ -122,7 +128,6 @@ const AdminHeader = () => {
                 border border-gray-100 z-50 overflow-hidden
                 animate-in fade-in slide-in-from-top-2 duration-200"
               >
-                {/* PROFILE INFORMATION */}
                 <div className="p-4 flex items-center gap-3">
                   <div
                     className="w-10 h-10 rounded-full
@@ -141,22 +146,6 @@ const AdminHeader = () => {
 
                 <div className="border-t border-gray-100" />
 
-                {/* ACCOUNT SETTINGS */}
-                <button
-                  type="button"
-                  onClick={() => setProfileOpen(false)}
-                  className="w-full flex items-center gap-3
-                    px-4 py-3 text-sm text-gray-600
-                    hover:bg-gray-50 hover:text-[#2f6b8a]
-                    transition-colors text-left"
-                >
-                  <Settings size={17} />
-                  Account Settings
-                </button>
-
-                <div className="border-t border-gray-100" />
-
-                {/* LOGOUT */}
                 <button
                   type="button"
                   onClick={() => handleLogout()}

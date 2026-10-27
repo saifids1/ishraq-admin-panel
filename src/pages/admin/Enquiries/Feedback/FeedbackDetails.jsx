@@ -283,7 +283,6 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
 
     switch (field.type) {
       case "date":
-        return formatDateTime(value);
       case "datetime":
         return formatDateTime(value);
       default:
@@ -472,13 +471,16 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
 
   const responseDisabled = saving || isClosed || responseLocked;
 
+  const inlineFields = cfg.detailFields.filter((f) => !f.stacked);
+  const stackedFields = cfg.detailFields.filter((f) => f.stacked);
+
   return (
-    <div className="min-h-full bg-[#f4f8fb]">
-      <div className="mx-auto">
+    <div className="min-h-full w-full min-w-0 bg-[#f4f8fb]">
+      <div className="mx-auto w-full min-w-0">
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* Sticky header bar */}
-          <div className="sticky top-0 z-20 relative flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-            <div className="flex items-center gap-3">
+          <div className="sticky top-0 z-20 relative flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-3 sm:px-6 sm:py-4">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={() => navigate(-1)}
@@ -489,20 +491,29 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
 
-              <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
+              <h2 className="truncate text-[14px] font-semibold text-slate-800 sm:text-base">
+                {pageTitle}
+              </h2>
             </div>
 
             {headerRequestId && (
-              <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center">
-                <span className="text-[16px]">{headerRequestId}</span>
-              </div>
+              <>
+                <div className="pointer-events-none absolute inset-x-0 top-1/2 hidden -translate-y-1/2 text-center sm:block">
+                  <span className="truncate text-[14px] font-semibold text-slate-800 sm:text-base">Feedback ID : {headerRequestId}</span>
+                </div>
+                <div className="order-3 w-full text-center sm:hidden">
+                  <span className="truncate text-[14px] font-semibold text-slate-800 sm:text-base">
+                   Feedback ID : {headerRequestId}
+                  </span>
+                </div>
+              </>
             )}
 
             {/* Right side — status badge + Logs button */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {record && headerStatusLabel && (
                 <span
-                  className={`inline-flex h-7 min-w-[110px] items-center justify-center rounded-md px-2.5 text-[15px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm ${headerStatusTone.badge}`}
+                  className={`inline-flex h-7 min-w-[80px] items-center justify-center rounded-md px-2 text-[12px] font-medium text-white ring-1 ring-inset whitespace-nowrap shadow-sm sm:min-w-[110px] sm:px-2.5 sm:text-[15px] ${headerStatusTone.badge}`}
                 >
                   {headerStatusLabel}
                 </span>
@@ -513,7 +524,7 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
                 onClick={goToLogs}
                 title="View status logs"
                 aria-label="View status logs"
-                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#c9d5dd] bg-white px-2.5 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#c9d5dd] bg-white px-2 text-[12px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:px-2.5 sm:text-[13px]"
               >
                 <History size={14} strokeWidth={2.2} />
                 <span className="hidden sm:inline">Logs</span>
@@ -522,7 +533,7 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
           </div>
 
           {error && (
-            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+            <div className="mx-3 mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600 sm:mx-4 sm:mt-4">
               {error}
             </div>
           )}
@@ -532,62 +543,58 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
               Loading details...
             </div>
           ) : record ? (
-            <div className="p-4">
+            <div className="p-3 sm:p-4">
               {/* Details list */}
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
                 {/* Top group — single-line fields (2-col, label : input) */}
-                <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2">
-                  {cfg.detailFields
-                    .filter((f) => !f.stacked)
-                    .map((field) => (
-                      <div
-                        key={field.key}
-                        className="grid grid-cols-[140px_1fr] items-center gap-3"
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2 md:gap-y-4">
+                  {inlineFields.map((field) => (
+                    <div
+                      key={field.key}
+                      className="grid grid-cols-1 gap-1.5 sm:grid-cols-[140px_1fr] sm:items-center sm:gap-3"
+                    >
+                      <label
+                        htmlFor={`field-${field.key}`}
+                        className="text-[13px] font-semibold text-black sm:text-[14px]"
                       >
-                        <label
-                          htmlFor={`field-${field.key}`}
-                          className="text-[14px] font-semibold text-black"
-                        >
-                          {field.label}
-                        </label>
-                        <div className="min-w-0">
-                          {renderFieldInput(field, record[field.key])}
-                        </div>
+                        {field.label}
+                      </label>
+                      <div className="min-w-0">
+                        {renderFieldInput(field, record[field.key])}
                       </div>
-                    ))}
+                    </div>
+                  ))}
                 </div>
 
                 {/* Bottom group — stacked fields, label fixed width, input fills */}
-                <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-1">
-                  {cfg.detailFields
-                    .filter((f) => f.stacked)
-                    .map((field) => (
-                      <div
-                        key={field.key}
-                        className="grid grid-cols-[176px_1fr] items-start gap-3"
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 sm:gap-4 xl:grid-cols-1">
+                  {stackedFields.map((field) => (
+                    <div
+                      key={field.key}
+                      className="grid grid-cols-1 gap-1.5 sm:grid-cols-[176px_1fr] sm:items-start sm:gap-3"
+                    >
+                      <label
+                        htmlFor={`field-${field.key}`}
+                        className="text-[13px] font-semibold leading-tight text-black sm:pt-2.5 sm:text-[14px]"
+                        style={{ overflowWrap: "anywhere" }}
                       >
-                        <label
-                          htmlFor={`field-${field.key}`}
-                          className="pt-2.5 text-[14px] font-semibold leading-tight text-black"
-                          style={{ overflowWrap: "anywhere" }}
-                        >
-                          {field.label}
-                        </label>
-                        <div className="min-w-0">
-                          {renderFieldInput(field, record[field.key])}
-                        </div>
+                        {field.label}
+                      </label>
+                      <div className="min-w-0">
+                        {renderFieldInput(field, record[field.key])}
                       </div>
-                    ))}
+                    </div>
+                  ))}
                 </div>
               </div>
 
               {/* ---- Response 70% | Status 30%, same row ---- */}
-              <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
+              <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-[7fr_3fr]">
-                  <div className="grid grid-cols-[120px_1fr] items-start gap-3">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[120px_1fr] sm:items-start sm:gap-3">
                     <label
                       htmlFor="admin-response"
-                      className="pt-2.5 text-[14px] font-semibold text-black"
+                      className="text-[13px] font-semibold text-black sm:pt-2.5 sm:text-[14px]"
                     >
                       Response
                     </label>
@@ -636,10 +643,10 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-[90px_1fr] items-start gap-3">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[90px_1fr] sm:items-start sm:gap-3">
                     <label
                       htmlFor="status-select"
-                      className="pt-2.5 text-[14px] font-semibold text-black"
+                      className="text-[13px] font-semibold text-black sm:pt-2.5 sm:text-[14px]"
                     >
                       Status
                     </label>
@@ -671,12 +678,12 @@ const FeedbackDetails = ({ formType = "feedback" }) => {
                   </div>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="mt-3 flex justify-end">
                   <button
                     type="button"
                     onClick={handleSubmit}
                     disabled={saving || isClosed}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                   >
                     {saving ? "Submitting..." : "Submit"}
                   </button>

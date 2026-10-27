@@ -75,16 +75,16 @@ const EDIT_INPUT =
 
 const NAV = [
   { id: "overview", label: "Overview", icon: UserRound },
-  { id: "employment", label: "Current Employment", icon: Building2 },
-  { id: "preferences", label: "Job Preferences", icon: SlidersHorizontal },
+  { id: "employment", label: "Employment", icon: Building2 },
+  { id: "preferences", label: "Preferences", icon: SlidersHorizontal },
   { id: "resume", label: "Documents", icon: FileIcon },
   { id: "jobs", label: "Applied Jobs", icon: Briefcase },
 ];
 
 /* ---------------- Reusable row: label : input ---------------- */
 const FieldRow = ({ label, value, mono = false, children }) => (
-  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-    <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
+  <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-center sm:gap-3">
+    <label className={`${FIELD_LABEL} text-left`}>{label}</label>
     {children ? (
       <div className="min-w-0">{children}</div>
     ) : (
@@ -121,11 +121,6 @@ const toAbsoluteUrl = (url) => {
 
 /* ---------------- Date parsing helpers ---------------- */
 
-/**
- * Parse a date string safely.
- * - Trims fractional seconds to max 3 digits (V8 handles 7, Safari may not).
- * - Parses bare "YYYY-MM-DD" as local date (avoids UTC off-by-one).
- */
 const parseDate = (value) => {
   if (value === null || value === undefined || String(value).trim() === "")
     return null;
@@ -143,7 +138,6 @@ const parseDate = (value) => {
 const hasValue = (value) =>
   value !== undefined && value !== null && String(value).trim() !== "";
 
-// "22-10-2026"
 const formatDate = (value) => {
   const d = parseDate(value);
   if (!d) return "-";
@@ -153,7 +147,6 @@ const formatDate = (value) => {
   return `${dd}-${mm}-${yyyy}`;
 };
 
-// "22-10-2026 11:08 AM"
 const formatDateTime = (value) => {
   const d = parseDate(value);
   if (!d) return "—";
@@ -210,7 +203,6 @@ const EMPTY_FORM = {
   availabilityToJoin: "",
   resume: null,
   consentGiven: "",
-  // ---------- AUDIT ----------
   jobseekerNo: "",
   createdAt: "",
   createdBy: "",
@@ -223,11 +215,6 @@ const EMPTY_FORM = {
   consentAt: "",
 };
 
-const firstValue = (item, ...keys) =>
-  keys
-    .map((key) => item?.[key])
-    .find((value) => value !== undefined && value !== null) ?? "";
-
 const extractRecord = (response) => {
   const root = response?.data ?? response;
   const record = root?.data ?? root?.Data ?? root;
@@ -236,10 +223,6 @@ const extractRecord = (response) => {
     : null;
 };
 
-/**
- * Extract an array from a variety of API envelopes:
- *   [ ... ]  |  { data: [...] }  |  { Data: [...] }  |  { data: { data: [...] } }
- */
 const extractList = (response) => {
   const root = response?.data ?? response;
   const list = root?.data ?? root?.Data ?? root;
@@ -249,10 +232,6 @@ const extractList = (response) => {
   return [];
 };
 
-/**
- * Normalize a lookup list into `{ id, name }` objects so selects never crash
- * on malformed API items.
- */
 const normalizeLookup = (list, idKeys, nameKeys) =>
   (Array.isArray(list) ? list : [])
     .map((item) => ({
@@ -261,9 +240,6 @@ const normalizeLookup = (list, idKeys, nameKeys) =>
     }))
     .filter((item) => item.id != null && item.name != null);
 
-/**
- * Map the GET /jobseeker/:id response (jB_* fields) into the view model.
- */
 const toJobseekerView = (item, id) => {
   const active = truthy(item?.jB_is_active);
 
@@ -298,22 +274,21 @@ const toJobseekerView = (item, id) => {
     currentCountry: item?.countryName ?? "",
     currentState: item?.stateName ?? "",
     currentCity: item?.cityName ?? "",
-    address: "", // not returned by this API
+    address: "",
 
     currentEmployment: item?.jB_current_employer ?? "",
-    isCurrentlyEmployed: "", // not returned by this API
+    isCurrentlyEmployed: "",
     currentSalary: item?.jB_current_salary ?? "",
 
     expectedSalary: item?.jB_expected_salary ?? "",
-    preferredCountry: "", // not returned by this API
-    preferredState: "", // not returned by this API
+    preferredCountry: "",
+    preferredState: "",
     preferredCity: item?.jB_preferred_locationName ?? "",
     preferredJobLocation: item?.jB_preferred_locationName ?? "",
     willingToRelocate: toYesNo(item?.jB_willing_to_relocate),
-    employmentPreference: "", // not returned by this API
+    employmentPreference: "",
     availabilityToJoin: item?.jB_availability_to_join ?? "",
 
-    // ---------- AUDIT ----------
     jobseekerNo: item?.jB_jobseeker_no ?? "",
     createdAt: item?.jB_created_at ?? "",
     createdBy: item?.jB_created_by ?? "",
@@ -428,7 +403,7 @@ const DocumentBox = ({ doc }) => {
       </div>
 
       {doc.url ? (
-        <div className="mt-2.5 flex gap-2">
+        <div className="mt-2.5 flex flex-wrap gap-2">
           <a
             href={doc.url}
             target="_blank"
@@ -855,7 +830,7 @@ const JobSeekerDetails = ({ mode }) => {
   /* Loading */
   if (loading) {
     return (
-      <div className={`min-h-full ${T.bg} p-6`}>
+      <div className={`min-h-full ${T.bg} p-4 sm:p-6`}>
         <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
           <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#2f6b8a] border-t-transparent" />
           <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
@@ -869,7 +844,7 @@ const JobSeekerDetails = ({ mode }) => {
   /* Error / Not found */
   if (error || !user) {
     return (
-      <div className={`min-h-full ${T.bg} p-6`}>
+      <div className={`min-h-full ${T.bg} p-4 sm:p-6`}>
         <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
           <UserRound size={28} className="mx-auto text-[#8895a4]" />
           <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
@@ -891,18 +866,12 @@ const JobSeekerDetails = ({ mode }) => {
 
   const active = user.status === "Active";
 
-  /* Compose current location display */
-  const currentLocationDisplay =
-    [form.currentCity, form.currentState, form.currentCountry]
-      .filter((v) => v && String(v).trim())
-      .join(", ") || "—";
-
   return (
     <div className={`min-h-full ${T.bg}`}>
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* MAIN HEADER */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -917,14 +886,14 @@ const JobSeekerDetails = ({ mode }) => {
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex w-full items-center gap-2 sm:w-auto">
               {isEditing ? (
                 <>
                   <button
                     type="button"
                     onClick={cancelEdit}
                     disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                    className="flex-1 inline-flex justify-center items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:flex-none"
                   >
                     <X size={15} /> Cancel
                   </button>
@@ -932,7 +901,7 @@ const JobSeekerDetails = ({ mode }) => {
                     type="button"
                     onClick={saveJobseeker}
                     disabled={saving}
-                    className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-60`}
+                    className={`${BTN_PRIMARY} flex-1 sm:flex-none justify-center disabled:cursor-not-allowed disabled:opacity-60`}
                   >
                     {saving ? "Saving..." : "Save"}
                   </button>
@@ -941,7 +910,7 @@ const JobSeekerDetails = ({ mode }) => {
                 <button
                   type="button"
                   onClick={goToEditProfile}
-                  className={BTN_PRIMARY}
+                  className={`${BTN_PRIMARY} w-full sm:w-auto justify-center`}
                 >
                   Edit
                 </button>
@@ -952,7 +921,7 @@ const JobSeekerDetails = ({ mode }) => {
           {(editError || successMessage) && (
             <div
               role={editError ? "alert" : "status"}
-              className={`mx-6 mt-4 rounded-lg border px-4 py-2.5 text-sm ${
+              className={`mx-4 mt-4 rounded-lg border px-4 py-2.5 text-sm sm:mx-6 ${
                 editError
                   ? "border-red-200 bg-red-50 text-red-700"
                   : "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -964,12 +933,13 @@ const JobSeekerDetails = ({ mode }) => {
 
           {/* BODY */}
           <div className="p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
-              {/* LEFT: vertical nav */}
-              <aside className="md:sticky md:top-4 md:h-fit w-[11rem]">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr] lg:grid-cols-[240px_1fr]">
+              
+              {/* LEFT: vertical nav / horizontal scroll on mobile */}
+              <aside className="md:sticky md:top-4 md:h-fit w-full md:w-auto">
                 <nav
                   aria-label="Jobseeker sections"
-                  className={`${T.surface} ${T.radius} border ${T.border} overflow-hidden p-1.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                  className={`${T.surface} ${T.radius} border ${T.border} overflow-hidden p-1.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible whitespace-nowrap`}
                 >
                   {NAV.map((n) => {
                     const on = tab === n.id;
@@ -980,7 +950,7 @@ const JobSeekerDetails = ({ mode }) => {
                         type="button"
                         onClick={() => setTab(n.id)}
                         aria-current={on ? "page" : undefined}
-                        className={`group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition ${
+                        className={`group flex shrink-0 md:shrink w-auto md:w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition ${
                           on
                             ? "bg-[#eaf2f7] text-[#1e5a7a]"
                             : "text-[#5b6b7c] hover:bg-[#f3f6f9] hover:text-[#1a2b3c]"
@@ -1008,7 +978,7 @@ const JobSeekerDetails = ({ mode }) => {
                 {/* -------- Overview -------- */}
                 {tab === "overview" && (
                   <section>
-                    <div className="space-y-6 ">
+                    <div className="space-y-6">
                       {/* Personal / Professional details */}
                       <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
                       <div className="p-4">
@@ -1039,10 +1009,8 @@ const JobSeekerDetails = ({ mode }) => {
                             {editInput("whatsapp", "tel")}
                           </FieldRow>
 
-                          <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-                            <label
-                              className={`${FIELD_LABEL} text-right sm:text-left`}
-                            >
+                          <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-center sm:gap-3">
+                            <label className={`${FIELD_LABEL} text-left`}>
                               Email Address
                             </label>
                             {isEditing ? (
@@ -1358,9 +1326,9 @@ const JobSeekerDetails = ({ mode }) => {
                   >
                     <div className="p-4">
                       <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                        <div className="grid grid-cols-[160px_1fr] items-start gap-3">
+                        <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3">
                           <label
-                            className={`${FIELD_LABEL} pt-2 text-right sm:text-left`}
+                            className={`${FIELD_LABEL} sm:pt-2 text-left`}
                           >
                             Resume / CV
                           </label>
@@ -1428,7 +1396,7 @@ const JobSeekerDetails = ({ mode }) => {
 
                       {!jobsLoading && !jobsError && appliedJobs.length > 0 && (
                         <div className="overflow-x-auto">
-                          <table className="w-full text-sm border-collapse">
+                          <table className="w-full text-sm border-collapse min-w-[600px]">
                             <thead>
                               <tr className="border-b border-[#e3e8ee]">
                                 <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">

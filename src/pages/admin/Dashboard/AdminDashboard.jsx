@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BriefcaseBusiness,
@@ -75,6 +75,8 @@ const formatActivityDate = (value) => {
   if (Math.abs(hours) < 24) return formatter.format(hours, "hour");
   return formatter.format(Math.round(hours / 24), "day");
 };
+
+const RECENT_ACTIVITY_LIMIT = 10;
 
 const Panel = ({ title, subtitle, icon: Icon, children, className = "" }) => (
   <section
@@ -250,6 +252,20 @@ const AdminDashboard = () => {
   const jobs = dashboard.jobs;
   const enquiries = dashboard.enquiries;
   const feedback = dashboard.feedback;
+
+  // Latest 10 activity records, sorted newest-first (defensive client-side guard).
+  const recentActivity = useMemo(() => {
+    const items = Array.isArray(dashboard.activity) ? dashboard.activity : [];
+    return [...items]
+      .sort((a, b) => {
+        const aTime = new Date(a?.createdAt ?? a?.CreatedAt ?? 0).getTime();
+        const bTime = new Date(b?.createdAt ?? b?.CreatedAt ?? 0).getTime();
+        const safeA = Number.isFinite(aTime) ? aTime : 0;
+        const safeB = Number.isFinite(bTime) ? bTime : 0;
+        return safeB - safeA;
+      })
+      .slice(0, RECENT_ACTIVITY_LIMIT);
+  }, [dashboard.activity]);
 
   const totalJobseekers = readValue(summary, "totalJobseekers");
   const totalEmployers = readValue(summary, "totalEmployers");
@@ -467,14 +483,18 @@ const AdminDashboard = () => {
           </div>
         </Panel>
 
-        <Panel title="Recent activity" subtitle={`${dashboard.activity?.length ?? 0} latest records`} icon={Activity}>
-          {!dashboard.activity?.length ? (
+        <Panel
+          title="Recent activity"
+          subtitle={`Latest ${Math.min(recentActivity.length, RECENT_ACTIVITY_LIMIT)} records`}
+          icon={Activity}
+        >
+          {!recentActivity.length ? (
             <p className="rounded-xl bg-slate-50 px-3 py-5 text-center text-sm text-slate-500">
               {loading ? "Loading recent activity..." : "No recent activity found."}
             </p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {dashboard.activity.map((item, index) => {
+              {recentActivity.map((item, index) => {
                 const type = item?.type ?? item?.Type ?? "Activity";
                 const title = item?.title ?? item?.Title ?? "Untitled activity";
                 const id = item?.id ?? item?.Id ?? index;

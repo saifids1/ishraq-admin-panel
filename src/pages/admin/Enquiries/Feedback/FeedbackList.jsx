@@ -14,7 +14,6 @@ import {
   Loader2,
   PauseCircle,
   CheckCircle2,
-  Download,
   Check as CheckIcon,
   AlertTriangle as AlertIcon,
   X as XIcon,
@@ -39,42 +38,22 @@ const readField = (item, key) => {
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
-const TABLE_MIN_WIDTH = 860;
+const TABLE_MIN_WIDTH = 1240;
 
 const TONES = {
-  success: {
-    badge: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20",
-    core: "from-[#16834f] to-[#2fc77e]",
-    ring: "bg-emerald-100",
-    Icon: ShieldCheck,
-  },
-  danger: {
-    badge: "bg-rose-600 ring-rose-700 shadow-rose-600/20",
-    core: "from-[#c8323f] to-[#ed626b]",
-    ring: "bg-rose-100",
-    Icon: ShieldAlert,
-  },
-  warning: {
-    badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20",
-    core: "from-[#d97706] to-[#fbbf24]",
-    ring: "bg-amber-100",
-    Icon: ShieldAlert,
-  },
-  neutral: {
-    badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20",
-    core: "from-[#64748b] to-[#94a3b8]",
-    ring: "bg-slate-100",
-    Icon: ShieldAlert,
-  },
+  success: { badge: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20" },
+  danger: { badge: "bg-rose-600 ring-rose-700 shadow-rose-600/20" },
+  warning: { badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20" },
+  neutral: { badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20" },
 };
 
 const BADGE_BASE =
-  "inline-flex h-7 w-[110px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
+  "inline-flex h-7 min-w-[96px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
 const STATUS_TONES = { Active: "success", Inactive: "danger" };
 const toneOf = (v) => TONES[STATUS_TONES[v]] ?? TONES.neutral;
 
-/* ---------- REQUEST STATUS (same palette as CareerEnquiryList) ---------- */
+/* ---------- REQUEST STATUS ---------- */
 
 const REQUEST_STATUS_LABELS = {
   1: "NEW",
@@ -83,14 +62,6 @@ const REQUEST_STATUS_LABELS = {
   4: "HOLD",
   5: "CLOSED",
 };
-
-/* Colors per spec:
-   1 NEW         -> Yellow (with flash)
-   2 OPEN        -> Blue
-   3 IN-PROGRESS -> Orange
-   4 HOLD        -> Red
-   5 CLOSED      -> Green
-*/
 
 const REQUEST_STATUS_TONES = {
   new: {
@@ -174,7 +145,6 @@ const requestStatusIdOf = (item) => {
   return statusIdEntry?.[1];
 };
 
-/** Determine if a row's status is NEW (either by id=1 or by status name) */
 const isNewStatus = (item, statusName) => {
   const id = Number(requestStatusIdOf(item));
   if (Number.isFinite(id) && id === 1) return true;
@@ -184,15 +154,15 @@ const isNewStatus = (item, statusName) => {
 /* --------------------------- COLUMN DEFINITION --------------------------- */
 
 const TABLE_COLUMNS = [
-  { key: "srNo", label: "Sr.No", width: "60px" },
-  { key: "requestId", label: "Feedback ID", width: "170px" },
-  { key: "name", label: "Name", width: "200px" },
-  { key: "contact", label: "Contact", width: "180px" },
-  { key: "userType", label: "User Type", width: "140px" },
-  { key: "statusName", label: "Request Status", width: "150px" },
-  { key: "rating", label: "Rating", width: "110px" },
-  { key: "submittedAt", label: "Submitted", width: "160px" },
-  { key: "actions", label: "Actions", width: "130px" },
+  { key: "srNo", label: "Sr.No", width: "55px", minWidth: "50px" },
+  { key: "requestId", label: "Feedback ID", width: "170px", minWidth: "130px" },
+  { key: "statusName", label: "Request Status", width: "120px", minWidth: "100px" },
+  { key: "submittedAt", label: "Submitted", width: "160px", minWidth: "120px" },
+  { key: "name", label: "Name", width: "200px", minWidth: "150px" },
+  { key: "contact", label: "Contact", width: "100px", minWidth: "70px" },
+  { key: "userType", label: "User Type", width: "90px", minWidth: "70px" },
+  { key: "rating", label: "Rating", width: "60px", minWidth: "30px" },
+  { key: "actions", label: "Actions", width: "70px", minWidth: "30px", sticky: true },
 ];
 
 const TABLE_COL_COUNT = TABLE_COLUMNS.length;
@@ -252,16 +222,12 @@ const FeedbackList = ({ formType = "feedback" }) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
-  const [query, setQuery] = useState({
-    search: "",
-  });
+  const [query, setQuery] = useState({ search: "" });
 
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useStatusToast();
 
-  /* refs for horizontal scroll sync */
-  const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
   const statusPushedRef = useRef(new Set());
   const statusUpdateInProgressRef = useRef(new Set());
@@ -298,26 +264,13 @@ const FeedbackList = ({ formType = "feedback" }) => {
     } finally {
       setLoading(false);
     }
-  }, [formType, cfg, page, pageSize, query.search]);
+  }, [formType, page, pageSize, query.search]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  /* sync header & body horizontal scroll */
-  useEffect(() => {
-    const body = bodyScrollRef.current;
-    const header = headerScrollRef.current;
-    if (!body || !header) return undefined;
-
-    const onScroll = () => {
-      header.scrollLeft = body.scrollLeft;
-    };
-    body.addEventListener("scroll", onScroll);
-    return () => body.removeEventListener("scroll", onScroll);
-  }, []);
-
-  /* --------------------------- REFRESH (silent) --------------------------- */
+  /* --------------------------- REFRESH --------------------------- */
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
@@ -363,7 +316,6 @@ const FeedbackList = ({ formType = "feedback" }) => {
             changedAt: new Date().toISOString(),
           });
           statusPushedRef.current.add(enquiryId);
-          /* reflect NEW -> OPEN locally so the row loses its yellow flash */
           setRows((prev) =>
             prev.map((r) =>
               r.id === enquiryId
@@ -388,14 +340,13 @@ const FeedbackList = ({ formType = "feedback" }) => {
     [formType, navigate, setToast],
   );
 
-  /* --------------------------- SERVER-SIDE PAGINATION --------------------------- */
-  /* ---- Sort: NEW rows always first (stable sort, preserves server order) ---- */
+  /* --------------------------- SORTED + PAGINATED --------------------------- */
+
   const isRowNew = (row) =>
     isNewStatus(row, row.statusName) || Number(requestStatusIdOf(row)) === 1;
 
   const sortedRows = useMemo(() => {
     const list = [...rows];
-    // stable partition: NEW first, then everything else in original order
     return [
       ...list.filter((r) => isRowNew(r)),
       ...list.filter((r) => !isRowNew(r)),
@@ -434,14 +385,6 @@ const FeedbackList = ({ formType = "feedback" }) => {
     setPage(1);
   };
 
-  /* --------------------------- TOAST --------------------------- */
-
-  useEffect(() => {
-    if (!toast) return undefined;
-    const t = setTimeout(() => setToast(null), 2800);
-    return () => clearTimeout(t);
-  }, [toast]);
-
   /* --------------------------- STATUS TOGGLE --------------------------- */
 
   const askToggle = (row) => {
@@ -478,393 +421,392 @@ const FeedbackList = ({ formType = "feedback" }) => {
       setConfirm(null);
     }
   };
+
   /* --------------------------- STYLES --------------------------- */
 
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
   const td =
-    "border-t border-[#e2e8ee] px-3.5 py-2.5 text-[15px] text-slate-900";
-  const thClass =
-    "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-left text-[15px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)]";
-
+    "border-t border-[#e2e8ee] px-2 py-2 text-[13px] text-slate-900 sm:px-3.5 sm:py-2.5 sm:text-[15px]";
   const btnRefresh =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
-
-  const btnExport =
-    "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#dce3eb] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:opacity-60 disabled:hover:translate-y-0";
-
-  /* Sticky actions column — header + cells */
+  const thClass =
+    "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-2 py-2 text-left text-[12px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)] sm:px-4 sm:py-1.5 sm:text-[15px]";
   const stickyActionsHead =
-    "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-4 py-1.5 text-center text-[15px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.25)]";
-
+    "sticky right-0 z-30 w-[130px] min-w-[110px] whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-1 py-2 text-center text-[12px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.35)] sm:px-2 sm:py-1.5 sm:text-[15px]";
   const stickyActionsCell =
-    "sticky right-0 z-20 bg-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.15)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6]";
+    "sticky right-0 z-20 w-[130px] min-w-[110px] border-t border-[#e2e8ee] bg-white px-1 py-2 text-center text-[13px] text-slate-900 shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.18)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6] sm:px-2 sm:py-2.5 sm:text-[15px]";
 
   /* --------------------------- RENDER --------------------------- */
 
   return (
-    <div className="mx-auto max-w-[1400px] rounded-[14px] border border-[#e2e8ee] bg-white p-4 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:px-5">
-      {/* HEADER — only Search + Refresh + Export */}
-      <div className="mb-2 flex flex-col items-start justify-between gap-3 xl:flex-row xl:items-center">
-        <h1 className="m-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]">
-          {cfg.title}
-        </h1>
+    <div className="w-full min-w-0">
+      <div className="mx-auto w-full min-w-0 max-w-[1400px] rounded-[14px] border border-[#e2e8ee] bg-white p-2.5 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:p-4 lg:px-5">
+        {/* HEADER */}
+        <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-center">
+          <h1 className="m-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]">
+            {cfg.title}
+          </h1>
 
-        <div className="flex w-full flex-wrap items-center gap-2.5 xl:w-auto">
-          <div className="relative min-w-[320px] flex-1 xl:flex-none">
-            <SearchIcon
-              size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
-            />
-            <input
-              type="search"
-              aria-label={cfg.searchPlaceholder || "Search..."}
-              placeholder={cfg.searchPlaceholder || "Search..."}
-              value={query.search}
-              onChange={(e) => patchFilter({ search: e.target.value })}
-              className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
-            />
-          </div>
+          <div className="flex w-full flex-col gap-2.5 sm:flex-row sm:items-center md:w-auto">
+            <div className="relative w-full sm:flex-1 md:w-[240px] md:flex-none">
+              <SearchIcon
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
+              />
+              <input
+                type="search"
+                aria-label={cfg.searchPlaceholder || "Search..."}
+                placeholder={cfg.searchPlaceholder || "Search..."}
+                value={query.search}
+                onChange={(e) => patchFilter({ search: e.target.value })}
+                className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
+              />
+            </div>
 
-          {/* Refresh — silent */}
-          <button
-            type="button"
-            title="Refresh table"
-            aria-label="Refresh table"
-            onClick={handleRefresh}
-            disabled={refreshing || loading}
-            className={btnRefresh}
-          >
-            <RefreshCw
-              size={15}
-              strokeWidth={2.2}
-              className={`transition-transform duration-500 ${
-                refreshing ? "animate-spin" : "group-hover:rotate-90"
-              }`}
-            />
-            <span className="hidden sm:inline">
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </span>
-          </button>
-        </div>
-      </div>
-      <div
-        aria-hidden="true"
-        className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent"
-      />
-
-      {/* ERROR */}
-      {error && (
-        <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={load}
-            className="font-semibold underline"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-    {/* TABLE — single scroll container, sticky thead, sticky actions col */}
-<div className="mt-4 overflow-hidden rounded-lg border border-[#cbe1f4]">
-  <div
-    ref={bodyScrollRef}
-    className="common-scrollbar h-[470px] overflow-auto"
-  >
-    <table
-      className="w-full border-collapse text-[15px]"
-      style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-    >
-      <colgroup>
-        {TABLE_COLUMNS.map((c) => (
-          <col key={c.key} style={{ width: c.width }} />
-        ))}
-      </colgroup>
-
-      <thead className="sticky top-0 z-30">
-        <tr>
-          {TABLE_COLUMNS.map((c) => (
-            <th
-              key={c.key}
-              scope="col"
-              className={
-                c.key === "actions"
-                  ? stickyActionsHead + " sticky top-0"
-                  : thClass + " sticky top-0"
-              }
-            >
-              {c.label}
-            </th>
-          ))}
-        </tr>
-      </thead>
-
-      <tbody>
-        {loading ? (
-          <tr>
-            <td colSpan={TABLE_COL_COUNT} className="px-4 py-12 text-center">
-              <div className="flex flex-col items-center">
-                <span
-                  aria-hidden="true"
-                  className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
-                />
-                <p className="mt-3 text-[15px] text-[#6b7a88]">Loading...</p>
-              </div>
-            </td>
-          </tr>
-        ) : pageRows.length === 0 ? (
-          <tr>
-            <td
-              colSpan={TABLE_COL_COUNT}
-              className="border-t border-[#e2e8ee] px-4 py-12 text-center"
-            >
-              <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                <Inbox size={22} />
-              </div>
-              <p className="mt-3 text-[15px] text-[#1e2b36]">
-                No {cfg.entityName || "records"} yet
-              </p>
-            </td>
-          </tr>
-        ) : (
-          pageRows.map((row, index) => {
-            const reqTone = requestToneOf(row.statusName);
-            const rowIsNew = isNewStatus(row, row.statusName);
-            return (
-              <tr
-                key={row.id ?? index}
-                style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
-                className={`js-row group transition-colors ${
-                  rowIsNew
-                    ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
-                    : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
-                }`}
+            <div className="flex w-full items-center gap-2.5 sm:w-auto">
+              <button
+                type="button"
+                title="Refresh table"
+                aria-label="Refresh table"
+                onClick={handleRefresh}
+                disabled={refreshing || loading}
+                className={`${btnRefresh} flex-1 sm:flex-none`}
               >
-                <td className={`${td} tabular-nums`}>{start + index + 1}</td>
+                <RefreshCw
+                  size={15}
+                  strokeWidth={2.2}
+                  className={`transition-transform duration-500 ${
+                    refreshing ? "animate-spin" : "group-hover:rotate-90"
+                  }`}
+                />
+                <span className="inline">
+                  {refreshing ? "Refreshing..." : "Refresh"}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
 
-                <td className={`${td} whitespace-nowrap`}>
-                  <div className="w-full min-w-0 truncate">
-                    {row.requestId ?? "-"}
-                  </div>
-                </td>
-                <td className={`${td} whitespace-nowrap`}>
-                  <div className="w-full min-w-0 truncate">
-                    {row.name ?? "-"}
-                  </div>
-                </td>
-                <td className={`${td} whitespace-nowrap`}>
-                  <div className="w-full min-w-0 truncate">
-                    {row.contact ?? "-"}
-                  </div>
-                </td>
-                <td className={`${td} whitespace-nowrap`}>
-                  <div className="w-full min-w-0 truncate">
-                    {row.userType ?? "-"}
-                  </div>
-                </td>
+        <div
+          aria-hidden="true"
+          className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent"
+        />
 
-                <td className={`${td} whitespace-nowrap text-center`}>
-                  <div className="w-full min-w-0 truncate">
-                    <span
-                      className={`${BADGE_BASE} ${reqTone.badge} ${
-                        rowIsNew ? "js-badge-new" : ""
-                      } gap-1`}
-                    >
-                      {row.statusName || "-"}
-                    </span>
-                  </div>
-                </td>
+        {/* ERROR */}
+        {error && (
+          <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <span className="min-w-0 break-words">{error}</span>
+            <button
+              type="button"
+              onClick={load}
+              className="shrink-0 font-semibold underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
-                <td className={`${td} whitespace-nowrap text-center`}>
-                  <div className="w-full min-w-0 truncate">
-                    {row.rating ?? "-"}
-                  </div>
-                </td>
-                <td className={`${td} whitespace-nowrap text-center`}>
-                  <div className="w-full min-w-0 truncate">
-                    {formatAdminEnquiryDateTime(row.submittedAt)}
-                  </div>
-                </td>
+        {/* TABLE — single scroll container, sticky thead, sticky actions col */}
+        <div className="common-scrollbar mt-4 h-[470px] w-full min-w-0 overflow-auto rounded-lg border border-[#cbe1f4]">
+          <table
+            className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
+            style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+          >
+            <colgroup>
+              {TABLE_COLUMNS.map((c) => (
+                <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+              ))}
+            </colgroup>
 
-                <td className={`${td} ${stickyActionsCell} text-center`}>
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      title={`View ${row[cfg.titleField] || "Record"}`}
-                      aria-label={`View ${row[cfg.titleField] || "Record"}`}
-                      onClick={() => handleView(row)}
-                      className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                    >
-                      <ChevronsRight size={14} strokeWidth={2.2} />
-                    </button>
+            <thead className="sticky top-0 z-30">
+              <tr>
+                {TABLE_COLUMNS.map((c) => (
+                  <th
+                    key={c.key}
+                    scope="col"
+                    className={`${
+                      c.key === "actions" ? stickyActionsHead : thClass
+                    } sticky top-0`}
+                  >
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
 
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={row.status === "Active"}
-                      aria-label={
-                        row.status === "Active"
-                          ? `Deactivate ${row[cfg.titleField] || "Record"}`
-                          : `Activate ${row[cfg.titleField] || "Record"}`
-                      }
-                      title={
-                        row.status === "Active"
-                          ? "Active. Click to deactivate"
-                          : "Not active. Click to activate"
-                      }
-                      onClick={() => askToggle(row)}
-                      className={`relative h-6 w-[42px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
-                        row.status === "Active"
-                          ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                          : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={TABLE_COL_COUNT} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center">
+                      <span
+                        aria-hidden="true"
+                        className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
+                      />
+                      <p className="mt-3 text-[14px] text-[#6b7a88] sm:text-[15px]">
+                        Loading...
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : pageRows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={TABLE_COL_COUNT}
+                    className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+                  >
+                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                      <Inbox size={22} />
+                    </div>
+                    <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
+                      No {cfg.entityName || "records"} yet
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                pageRows.map((row, index) => {
+                  const reqTone = requestToneOf(row.statusName);
+                  const rowIsNew = isNewStatus(row, row.statusName);
+                  return (
+                    <tr
+                      key={row.id ?? index}
+                      style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                      className={`js-row group transition-colors ${
+                        rowIsNew
+                          ? "js-row-new bg-yellow-100/70 hover:bg-yellow-100"
+                          : "even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                       }`}
                     >
-                      <span
-                        className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                          row.status === "Active"
-                            ? "translate-x-[18px]"
-                            : "translate-x-0"
-                        }`}
-                      >
-                        {row.status === "Active" ? (
-                          <UserRoundCheck
-                            size={13}
-                            strokeWidth={2.7}
-                            className="text-emerald-700"
-                          />
-                        ) : (
-                          <UserRoundX
-                            size={13}
-                            strokeWidth={2.7}
-                            className="text-rose-700"
-                          />
-                        )}
-                      </span>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })
-        )}
-      </tbody>
-    </table>
-  </div>
-</div>
+                      <td className={`${td} tabular-nums`}>{start + index + 1}</td>
 
-      {/* PAGINATION — server-side */}
-      <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
-          <span>
-            Showing{" "}
-            <strong className="font-semibold text-[#53677f]">
-              {count ? start + 1 : 0}
-            </strong>{" "}
-            to{" "}
-            <strong className="font-semibold text-[#53677f]">
-              {Math.min(start + pageSize, count)}
-            </strong>{" "}
-            of <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
-            entries
-          </span>
-          <label className="flex items-center gap-1.5">
-            <span>Show:</span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(1);
-              }}
-              className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[13px] text-[#34445a] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30"
-            >
-              {DEFAULT_PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium text-slate-900">
+                            {row.requestId ?? "-"}
+                          </span>
+                        </span>
+                      </td>
+                        <td className={`${td} whitespace-nowrap`}>
+                        <span
+                          className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${reqTone.badge} ${
+                            rowIsNew ? "js-badge-new" : ""
+                          }`}
+                        >
+                          {row.statusName || "-"}
+                        </span>
+                      </td>
+                      
+                      <td className={`${td} whitespace-nowrap tabular-nums`}>
+                        <span className="text-[12px] sm:text-[14px]">
+                          {formatAdminEnquiryDateTime(row.submittedAt)}
+                        </span>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium text-slate-900">
+                            {row.name ?? "-"}
+                          </span>
+                        </span>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="block truncate text-[12px] sm:text-[14px]">
+                          {row.contact ?? "-"}
+                        </span>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="block truncate text-[12px] sm:text-[14px]">
+                          {row.userType ?? "-"}
+                        </span>
+                      </td>
+
+                    
+
+                      <td className={`${td} whitespace-nowrap tabular-nums`}>
+                        <span className="text-[12px] sm:text-[14px]">
+                          {row.rating ?? "-"}
+                        </span>
+                      </td>
+
+
+                      <td className={stickyActionsCell}>
+                        <div className="flex items-center justify-center gap-1 sm:gap-2">
+                          <button
+                            type="button"
+                            title={`View ${row[cfg.titleField] || "Record"}`}
+                            aria-label={`View ${row[cfg.titleField] || "Record"}`}
+                            onClick={() => handleView(row)}
+                            className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:h-7 sm:w-7"
+                          >
+                            <ChevronsRight size={13} strokeWidth={2.2} className="sm:hidden" />
+                            <ChevronsRight size={14} strokeWidth={2.2} className="hidden sm:block" />
+                          </button>
+
+                          {/* <button
+                            type="button"
+                            role="switch"
+                            aria-checked={row.status === "Active"}
+                            aria-label={
+                              row.status === "Active"
+                                ? `Deactivate ${row[cfg.titleField] || "Record"}`
+                                : `Activate ${row[cfg.titleField] || "Record"}`
+                            }
+                            title={
+                              row.status === "Active"
+                                ? "Active. Click to deactivate"
+                                : "Not active. Click to activate"
+                            }
+                            onClick={() => askToggle(row)}
+                            className={`relative h-6 w-[38px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:w-[42px] ${
+                              row.status === "Active"
+                                ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                                : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
+                            }`}
+                          >
+                            <span
+                              className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                                row.status === "Active"
+                                  ? "translate-x-[14px] sm:translate-x-[18px]"
+                                  : "translate-x-0"
+                              }`}
+                            >
+                              {row.status === "Active" ? (
+                                <UserRoundCheck
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-emerald-700"
+                                />
+                              ) : (
+                                <UserRoundX
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-rose-700"
+                                />
+                              )}
+                            </span>
+                          </button> */}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
 
-        <nav
-          aria-label="Pagination"
-          className="flex flex-wrap items-center gap-1"
-        >
-          <button
-            type="button"
-            onClick={() => setPage(currentPage - 1)}
-            disabled={currentPage === 1}
-            className={navBtn}
-          >
-            Previous
-          </button>
-          {pageNumbers.map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setPage(n)}
-              aria-current={n === currentPage ? "page" : undefined}
-              className={`${pageBtn} ${
-                n === currentPage
-                  ? "bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] font-semibold text-white shadow-[0_2px_6px_rgba(44,107,138,0.45)] ring-2 ring-[#2c6b8a]/25"
-                  : "border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a]"
-              }`}
-            >
-              {n}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setPage(currentPage + 1)}
-            disabled={currentPage === totalPagesLocal}
-            className={navBtn}
-          >
-            Next
-          </button>
-        </nav>
-      </div>
-
-      {/* CONFIRM DIALOG */}
-      {confirm && (
-        <StatusModal
-          isOpen
-          type="confirm"
-          title={`Change Status to ${confirm.next}?`}
-          message={`Are you sure you want to change the status of ${getAdminStatusRecordLabel(
-            confirm.row,
-            [cfg.titleField],
-          )} to ${confirm.next}?`}
-          showCancel
-          busy={busy}
-          confirmText={`Yes, Change to ${confirm.next}`}
-          onCancel={() => setConfirm(null)}
-          onConfirm={confirmToggle}
-        />
-      )}
-
-      {/* TOAST */}
-      {toast &&
-        (() => {
-          const { bg, Icon } = TOAST_ICON[toast.tone] ?? TOAST_ICON.ok;
-          return (
-            <div
-              key={toast.id}
-              role="status"
-              aria-live="polite"
-              className="js-toast fixed bottom-5 right-5 z-[60] flex items-center gap-2.5 rounded-xl border border-white/10 bg-[#1e2b36] px-4 py-3 text-[15px] font-medium text-white shadow-2xl"
-            >
-              <span
-                className={`grid h-5 w-5 place-items-center rounded-full ${bg}`}
+        {/* PAGINATION — server-side */}
+        <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
+            <span>
+              Showing{" "}
+              <strong className="font-semibold text-[#53677f]">
+                {count ? start + 1 : 0}
+              </strong>{" "}
+              to{" "}
+              <strong className="font-semibold text-[#53677f]">
+                {Math.min(start + pageSize, count)}
+              </strong>{" "}
+              of <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
+              entries
+            </span>
+            <label className="flex items-center gap-1.5">
+              <span>Show:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[13px] text-[#34445a] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30"
               >
-                <Icon size={12} strokeWidth={3} />
-              </span>
-              {toast.msg}
-            </div>
-          );
-        })()}
+                {DEFAULT_PAGE_SIZES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <nav aria-label="Pagination" className="flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className={navBtn}
+            >
+              Previous
+            </button>
+            {pageNumbers.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setPage(n)}
+                aria-current={n === currentPage ? "page" : undefined}
+                className={`${pageBtn} ${
+                  n === currentPage
+                    ? "bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] font-semibold text-white shadow-[0_2px_6px_rgba(44,107,138,0.45)] ring-2 ring-[#2c6b8a]/25"
+                    : "border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a]"
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setPage(currentPage + 1)}
+              disabled={currentPage === totalPagesLocal}
+              className={navBtn}
+            >
+              Next
+            </button>
+          </nav>
+        </div>
+
+        {/* CONFIRM DIALOG */}
+        {confirm && (
+          <StatusModal
+            isOpen
+            type="confirm"
+            title={`Change Status to ${confirm.next}?`}
+            message={`Are you sure you want to change the status of ${getAdminStatusRecordLabel(
+              confirm.row,
+              [cfg.titleField],
+            )} to ${confirm.next}?`}
+            showCancel
+            busy={busy}
+            confirmText={`Yes, Change to ${confirm.next}`}
+            onCancel={() => setConfirm(null)}
+            onConfirm={confirmToggle}
+          />
+        )}
+
+        {/* TOAST */}
+        {toast &&
+          (() => {
+            const { bg, Icon } = TOAST_ICON[toast.tone] ?? TOAST_ICON.ok;
+            return (
+              <div
+                key={toast.id}
+                role="status"
+                aria-live="polite"
+                className="js-toast fixed bottom-3 left-3 right-3 z-[60] flex items-center gap-2.5 rounded-xl border border-white/10 bg-[#1e2b36] px-4 py-3 text-[14px] font-medium text-white shadow-2xl sm:bottom-5 sm:left-auto sm:right-5 sm:text-[15px]"
+              >
+                <span
+                  className={`grid h-5 w-5 place-items-center rounded-full ${bg}`}
+                >
+                  <Icon size={12} strokeWidth={3} />
+                </span>
+                {toast.msg}
+              </div>
+            );
+          })()}
+      </div>
     </div>
   );
 };
