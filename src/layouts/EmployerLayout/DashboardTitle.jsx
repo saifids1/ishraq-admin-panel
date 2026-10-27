@@ -1,18 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import gsap from "gsap";
-import {
-  Bell,
-  ChevronDown,
-  ChevronUp,
-  LayoutDashboard,
-  Settings,
-  LogOut,
-  UserRound,
-} from "lucide-react";
 
 const DASHBOARD_TITLE = "Employer Dashboard";
 
-export  const DashboardTitle = () => {
+export const DashboardTitle = () => {
   const wrapRef = useRef(null);
   const lettersRef = useRef(null);
   const lineRef = useRef(null);
@@ -52,25 +43,25 @@ export  const DashboardTitle = () => {
   }, []);
 
   return (
+    // Mobile: sits in the normal flow next to the menu button.
+    // Desktop (md+): absolutely centered in the header, as before.
     <div
       ref={wrapRef}
-      className="pointer-events-none absolute left-[40%] top-1/2 hidden -translate-x-1/2 -translate-y-1/2 flex-col items-center sm:flex"
+      className="pointer-events-none flex min-w-0 items-center
+        md:absolute md:left-[40%] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2"
     >
-      <div className="flex items-center gap-2">
-        <h2
-          ref={lettersRef}
-          className="m-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]"
-          aria-label={DASHBOARD_TITLE}
-        >
-          {DASHBOARD_TITLE.split("").map((char, i) => (
-            <span key={i} className="inline-block" aria-hidden="true">
-              {char === " " ? "\u00A0" : char}
-            </span>
-          ))}
-        </h2>
-      </div>
-
-     
+      <h2
+        ref={lettersRef}
+        className="m-0 truncate whitespace-nowrap text-[17px] font-extrabold tracking-tight
+          text-[#2c6b8a] sm:text-[22px] lg:text-[26px]"
+        aria-label={DASHBOARD_TITLE}
+      >
+        {DASHBOARD_TITLE.split("").map((char, i) => (
+          <span key={i} className="inline-block" aria-hidden="true">
+            {char === " " ? "\u00A0" : char}
+          </span>
+        ))}
+      </h2>
     </div>
   );
 };

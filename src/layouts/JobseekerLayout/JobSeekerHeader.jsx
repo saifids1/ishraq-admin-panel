@@ -1,21 +1,20 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Bell,
   ChevronDown,
   ChevronUp,
-  Settings,
   LogOut,
+  Menu,
   UserRound,
 } from "lucide-react";
-
 import { useNavigate } from "react-router-dom";
+import jobseekerApi from "../../api/Services/adjobseekerApi.js";
 import { useAuth } from "../../context/AuthContext";
 import { getCurrentUser, getCurrentUserId } from "../../utils/authUtils.js";
-import jobseekerApi from "../../api/Services/adjobseekerApi.js";
+import { DashboardTitle } from "./DashboardTitle.jsx";
 
 const PROFILE_CACHE_KEY = "jobseekerProfileCached";
 const PROFILE_CACHE_VERSION = "1";
-import { DashboardTitle } from "./DashboardTitle.jsx";
 
 // Shared across component mounts, including React StrictMode effect reruns.
 let profileRequestPromise = null;
@@ -39,7 +38,6 @@ const readCachedProfile = () => {
     }
 
     const profile = {};
-
     for (const field of PROFILE_FIELDS) {
       const value = localStorage.getItem(field);
       if (value !== null) profile[field] = value;
@@ -86,18 +84,9 @@ const saveProfileToCache = (record) => {
   }
 
   // Maintain the existing cache keys for compatibility.
-  if (record.fullName) {
-    localStorage.setItem("jobseekerName", record.fullName);
-  }
-
-  if (record.email) {
-    localStorage.setItem("jobseekerEmail", record.email);
-  }
-
-  if (record.mobile) {
-    localStorage.setItem("jobseekerMobile", record.mobile);
-  }
-
+  if (record.fullName) localStorage.setItem("jobseekerName", record.fullName);
+  if (record.email) localStorage.setItem("jobseekerEmail", record.email);
+  if (record.mobile) localStorage.setItem("jobseekerMobile", record.mobile);
   if (record.jB_jobseeker_no) {
     localStorage.setItem("jobseekerNumber", record.jB_jobseeker_no);
   }
@@ -108,18 +97,12 @@ const saveProfileToCache = (record) => {
 
 const loadJobseekerProfileOnce = () => {
   const cachedProfile = readCachedProfile();
-
-  if (cachedProfile) {
-    return Promise.resolve(cachedProfile);
-  }
+  if (cachedProfile) return Promise.resolve(cachedProfile);
 
   // Reuse a request already in progress.
-  if (profileRequestPromise) {
-    return profileRequestPromise;
-  }
+  if (profileRequestPromise) return profileRequestPromise;
 
   const userId = getCurrentUserId();
-
   if (userId == null || userId === "") {
     return Promise.reject(new Error("Jobseeker user ID is missing."));
   }
@@ -127,7 +110,6 @@ const loadJobseekerProfileOnce = () => {
   profileRequestPromise = (async () => {
     try {
       const response = await jobseekerApi.getById(userId);
-
       const record =
         response?.data?.data ?? response?.data?.Data ?? response?.data;
 
@@ -136,7 +118,6 @@ const loadJobseekerProfileOnce = () => {
       }
 
       saveProfileToCache(record);
-
       return record;
     } finally {
       profileRequestPromise = null;
@@ -146,7 +127,7 @@ const loadJobseekerProfileOnce = () => {
   return profileRequestPromise;
 };
 
-const JobSeekerHeader = () => {
+const JobSeekerHeader = ({ onMenuClick }) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
 
@@ -160,9 +141,7 @@ const JobSeekerHeader = () => {
 
     loadJobseekerProfileOnce()
       .then((record) => {
-        if (!cancelled) {
-          setJobseeker(record);
-        }
+        if (!cancelled) setJobseeker(record);
       })
       .catch((error) => {
         if (!cancelled) {
@@ -197,9 +176,6 @@ const JobSeekerHeader = () => {
   const userMobile =
     jobseeker?.mobile || localStorage.getItem("jobseekerMobile") || "";
 
-  const jobseekerNumber =
-    jobseeker?.jB_jobseeker_no || localStorage.getItem("jobseekerNumber") || "";
-
   const userRole = "Job Seeker";
 
   const initials = userName
@@ -212,24 +188,6 @@ const JobSeekerHeader = () => {
 
   const handleLogout = () => {
     setProfileOpen(false);
-
-    // Remove profile-specific cached data on logout.
-    [
-      PROFILE_CACHE_KEY,
-      "jB_jobseeker_id",
-      "jB_institute_type_id",
-      "jB_job_role_id",
-      "jB_job_category_id",
-      "jB_jobseeker_no",
-      "fullName",
-      "email",
-      "userName",
-      "mobile",
-      "jobseekerName",
-      "jobseekerEmail",
-      "jobseekerMobile",
-      "jobseekerNumber",
-    ].forEach((key) => localStorage.removeItem(key));
     localStorage.clear();
     logout();
     navigate("/login");
@@ -238,12 +196,26 @@ const JobSeekerHeader = () => {
   return (
     <header
       className="h-[62px] shrink-0 bg-white border-b border-gray-200
-      flex items-center justify-between px-4 sm:px-6 relative z-40"
+      flex items-center justify-between gap-2 px-3 sm:px-6 relative z-40"
     >
-      <div />
-      <DashboardTitle />
+      {/* LEFT SIDE: menu button (mobile only) + title */}
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          aria-label="Open menu"
+          className="md:hidden grid place-items-center w-9 h-9 shrink-0 rounded-lg
+            text-[#2f6b8a] hover:bg-gray-100 active:scale-95 transition"
+        >
+          <Menu size={20} />
+        </button>
 
-      <div className="flex items-center gap-3 sm:gap-5 ml-3">
+        <DashboardTitle />
+      </div>
+
+      {/* RIGHT SIDE */}
+      <div className="flex shrink-0 items-center gap-3 sm:gap-5">
+        {/* NOTIFICATIONS */}
         <button
           type="button"
           title="Notifications"
@@ -260,8 +232,10 @@ const JobSeekerHeader = () => {
           />
         </button>
 
+        {/* DIVIDER */}
         <div className="h-7 w-px bg-gray-200" />
 
+        {/* PROFILE */}
         <div className="relative">
           <button
             type="button"
@@ -344,24 +318,13 @@ const JobSeekerHeader = () => {
                   </div>
                 </div>
 
-                {(jobseekerNumber || userMobile) && (
-                  <div className="px-4 pb-3 space-y-1">
-                    {jobseekerNumber && (
-                      <p className="text-[11px] text-gray-500">
-                        {/* ID: {jobseekerNumber} */}
-                      </p>
-                    )}
-                    {userMobile && (
-                      <p className="text-[11px] text-gray-500">
-                        Mobile: {userMobile}
-                      </p>
-                    )}
+                {userMobile && (
+                  <div className="px-4 pb-3">
+                    <p className="text-[11px] text-gray-500">
+                      Mobile: {userMobile}
+                    </p>
                   </div>
                 )}
-
-                <div className="border-t border-gray-100" />
-
-                
 
                 <div className="border-t border-gray-100" />
 

@@ -296,7 +296,7 @@ const JobsForYou = () => {
   /* --------------------------- RENDER --------------------------- */
 
   return (
-    <div className="mx-auto max-w-[1500px] rounded-[14px] border border-[#e2e8ee] bg-white p-4 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:px-5">
+    <div className="mx-auto max-w-[1500px] rounded-[14px] border border-[#e2e8ee] bg-white lg:p-4 p-2 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:px-5">
       {/* HEADER */}
       <div className="mb-2 flex flex-col items-start justify-between gap-3 xl:flex-row xl:items-center">
         <h1 className="m-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]">

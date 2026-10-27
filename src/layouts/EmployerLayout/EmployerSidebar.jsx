@@ -1,24 +1,18 @@
 import React, { useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
-  ChevronFirst,
-  ChevronLast,
-  Search,
   LayoutDashboard,
-  BookUser,
   Building2,
   MessagesSquare,
-  KeyRound,
   ClipboardList,
-  MessageCircleQuestion,
   ShieldAlert,
-  Sparkles,
-  LifeBuoy,
-  LogOut,
   Activity,
   ChevronsRight,
   ChevronsLeft,
+  X,
+  Search,
 } from "lucide-react";
+import Logo from "../../IshraqHR2.png"
 
 // Keyframes live here so no tailwind.config changes are needed
 const styles = `
@@ -74,92 +68,49 @@ const styles = `
 }
 `;
 
-export const EmployerSidebar = () => {
+const menuItems = [
+  {
+    text: "Dashboard",
+    icon: LayoutDashboard,
+    link: "/employer/dashboard",
+    tile: "from-sky-400 to-blue-500",
+  },
+  {
+    text: "Organization Profile",
+    icon: Building2,
+    link: "/employer/organization-profile",
+    tile: "from-violet-400 to-indigo-500",
+  },
+  {
+    text: "Job Requirements",
+    icon: ClipboardList,
+    link: "/employer/job-requirement-list",
+    tile: "from-cyan-400 to-sky-500",
+  },
+  {
+    text: "Complaints",
+    icon: ShieldAlert,
+    link: "/employer/complaint-list",
+    tile: "from-rose-400 to-red-500",
+  },
+  {
+    text: "Feedback",
+    icon: MessagesSquare,
+    link: "/employer/feedback-list",
+    tile: "from-pink-400 to-rose-500",
+  },
+];
+
+export const EmployerSidebar = ({ mobileOpen = false, onClose = () => {} }) => {
   const [expanded, setExpanded] = useState(true);
   const [search, setSearch] = useState("");
 
-  // `tile` = icon background gradient used when the item is idle/hovered
-  const menuItems = [
-    {
-      text: "Dashboard",
-      icon: LayoutDashboard,
-      link: "/employer/dashboard",
-      tile: "from-sky-400 to-blue-500",
-    },
-    // {
-    //   text: "JobSeeker List",
-    //   icon: BookUser,
-    //   link: "/admin/jobseekers",
-    //   tile: "from-emerald-400 to-teal-500",
-    //   // alert: true,
-    // },
-    {
-      text: "Organization Profile",
-      icon: Building2,
-      link: "/employer/organization-profile",
-      tile: "from-violet-400 to-indigo-500",
-    },
-    // {
-    //   text: "Reset Password",
-    //   icon: KeyRound,
-    //   link: "/admin/reset-password",
-    //   tile: "from-amber-400 to-orange-500",
-    // },
-    {
-      text: "Job Requirements",
-      icon: ClipboardList,
-      link: "/employer/job-requirement-list",
-      tile: "from-cyan-400 to-sky-500",
-    },
+  // On mobile the overlay always shows labels; on desktop it follows `expanded`
+  const labelsVisible = mobileOpen || expanded;
 
-    {
-      text: "Complaints",
-      icon: ShieldAlert,
-      link: "/employer/complaint-list",
-      tile: "from-rose-400 to-red-500",
-      // alert: true,
-    },
-    {
-      text: "Feedback",
-      icon: MessagesSquare,
-      link: "/employer/feedback-list",
-      tile: "from-pink-400 to-rose-500",
-    },
-    // {
-    //   text: "General Enquiry",
-    //   icon: MessageCircleQuestion,
-    //   link: "/admin/general-enquiry",
-    //   tile: "from-fuchsia-400 to-purple-500",
-    // },
-    // {
-    //   text: "Complaints",
-    //   icon: ShieldAlert,
-    //   link: "/admin/complaint-list",
-    //   tile: "from-rose-400 to-red-500",
-    //   alert: true,
-    // },
-  ];
-
-  const bottomItems = [
-    {
-      text: "Complaints",
-      icon: ShieldAlert,
-      link: "/employer/complaint-list",
-      tile: "from-rose-400 to-red-500",
-      // alert: true,
-    },
-    {
-      text: "Feedback",
-      icon: MessagesSquare,
-      link: "/employer/feedback-list",
-      tile: "from-pink-400 to-rose-500",
-    },
-  ];
-
-  const matches = (item) =>
-    item.text.toLowerCase().includes(search.toLowerCase());
-
-  const filteredItems = menuItems.filter(matches);
+  const filteredItems = menuItems.filter((item) =>
+    item.text.toLowerCase().includes(search.toLowerCase()),
+  );
 
   const renderItem = (item, index) => {
     const Icon = item.icon;
@@ -173,7 +124,8 @@ export const EmployerSidebar = () => {
         <NavLink
           to={item.link}
           end
-          title={!expanded ? item.text : undefined}
+          onClick={onClose}
+          title={!labelsVisible ? item.text : undefined}
           className={({ isActive }) =>
             `sb-link relative flex items-center h-11 px-2 my-1 rounded-xl overflow-hidden
             transition-all duration-300 group
@@ -182,12 +134,12 @@ export const EmployerSidebar = () => {
                 ? "sb-shimmer bg-gradient-to-r from-[#2f6b8a] via-[#3a86a8] to-[#4aa3c0] text-white shadow-lg shadow-[#2f6b8a]/30"
                 : "text-gray-600 hover:bg-gradient-to-r hover:from-blue-50 hover:to-transparent hover:text-[#2f6b8a] hover:translate-x-0.5"
             }
-            ${expanded ? "justify-start" : "justify-center"}`
+            ${labelsVisible ? "justify-start" : "justify-center md:justify-center"}`
           }
         >
           {({ isActive }) => (
             <>
-              {/* Animated active indicator bar */}
+              {/* Active indicator bar */}
               <span
                 className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-white
                   transition-all duration-300 ${
@@ -211,7 +163,9 @@ export const EmployerSidebar = () => {
               <span
                 className={`relative z-10 overflow-hidden whitespace-nowrap text-sm font-medium
                   transition-all duration-300 ${
-                    expanded ? "w-40 ml-3 opacity-100" : "w-0 ml-0 opacity-0"
+                    labelsVisible
+                      ? "w-40 ml-3 opacity-100"
+                      : "w-0 ml-0 opacity-0"
                   }`}
               >
                 {item.text}
@@ -220,7 +174,7 @@ export const EmployerSidebar = () => {
               {item.alert && (
                 <span
                   className={`absolute z-10 ${
-                    expanded
+                    labelsVisible
                       ? "right-3 top-1/2 -translate-y-1/2"
                       : "right-1.5 top-1.5"
                   }`}
@@ -238,35 +192,44 @@ export const EmployerSidebar = () => {
 
   return (
     <aside
-      className={`h-screen shrink-0 transition-all duration-300 ${
-        expanded ? "w-64" : "w-[72px]"
-      }`}
+      className={`
+    ${mobileOpen ? "fixed inset-0 z-50 flex w-full bg-white" : "hidden"}
+    md:flex md:static md:z-auto md:h-screen md:shrink-0 md:bg-transparent
+    md:transition-all md:duration-300
+    ${expanded ? "md:w-64" : "md:w-[72px]"}
+  `}
     >
       <style>{styles}</style>
 
-      <nav className="h-full flex flex-col bg-gradient-to-b from-white via-sky-50/40 to-indigo-50/60 border-r border-gray-200 shadow-sm">
-        {/* Logo and Collapse Button */}
+      <nav className="h-full w-full flex flex-col bg-white md:bg-gradient-to-b md:from-white md:via-sky-50/40 md:to-indigo-50/60 border-r border-gray-200 shadow-sm">
+        {/* Logo and buttons */}
         <div
           className={`h-16 px-3 flex items-center border-b border-gray-100 ${
-            expanded ? "justify-between" : "justify-center"
+            labelsVisible ? "justify-between" : "justify-center"
           }`}
         >
-          {expanded && (
+          {/* {labelsVisible && ( */}
             <div className="flex items-center gap-2 min-w-0">
-              <span className="sb-logo-badge grid place-items-center w-9 h-9 rounded-xl bg-gradient-to-br from-[#2f6b8a] to-[#38b2ac] shadow-md shadow-[#2f6b8a]/30">
-                <Activity size={18} className="text-white" />
-              </span>
-              <h2 className="sb-brand font-bold text-xl tracking-wide whitespace-nowrap">
-                Ishraq HR
-              </h2>
+             <img src={Logo} width={100} height={160} alt="" />
             </div>
-          )}
+           {/* )} */}
 
+          {/* Mobile: close button */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className="md:hidden p-2 rounded-full text-gray-600 hover:bg-gray-100 active:scale-95 transition"
+          >
+            <X size={20} />
+          </button>
+
+          {/* Desktop: collapse button */}
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
             title={expanded ? "Collapse sidebar" : "Expand sidebar"}
-            className="p-2 rounded-full text-white bg-gradient-to-br from-[#2f6b8a] to-[#4aa3c0]
+            className="hidden md:block p-2 rounded-full text-white bg-gradient-to-br from-[#2f6b8a] to-[#4aa3c0]
               shadow-md hover:shadow-lg hover:scale-110 active:scale-95 transition-all duration-200"
           >
             {expanded ? (
@@ -277,25 +240,31 @@ export const EmployerSidebar = () => {
           </button>
         </div>
 
+        {/* Search (only when labels are visible) */}
+        {labelsVisible && (
+          <div className="px-3 pt-3">
+            <div className="flex items-center gap-2 px-3 h-9 rounded-lg bg-white border border-gray-200">
+              <Search size={14} className="text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search menu"
+                className="w-full bg-transparent text-sm outline-none"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Main Menu */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pt-2">
           <ul className="space-y-1">{filteredItems.map(renderItem)}</ul>
 
-          {filteredItems.length === 0 && expanded && (
+          {filteredItems.length === 0 && labelsVisible && (
             <p className="px-3 py-6 text-center text-sm text-gray-400">
               No menu items match "{search}"
             </p>
           )}
         </div>
-
-        {/* Bottom Menu */}
-        {/* <div className="px-2 py-3 border-t border-gray-100">
-          <ul className="space-y-1">
-            {bottomItems.map((item, i) =>
-              renderItem(item, filteredItems.length + i),
-            )}
-          </ul>
-        </div> */}
       </nav>
     </aside>
   );

@@ -3,17 +3,11 @@ import { useNavigate } from "react-router-dom";
 import {
   FileText as FileIcon,
   ChevronsLeft,
-  Mail,
-  MapPin,
   Download,
   Eye,
   GraduationCap,
-  Briefcase,
-  Wallet,
   Inbox,
   UserRound,
-  Navigation,
-  ExternalLink,
   Building2,
   SlidersHorizontal,
   X,
@@ -31,15 +25,22 @@ import { getCurrentUserId2, getCurrentUserId } from "../../../utils/authUtils";
 const T = {
   radius: "rounded-lg",
   border: "border-[#e3e8ee]",
-  borderSoft: "border-[#eef1f5]",
   bg: "bg-[#f4f8fb]",
   surface: "bg-white",
   text: "text-[#1a2b3c]",
   textMuted: "text-[#5b6b7c]",
   textFaint: "text-black",
-  accent: "text-[#1e5a7a]",
-  hover: "hover:bg-[#f3f6f9]",
 };
+
+const SECTION_CARD = `${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`;
+const SECTION_BODY = "p-3 sm:p-4";
+const SECTION_TITLE =
+  "mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]";
+// Two columns only on wide screens; the sidebar takes space below xl.
+const FIELD_GRID_2 = "grid grid-cols-1 gap-x-6 gap-y-3 xl:grid-cols-2";
+// Label above input on phones, label beside input from sm up.
+const FIELD_GRID =
+  "grid grid-cols-1 gap-1 sm:grid-cols-[160px_1fr] sm:items-center sm:gap-3";
 
 const val = (v) => (v && String(v).trim() ? v : "—");
 
@@ -50,7 +51,9 @@ const toYesNo = (v) => {
   return "—";
 };
 const toBoolean = (value) =>
-  value === true || value === 1 || ["true", "1", "yes"].includes(String(value).toLowerCase());
+  value === true ||
+  value === 1 ||
+  ["true", "1", "yes"].includes(String(value).toLowerCase());
 
 /** Tolerant boolean check (true/1/"true"/"yes" → true) */
 const truthy = (v) => {
@@ -68,22 +71,24 @@ const FIELD_BOX = (mono) =>
   }`;
 
 const BTN_PRIMARY =
-  "inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
+  "inline-flex items-center justify-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
+// 16px on mobile prevents iOS from zooming when an input is focused.
 const EDIT_INPUT =
-  "h-9 w-full rounded-md border border-[#c9d5dd] bg-white px-3 text-[13px] text-[#1a2b3c] outline-none focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/20";
+  "h-9 w-full rounded-md border border-[#c9d5dd] bg-white px-3 text-base text-[#1a2b3c] outline-none focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/20 sm:text-[13px]";
 
 const NAV = [
   { id: "overview", label: "Overview", icon: UserRound },
   { id: "employment", label: "Current Employment", icon: Building2 },
   { id: "preferences", label: "Job Preferences", icon: SlidersHorizontal },
+  { id: "upskilling", label: "Upskilling", icon: GraduationCap },
   { id: "resume", label: "Documents", icon: FileIcon },
   // { id: "jobs", label: "Applied Jobs", icon: Briefcase },
 ];
 
 /* ---------------- Reusable row: label : input ---------------- */
 const FieldRow = ({ label, value, mono = false, children }) => (
-  <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-    <label className={`${FIELD_LABEL} text-right sm:text-left`}>{label}</label>
+  <div className={FIELD_GRID}>
+    <label className={FIELD_LABEL}>{label}</label>
     {children ? (
       <div className="min-w-0">{children}</div>
     ) : (
@@ -170,8 +175,6 @@ const formatUser = (v) =>
   v === null || v === undefined || String(v).trim() === "" ? "—" : String(v);
 
 /* ---------------- Data helpers ---------------- */
-const STORAGE_KEY = "ishraq_jobseekers";
-
 const EMPTY_FORM = {
   fullName: "",
   mobile: "",
@@ -209,6 +212,9 @@ const EMPTY_FORM = {
   availabilityToJoin: "",
   resume: null,
   consentGiven: "",
+  upskillingYesNo: "",
+  upskillingDetails: "",
+  interested: "",
   // ---------- AUDIT ----------
   jobseekerNo: "",
   createdAt: "",
@@ -221,11 +227,6 @@ const EMPTY_FORM = {
   activatedBy: "",
   consentAt: "",
 };
-
-const firstValue = (item, ...keys) =>
-  keys
-    .map((key) => item?.[key])
-    .find((value) => value !== undefined && value !== null) ?? "";
 
 const extractRecord = (response) => {
   const root = response?.data ?? response;
@@ -293,6 +294,9 @@ const toJobseekerView = (item, id) => {
     totalExperience: item?.jB_total_experience ?? "",
     currentDesignation: item?.jB_current_designation ?? "",
     consentGiven: toYesNo(item?.jB_consent_given),
+    upskillingYesNo: toYesNo(item?.jB_upskilling_yes_no),
+    upskillingDetails: item?.jB_upskilling_details ?? "",
+    interested: toYesNo(item?.jB_are_intrested),
 
     currentCountry: item?.countryName ?? "",
     currentState: item?.stateName ?? "",
@@ -336,69 +340,6 @@ const toJobseekerView = (item, id) => {
 /* ---------------- Applied jobs helpers ---------------- */
 const text = (value) => (hasValue(value) ? String(value).trim() : "-");
 
-const lowerKeys = (value) =>
-  Object.fromEntries(
-    Object.entries(value ?? {}).map(([key, item]) => [key.toLowerCase(), item]),
-  );
-
-const unwrapPage = (response) => {
-  const body = response?.data ?? response;
-  const result = body?.data ?? body?.Data ?? body;
-
-  return {
-    rows: Array.isArray(result?.data)
-      ? result.data
-      : Array.isArray(result?.Data)
-        ? result.Data
-        : [],
-    pageNo: Number(result?.pageNo ?? result?.PageNo ?? 1),
-    pageSize: Number(result?.pageSize ?? result?.PageSize ?? 10),
-    totalRecords: Number(result?.totalRecords ?? result?.TotalRecords ?? 0),
-    totalPages: Number(result?.totalPages ?? result?.TotalPages ?? 0),
-  };
-};
-
-const normalizeApplication = (raw) => {
-  const app = lowerKeys(raw);
-  const job = lowerKeys(app.jobrequirement);
-  const employer = lowerKeys(job.employer);
-  const jobLocation = lowerKeys(job.joblocation);
-  const employmentType = lowerKeys(job.employmenttype);
-
-  const requirementActive = job.jq_is_active;
-
-  return {
-    id: app.ap_application_id,
-    requirementId: app.ap_job_requirement_id,
-    applicationNumber: app.apply_id,
-    appliedDate: app.ap_created_at,
-
-    organizationName:
-      employer.em_organization_name ??
-      job.employername ??
-      raw?.organizationName,
-
-    position: job.jq_position_title,
-    department: job.jq_department_speciality,
-
-    location:
-      jobLocation.ctm_cityname ?? job.joblocationname ?? job.locationname,
-
-    employmentType:
-      employmentType.name ??
-      job.employmenttypename ??
-      job.jq_employment_type_name,
-
-    jobStatus: truthy(requirementActive)
-      ? "Open"
-      : requirementActive === false || requirementActive === 0
-        ? "Closed"
-        : "-",
-
-    isActive: app.ap_is_active,
-  };
-};
-
 /* ---------------- Documents tab helper ---------------- */
 const DocumentBox = ({ doc }) => {
   if (!doc) {
@@ -427,19 +368,19 @@ const DocumentBox = ({ doc }) => {
       </div>
 
       {doc.url ? (
-        <div className="mt-2.5 flex gap-2">
+        <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
           <a
             href={doc.url}
             target="_blank"
             rel="noreferrer"
-            className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50"
+            className="flex h-9 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50 sm:h-8"
           >
             <Eye size={13} /> View
           </a>
           <a
             href={doc.url}
             download
-            className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50"
+            className="flex h-9 items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50 sm:h-8"
           >
             <Download size={13} /> Download
           </a>
@@ -456,7 +397,6 @@ const DocumentBox = ({ doc }) => {
 /* ---------------- Page ---------------- */
 const JobSeekerDetails = ({ mode }) => {
   const navigate = useNavigate();
-  // const { id } = useParams();
 
   const [user, setUser] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -477,19 +417,17 @@ const JobSeekerDetails = ({ mode }) => {
   const [cities, setCities] = useState([]);
   const [uploadFile, setUploadFile] = useState(null);
 
-  useEffect(() => {
-    setIsEditing(mode === "edit");
-  }, [mode]);
-
-  /* Applied jobs state */
+  /* Applied jobs state (tab currently hidden) */
   const [appliedJobs, setAppliedJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState(null);
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const userId = getCurrentUserId()
+
+  const userId = getCurrentUserId();
+
+  useEffect(() => {
+    setIsEditing(mode === "edit");
+  }, [mode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -656,13 +594,9 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [draft.jobCategoryId, isEditing]);
 
-
-
   const filteredStates = useMemo(
     () =>
-      states.filter(
-        (state) => String(state.sM_CountryId) === draft.countryId,
-      ),
+      states.filter((state) => String(state.sM_CountryId) === draft.countryId),
     [states, draft.countryId],
   );
   const filteredCities = useMemo(
@@ -695,7 +629,9 @@ const JobSeekerDetails = ({ mode }) => {
   const saveJobseeker = async () => {
     const currentUserId = Number(getCurrentUserId2());
     if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
-      setEditError("Unable to identify the current user. Please sign in again.");
+      setEditError(
+        "Unable to identify the current user. Please sign in again.",
+      );
       return;
     }
     if (!draft.fullName.trim() || !draft.mobile.trim() || !draft.email.trim()) {
@@ -714,7 +650,9 @@ const JobSeekerDetails = ({ mode }) => {
       !draft.stateId ||
       !draft.cityId
     ) {
-      setEditError("Select valid institute, profession, role, and location values.");
+      setEditError(
+        "Select valid institute, profession, role, and location values.",
+      );
       return;
     }
 
@@ -751,6 +689,11 @@ const JobSeekerDetails = ({ mode }) => {
         JB_consent_given: toBoolean(draft.consentGiven),
         JB_updated_by: currentUserId,
         jB_updated_by: currentUserId,
+        JB_upskilling_yes_no: toBoolean(draft.upskillingYesNo),
+        JB_upskilling_details: toBoolean(draft.upskillingYesNo)
+          ? draft.upskillingDetails.trim()
+          : "",
+        JB_are_intrested: toBoolean(draft.interested),
       };
       const createdBy = Number(form.createdBy);
       if (Number.isInteger(createdBy) && createdBy > 0) {
@@ -787,6 +730,7 @@ const JobSeekerDetails = ({ mode }) => {
   };
 
   const pageTitle = form.fullName || "Jobseeker";
+
   const editInput = (key, type = "text") =>
     isEditing ? (
       <input
@@ -796,6 +740,7 @@ const JobSeekerDetails = ({ mode }) => {
         onChange={(event) => updateDraft(key, event.target.value)}
       />
     ) : undefined;
+
   const editSelect = (key, options, placeholder, onChange) =>
     isEditing ? (
       <select
@@ -816,11 +761,23 @@ const JobSeekerDetails = ({ mode }) => {
       </select>
     ) : undefined;
 
+  const yesNoSelect = (key) =>
+    isEditing ? (
+      <select
+        className={EDIT_INPUT}
+        value={toBoolean(draft[key]) ? "true" : "false"}
+        onChange={(event) => updateDraft(key, event.target.value === "true")}
+      >
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    ) : undefined;
+
   /* Loading */
   if (loading) {
     return (
-      <div className={`min-h-full ${T.bg} p-6`}>
-        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+      <div className={`min-h-full ${T.bg} p-3 sm:p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-8 text-center sm:p-12">
           <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-[#2f6b8a] border-t-transparent" />
           <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
             Loading jobseeker…
@@ -833,8 +790,8 @@ const JobSeekerDetails = ({ mode }) => {
   /* Error / Not found */
   if (error || !user) {
     return (
-      <div className={`min-h-full ${T.bg} p-6`}>
-        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-12 text-center">
+      <div className={`min-h-full ${T.bg} p-3 sm:p-6`}>
+        <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-[#cfd9e2] bg-white p-8 text-center sm:p-12">
           <UserRound size={28} className="mx-auto text-[#8895a4]" />
           <p className={`mt-3 text-[14px] font-semibold ${T.text}`}>
             {error || "Jobseeker not found"}
@@ -843,6 +800,7 @@ const JobSeekerDetails = ({ mode }) => {
             The record you're looking for doesn't exist or was removed.
           </p>
           <button
+            type="button"
             onClick={() => navigate(-1)}
             className={`mt-4 ${BTN_PRIMARY}`}
           >
@@ -855,19 +813,13 @@ const JobSeekerDetails = ({ mode }) => {
 
   const active = user.status === "Active";
 
-  /* Compose current location display */
-  const currentLocationDisplay =
-    [form.currentCity, form.currentState, form.currentCountry]
-      .filter((v) => v && String(v).trim())
-      .join(", ") || "—";
-
   return (
     <div className={`min-h-full ${T.bg}`}>
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* MAIN HEADER */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3 border-b border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 onClick={() => navigate(-1)}
@@ -878,17 +830,19 @@ const JobSeekerDetails = ({ mode }) => {
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
 
-              <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
+              <h2 className="truncate font-semibold text-slate-800">
+                {pageTitle}
+              </h2>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex w-full items-center gap-2 sm:w-auto">
               {isEditing ? (
                 <>
                   <button
                     type="button"
                     onClick={cancelEdit}
                     disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:flex-none"
                   >
                     <X size={15} /> Cancel
                   </button>
@@ -896,7 +850,7 @@ const JobSeekerDetails = ({ mode }) => {
                     type="button"
                     onClick={saveJobseeker}
                     disabled={saving}
-                    className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-60`}
+                    className={`${BTN_PRIMARY} flex-1 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none`}
                   >
                     {saving ? "Saving..." : "Save"}
                   </button>
@@ -905,7 +859,7 @@ const JobSeekerDetails = ({ mode }) => {
                 <button
                   type="button"
                   onClick={goToEditProfile}
-                  className={BTN_PRIMARY}
+                  className={`${BTN_PRIMARY} w-full sm:w-auto`}
                 >
                   Edit
                 </button>
@@ -916,7 +870,7 @@ const JobSeekerDetails = ({ mode }) => {
           {(editError || successMessage) && (
             <div
               role={editError ? "alert" : "status"}
-              className={`mx-6 mt-4 rounded-lg border px-4 py-2.5 text-sm ${
+              className={`mx-3 mt-3 rounded-lg border px-4 py-2.5 text-sm sm:mx-6 sm:mt-4 ${
                 editError
                   ? "border-red-200 bg-red-50 text-red-700"
                   : "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -927,13 +881,13 @@ const JobSeekerDetails = ({ mode }) => {
           )}
 
           {/* BODY */}
-          <div className="p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
-              {/* LEFT: vertical nav */}
-              <aside className="md:sticky md:top-4 md:h-fit w-[11rem]">
+          <div className="p-3 sm:p-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[200px_1fr]">
+              {/* SECTION NAV: horizontal scroll below lg, vertical list at lg+ */}
+              <aside className="min-w-0 lg:sticky lg:top-4 lg:h-fit lg:w-[11rem]">
                 <nav
                   aria-label="Jobseeker sections"
-                  className={`${T.surface} ${T.radius} border ${T.border} overflow-hidden p-1.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                  className={`${SECTION_CARD} flex gap-1 overflow-x-auto p-1.5 lg:block lg:overflow-hidden`}
                 >
                   {NAV.map((n) => {
                     const on = tab === n.id;
@@ -944,71 +898,53 @@ const JobSeekerDetails = ({ mode }) => {
                         type="button"
                         onClick={() => setTab(n.id)}
                         aria-current={on ? "page" : undefined}
-                        className={`group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition ${
+                        className={`group flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition lg:w-full ${
                           on
                             ? "bg-[#eaf2f7] text-[#1e5a7a]"
                             : "text-[#5b6b7c] hover:bg-[#f3f6f9] hover:text-[#1a2b3c]"
                         }`}
                       >
-                        <span className="flex items-center gap-2.5">
-                          <Icon
-                            size={15}
-                            className={
-                              on
-                                ? "text-[#1e5a7a]"
-                                : "text-[#8895a4] group-hover:text-[#5b6b7c]"
-                            }
-                          />
-                          {n.label}
-                        </span>
+                        <Icon
+                          size={15}
+                          className={
+                            on
+                              ? "text-[#1e5a7a]"
+                              : "text-[#8895a4] group-hover:text-[#5b6b7c]"
+                          }
+                        />
+                        {n.label}
                       </button>
                     );
                   })}
                 </nav>
               </aside>
 
-              {/* RIGHT: detail panel */}
+              {/* DETAIL PANEL */}
               <main className="min-w-0">
                 {/* -------- Overview -------- */}
                 {tab === "overview" && (
-                  <section>
-                    <div className="space-y-6 ">
-                      {/* Personal / Professional details */}
-                      <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
-                      <div className="p-4">
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                  <section className="space-y-4 sm:space-y-6">
+                    {/* Personal / Professional details */}
+                    <div className={SECTION_CARD}>
+                      <div className={SECTION_BODY}>
+                        <h3 className={SECTION_TITLE}>
                           Personal & Professional Details
                         </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Jobseeker ID"
-                            value={form.jobseekerNo}
-                          />
+                        <div className={FIELD_GRID_2}>
+                          <FieldRow label="Jobseeker ID" value={form.jobseekerNo} />
 
                           <FieldRow label="Full Name" value={form.fullName}>
                             {editInput("fullName")}
                           </FieldRow>
-                          <FieldRow
-                            label="Mobile Number"
-                            value={form.mobile}
-                            mono
-                          >
+                          <FieldRow label="Mobile Number" value={form.mobile} mono>
                             {editInput("mobile", "tel")}
                           </FieldRow>
-                          <FieldRow
-                            label="WhatsApp Number"
-                            value={form.whatsapp}
-                            mono
-                          >
+                          <FieldRow label="WhatsApp Number" value={form.whatsapp} mono>
                             {editInput("whatsapp", "tel")}
                           </FieldRow>
 
-                          <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-                            <label
-                              className={`${FIELD_LABEL} text-right sm:text-left`}
-                            >
-                              Email Address
-                            </label>
+                          <div className={FIELD_GRID}>
+                            <label className={FIELD_LABEL}>Email Address</label>
                             {isEditing ? (
                               editInput("email", "email")
                             ) : (
@@ -1029,10 +965,7 @@ const JobSeekerDetails = ({ mode }) => {
                             )}
                           </div>
 
-                          <FieldRow
-                            label="Institute Type"
-                            value={form.jobType}
-                          >
+                          <FieldRow label="Institute Type" value={form.jobType}>
                             {editSelect(
                               "instituteTypeId",
                               instituteTypes,
@@ -1044,10 +977,7 @@ const JobSeekerDetails = ({ mode }) => {
                               },
                             )}
                           </FieldRow>
-                          <FieldRow
-                            label="Job Category"
-                            value={form.jobCategory}
-                          >
+                          <FieldRow label="Job Category" value={form.jobCategory}>
                             {editSelect(
                               "jobCategoryId",
                               jobCategories,
@@ -1096,41 +1026,19 @@ const JobSeekerDetails = ({ mode }) => {
                             label="Status"
                             value={active ? "Active" : "Inactive"}
                           />
-                          <FieldRow
-                            label="Consent Given"
-                            value={form.consentGiven}
-                          >
-                            {isEditing ? (
-                              <select
-                                className={EDIT_INPUT}
-                                value={toBoolean(draft.consentGiven) ? "true" : "false"}
-                                onChange={(event) =>
-                                  updateDraft(
-                                    "consentGiven",
-                                    event.target.value === "true",
-                                  )
-                                }
-                              >
-                                <option value="true">Yes</option>
-                                <option value="false">No</option>
-                              </select>
-                            ) : undefined}
+                          <FieldRow label="Consent Given" value={form.consentGiven}>
+                            {yesNoSelect("consentGiven")}
                           </FieldRow>
                         </div>
                       </div>
-                      </div>
+                    </div>
 
-                      {/* Current Location */}
-                      <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
-                      <div className="p-4">
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Current Location
-                        </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Country"
-                            value={form.currentCountry}
-                          >
+                    {/* Current Location */}
+                    <div className={SECTION_CARD}>
+                      <div className={SECTION_BODY}>
+                        <h3 className={SECTION_TITLE}>Current Location</h3>
+                        <div className={FIELD_GRID_2}>
+                          <FieldRow label="Country" value={form.currentCountry}>
                             {editSelect(
                               "countryId",
                               countries,
@@ -1154,23 +1062,17 @@ const JobSeekerDetails = ({ mode }) => {
                             )}
                           </FieldRow>
                           <FieldRow label="City" value={form.currentCity}>
-                            {editSelect(
-                              "cityId",
-                              filteredCities,
-                              "Select city",
-                            )}
+                            {editSelect("cityId", filteredCities, "Select city")}
                           </FieldRow>
                         </div>
                       </div>
-                      </div>
+                    </div>
 
-                      {/* ---------- Audit Trail ---------- */}
-                      <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
-                      <div className="p-4">
-                          <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          User Log
-                        </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                    {/* User Log */}
+                    <div className={SECTION_CARD}>
+                      <div className={SECTION_BODY}>
+                        <h3 className={SECTION_TITLE}>User Log</h3>
+                        <div className={FIELD_GRID_2}>
                           <FieldRow
                             label="Created At"
                             value={formatDateTime(form.createdAt)}
@@ -1193,21 +1095,16 @@ const JobSeekerDetails = ({ mode }) => {
                           />
                         </div>
                       </div>
-                      </div>
                     </div>
                   </section>
                 )}
 
                 {/* -------- Current Employment -------- */}
                 {tab === "employment" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
-                    <div className="p-4">
-                      <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                        Current Employment
-                      </h3>
-                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                  <section className={SECTION_CARD}>
+                    <div className={SECTION_BODY}>
+                      <h3 className={SECTION_TITLE}>Current Employment</h3>
+                      <div className={FIELD_GRID_2}>
                         <FieldRow
                           label="Current Employer"
                           value={form.currentEmployment}
@@ -1220,10 +1117,7 @@ const JobSeekerDetails = ({ mode }) => {
                         >
                           {editInput("currentDesignation")}
                         </FieldRow>
-                        <FieldRow
-                          label="Current Salary"
-                          value={form.currentSalary}
-                        >
+                        <FieldRow label="Current Salary" value={form.currentSalary}>
                           {editInput("currentSalary", "number")}
                         </FieldRow>
                         <FieldRow
@@ -1246,14 +1140,10 @@ const JobSeekerDetails = ({ mode }) => {
 
                 {/* -------- Job Preferences -------- */}
                 {tab === "preferences" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
-                    <div className="p-4">
-                      <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                        Job Preferences
-                      </h3>
-                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                  <section className={SECTION_CARD}>
+                    <div className={SECTION_BODY}>
+                      <h3 className={SECTION_TITLE}>Job Preferences</h3>
+                      <div className={FIELD_GRID_2}>
                         <FieldRow
                           label="Preferred Location"
                           value={form.preferredJobLocation}
@@ -1264,31 +1154,14 @@ const JobSeekerDetails = ({ mode }) => {
                             "Select preferred location",
                           )}
                         </FieldRow>
-                        <FieldRow
-                          label="Expected Salary"
-                          value={form.expectedSalary}
-                        >
+                        <FieldRow label="Expected Salary" value={form.expectedSalary}>
                           {editInput("expectedSalary", "number")}
                         </FieldRow>
                         <FieldRow
                           label="Willing to Relocate?"
                           value={form.willingToRelocate}
                         >
-                          {isEditing ? (
-                            <select
-                              className={EDIT_INPUT}
-                              value={toBoolean(draft.willingToRelocate) ? "true" : "false"}
-                              onChange={(event) =>
-                                updateDraft(
-                                  "willingToRelocate",
-                                  event.target.value === "true",
-                                )
-                              }
-                            >
-                              <option value="true">Yes</option>
-                              <option value="false">No</option>
-                            </select>
-                          ) : undefined}
+                          {yesNoSelect("willingToRelocate")}
                         </FieldRow>
                         <FieldRow
                           label="Availability to Join"
@@ -1300,10 +1173,7 @@ const JobSeekerDetails = ({ mode }) => {
                         >
                           {editInput("availabilityToJoin", "date")}
                         </FieldRow>
-                        <FieldRow
-                          label="Job Category"
-                          value={form.jobCategory}
-                        >
+                        <FieldRow label="Job Category" value={form.jobCategory}>
                           {editSelect(
                             "jobCategoryId",
                             jobCategories,
@@ -1315,45 +1185,69 @@ const JobSeekerDetails = ({ mode }) => {
                   </section>
                 )}
 
+                {/* -------- Upskilling -------- */}
+                {tab === "upskilling" && (
+                  <section className={SECTION_CARD}>
+                    <div className={SECTION_BODY}>
+                      <h3 className={SECTION_TITLE}>Upskilling</h3>
+                      <div className={FIELD_GRID_2}>
+                        <FieldRow
+                          label="Wants to Upskill?"
+                          value={form.upskillingYesNo}
+                        >
+                          {yesNoSelect("upskillingYesNo")}
+                        </FieldRow>
+
+                        {toBoolean(
+                          isEditing ? draft.upskillingYesNo : form.upskillingYesNo,
+                        ) ? (
+                          <FieldRow
+                            label="Upskilling Where"
+                            value={form.upskillingDetails}
+                          >
+                            {editInput("upskillingDetails")}
+                          </FieldRow>
+                        ) : (
+                          <FieldRow label="Interested?" value={form.interested}>
+                            {yesNoSelect("interested")}
+                          </FieldRow>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
                 {/* -------- Documents (Resume/CV only) -------- */}
                 {tab === "resume" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
-                    <div className="p-4">
-                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                        <div className="grid grid-cols-[160px_1fr] items-start gap-3">
-                          <label
-                            className={`${FIELD_LABEL} pt-2 text-right sm:text-left`}
-                          >
-                            Resume / CV
-                          </label>
-                          <div>
-                            <DocumentBox doc={form.resume} />
-                            {isEditing && (
-                              <input
-                                type="file"
-                                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                                className="mt-2 block w-full text-xs text-slate-600"
-                                onChange={(event) =>
-                                  setUploadFile(event.target.files?.[0] ?? null)
-                                }
-                              />
-                            )}
-                          </div>
+                  <section className={SECTION_CARD}>
+                    <div className={SECTION_BODY}>
+                      <div className={`${FIELD_GRID} sm:items-start`}>
+                        <label className={`${FIELD_LABEL} sm:pt-2`}>
+                          Resume / CV
+                        </label>
+                        <div className="min-w-0">
+                          <DocumentBox doc={form.resume} />
+                          {isEditing && (
+                            <input
+                              type="file"
+                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              className="mt-2 block w-full text-xs text-slate-600"
+                              onChange={(event) =>
+                                setUploadFile(event.target.files?.[0] ?? null)
+                              }
+                            />
+                          )}
                         </div>
                       </div>
                     </div>
                   </section>
                 )}
 
-                {/* -------- Applied Jobs -------- */}
+                {/* -------- Applied Jobs (hidden; re-add to NAV to enable) -------- */}
                 {tab === "jobs" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
-                    <div className="p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                  <section className={SECTION_CARD}>
+                    <div className={SECTION_BODY}>
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                         <h3 className="font-semibold text-[#1a2b3c]">
                           Applied Jobs
                         </h3>
@@ -1365,9 +1259,7 @@ const JobSeekerDetails = ({ mode }) => {
 
                       {jobsLoading && (
                         <div className="px-4 py-12 text-center">
-                          <p className="text-[#5b6b7c]">
-                            Loading applied jobs…
-                          </p>
+                          <p className="text-[#5b6b7c]">Loading applied jobs…</p>
                         </div>
                       )}
 
@@ -1377,39 +1269,36 @@ const JobSeekerDetails = ({ mode }) => {
                         </div>
                       )}
 
-                      {!jobsLoading &&
-                        !jobsError &&
-                        appliedJobs.length === 0 && (
-                          <div className="px-4 py-12 text-center">
-                            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                              <Inbox size={22} />
-                            </div>
-                            <p className="mt-3 text-[15px] text-[#1e2b3c]">
-                              No applied jobs yet
-                            </p>
+                      {!jobsLoading && !jobsError && appliedJobs.length === 0 && (
+                        <div className="px-4 py-12 text-center">
+                          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                            <Inbox size={22} />
                           </div>
-                        )}
+                          <p className="mt-3 text-[15px] text-[#1e2b3c]">
+                            No applied jobs yet
+                          </p>
+                        </div>
+                      )}
 
                       {!jobsLoading && !jobsError && appliedJobs.length > 0 && (
                         <div className="overflow-x-auto">
-                          <table className="w-full text-sm border-collapse">
+                          <table className="w-full border-collapse text-sm">
                             <thead>
                               <tr className="border-b border-[#e3e8ee]">
-                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
-                                  Position
-                                </th>
-                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
-                                  Organization
-                                </th>
-                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
-                                  Location
-                                </th>
-                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
-                                  Job Status
-                                </th>
-                                <th className="text-left pb-2 text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]">
-                                  Applied On
-                                </th>
+                                {[
+                                  "Position",
+                                  "Organization",
+                                  "Location",
+                                  "Job Status",
+                                  "Applied On",
+                                ].map((h) => (
+                                  <th
+                                    key={h}
+                                    className="whitespace-nowrap pb-2 text-left text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]"
+                                  >
+                                    {h}
+                                  </th>
+                                ))}
                               </tr>
                             </thead>
                             <tbody>
@@ -1418,19 +1307,19 @@ const JobSeekerDetails = ({ mode }) => {
                                   key={application.id}
                                   className="border-b border-[#e3e8ee] last:border-0"
                                 >
-                                  <td className="py-3 text-[#1a2b3c] font-medium">
+                                  <td className="whitespace-nowrap py-3 font-medium text-[#1a2b3c]">
                                     {text(application.position)}
                                   </td>
-                                  <td className="py-3 text-[#1a2b3c]">
+                                  <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
                                     {text(application.organizationName)}
                                   </td>
-                                  <td className="py-3 text-[#1a2b3c]">
+                                  <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
                                     {text(application.location)}
                                   </td>
-                                  <td className="py-3 text-[#1a2b3c]">
+                                  <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
                                     {application.jobStatus}
                                   </td>
-                                  <td className="py-3 text-[#1a2b3c]">
+                                  <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
                                     {formatDate(application.appliedDate)}
                                   </td>
                                 </tr>
