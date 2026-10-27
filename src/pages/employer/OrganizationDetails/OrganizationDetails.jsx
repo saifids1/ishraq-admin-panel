@@ -125,7 +125,7 @@ function Card({ title, action, children, className = "" }) {
     <section
       className={`${T.surface} ${T.radius} border ${T.border} ${T.cardShadow} ${className}`}
     >
-      <div className="p-4">
+      <div className="lg:p-4 p-2">
         {(title || action) && (
           <div className="mb-3 flex items-center justify-between gap-2">
             {title && (
@@ -427,6 +427,7 @@ const EmployerProfile = ({ mode }) => {
       email: emp.email ?? emp.userName ?? "",
 
       mobile: emp.mobile ?? "",
+      whatsapp_number: emp.whatsapp_number ?? "",
 
       fullName: emp.fullName ?? "",
 
@@ -506,6 +507,7 @@ const EmployerProfile = ({ mode }) => {
       email: emp?.email ?? emp?.userName ?? "",
 
       mobile: emp?.mobile ?? "",
+      whatsapp_number: emp?.whatsapp_number ?? "",
 
       fullName: emp?.fullName ?? "",
 
@@ -567,6 +569,7 @@ const EmployerProfile = ({ mode }) => {
       !draft.designation.trim() ||
       !draft.email.trim() ||
       !draft.mobile.trim() ||
+      !draft.whatsapp_number.trim() ||
       !draft.countryId ||
       !draft.stateId ||
       !draft.cityId
@@ -619,6 +622,7 @@ const EmployerProfile = ({ mode }) => {
           email: draft.email.trim(),
 
           mobile: draft.mobile.trim(),
+          whatsapp_number: draft.whatsapp_number.trim(),
 
           fullName: draft.fullName.trim(),
 
@@ -724,7 +728,7 @@ const EmployerProfile = ({ mode }) => {
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* MAIN HEADER */}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 lg:px-6 lg:py-4 px-2 py-2">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -791,7 +795,7 @@ const EmployerProfile = ({ mode }) => {
 
           {/* BODY */}
 
-          <div className="p-4">
+          <div className="lg:p-4 p-2">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
               {/* LEFT: vertical nav */}
 
@@ -1034,6 +1038,17 @@ const EmployerProfile = ({ mode }) => {
                               value={draft.mobile ?? ""}
                               onChange={(event) =>
                                 updateDraft("mobile", event.target.value)
+                              }
+                            />
+                          ) : undefined}
+                        </FieldRow>
+                        <FieldRow label="WhatsApp No." value={emp.whatsapp_number} mono>
+                          {isEditing ? (
+                            <input
+                              className={EDIT_INPUT}
+                              value={draft.whatsapp_number ?? ""}
+                              onChange={(event) =>
+                                updateDraft("whatsapp_number", event.target.value)
                               }
                             />
                           ) : undefined}

@@ -3,8 +3,8 @@ import {
   Bell,
   ChevronDown,
   ChevronUp,
-  Settings,
   LogOut,
+  Menu,
   UserRound,
 } from "lucide-react";
 
@@ -19,7 +19,7 @@ import {
 } from "../../utils/employerProfile";
 import { DashboardTitle } from "./DashboardTitle.jsx";
 
-const EmployeeHeader = () => {
+const EmployerHeader = ({ onMenuClick }) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -31,7 +31,6 @@ const EmployeeHeader = () => {
     if (user?.email) {
       localStorage.setItem("employerEmail", user.email);
     }
-
     if (user?.name) {
       localStorage.setItem("organizationName", user.name);
     }
@@ -58,7 +57,6 @@ const EmployeeHeader = () => {
 
           const organizationName = record.EM_organization_name?.trim() || "";
           const organizationNo = record.mobile;
-
           const email =
             record.Email?.trim() || user?.email || user?.username || "";
 
@@ -69,7 +67,6 @@ const EmployeeHeader = () => {
           if (organizationName) {
             localStorage.setItem("organizationName", organizationName);
           }
-
           if (email) {
             localStorage.setItem("employerEmail", email);
           }
@@ -108,15 +105,25 @@ const EmployeeHeader = () => {
   return (
     <header
       className="h-[62px] shrink-0 bg-white border-b border-gray-200
-      flex items-center justify-between px-4 sm:px-6 relative z-40"
+      flex items-center justify-between gap-2 px-3 sm:px-6 relative z-40"
     >
-      {/* LEFT SIDE */}
-      <div />
-     < DashboardTitle/>
+      {/* LEFT SIDE: menu button (mobile only) + title */}
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          aria-label="Open menu"
+          className="md:hidden grid place-items-center w-9 h-9 shrink-0 rounded-lg
+            text-[#2f6b8a] hover:bg-gray-100 active:scale-95 transition"
+        >
+          <Menu size={20} />
+        </button>
 
+        <DashboardTitle />
+      </div>
 
       {/* RIGHT SIDE */}
-      <div className="flex items-center gap-3 sm:gap-5 ml-3">
+      <div className="flex shrink-0 items-center gap-3 sm:gap-5">
         {/* NOTIFICATIONS */}
         <button
           type="button"
@@ -128,7 +135,6 @@ const EmployeeHeader = () => {
             transition-colors"
         >
           <Bell size={17} strokeWidth={1.8} />
-
           <span
             className="absolute top-1 right-1 w-1.5 h-1.5
             rounded-full bg-[#2f6b8a] ring-2 ring-white"
@@ -173,7 +179,6 @@ const EmployeeHeader = () => {
               </p>
             </div>
 
-            {/* DROPDOWN ARROW */}
             {profileOpen ? (
               <ChevronUp size={14} className="text-gray-500" />
             ) : (
@@ -217,20 +222,14 @@ const EmployeeHeader = () => {
                     <h3 className="text-sm font-semibold text-gray-800 truncate">
                       {userName}
                     </h3>
-
                     <p className="text-xs text-gray-500 truncate mt-0.5">
                       {userEmail}
                     </p>
-
                     <p className="text-[11px] text-[#2f6b8a] mt-1">
                       {userRole}
                     </p>
                   </div>
                 </div>
-
-                <div className="border-t border-gray-100" />
-
-               
 
                 <div className="border-t border-gray-100" />
 
@@ -254,4 +253,4 @@ const EmployeeHeader = () => {
   );
 };
 
-export default EmployeeHeader;
+export default EmployerHeader;
