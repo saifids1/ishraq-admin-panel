@@ -216,7 +216,7 @@ const JobSeekerHeader = ({ onMenuClick }) => {
       {/* RIGHT SIDE */}
       <div className="flex shrink-0 items-center gap-3 sm:gap-5">
         {/* NOTIFICATIONS */}
-        <button
+        {/* <button
           type="button"
           title="Notifications"
           aria-label="Notifications"
@@ -230,7 +230,7 @@ const JobSeekerHeader = ({ onMenuClick }) => {
             className="absolute top-1 right-1 w-1.5 h-1.5
             rounded-full bg-[#2f6b8a] ring-2 ring-white"
           />
-        </button>
+        </button> */}
 
         {/* DIVIDER */}
         <div className="h-7 w-px bg-gray-200" />
