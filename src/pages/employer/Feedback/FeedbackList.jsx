@@ -69,7 +69,8 @@ const mapFeedback = (item) => ({
 const STATUS_BADGE = {
   new: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/30",
   open: "bg-blue-600 text-white ring-blue-700 shadow-blue-600/20",
-  "in-progress": "bg-orange-500 text-white ring-orange-600 shadow-orange-500/20",
+  "in-progress":
+    "bg-orange-500 text-white ring-orange-600 shadow-orange-500/20",
   hold: "bg-red-600 text-white ring-red-700 shadow-red-600/20",
   closed: "bg-emerald-600 text-white ring-emerald-700 shadow-emerald-600/20",
 };
@@ -300,11 +301,11 @@ const FeedbackList = () => {
   const headers = [
     { key: "srNo", label: "Sr.No", className: thClass },
     { key: "requestNo", label: "Request No.", className: thClass },
+    { key: "status", label: "Status", className: thClass },
+    { key: "createdAt", label: "Submit Date", className: thClass },
     { key: "name", label: "Organization Name", className: thClass },
     { key: "rating", label: "Rating", className: thClass },
     { key: "experience", label: "Overall Experience", className: thClass },
-    { key: "createdAt", label: "Submit Date", className: thClass },
-    { key: "status", label: "Status", className: thClass },
     { key: "actions", label: "Actions", className: stickyActionsHead },
   ];
 
@@ -495,6 +496,17 @@ const FeedbackList = () => {
                             {item.requestNo}
                           </span>
                         </td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span
+                            title={item.status}
+                            className={`${BADGE_BASE} ${statusBadgeClass(item.status)}`}
+                          >
+                            {item.status || "-"}
+                          </span>
+                        </td>
+                        <td className={`${td} whitespace-nowrap tabular-nums`}>
+                          {item.createdAt}
+                        </td>
 
                         <td className={`${td} whitespace-nowrap`}>
                           <span
@@ -534,18 +546,6 @@ const FeedbackList = () => {
                             title={item.experience}
                           >
                             {item.experience}
-                          </span>
-                        </td>
-
-                        <td className={`${td} whitespace-nowrap tabular-nums`}>
-                          {item.createdAt}
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>
-                          <span
-                            title={item.status}
-                            className={`${BADGE_BASE} ${statusBadgeClass(item.status)}`}
-                          >
-                            {item.status || "-"}
                           </span>
                         </td>
 

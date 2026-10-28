@@ -23,11 +23,11 @@ const TABLE_MIN_WIDTH = 1400;
 const COLUMNS = [
   { key: "srNo", width: "70px" },
   { key: "referenceNo", width: "180px" },
+  { key: "status", width: "150px" },
   { key: "fullName", width: "220px" },
   { key: "complaintCategory", width: "200px" },
   // { key: "details", width: "280px" },
   { key: "createdAt", width: "130px" },
-  { key: "status", width: "150px" },
   { key: "actions", width: "120px" },
 ];
 
@@ -435,6 +435,8 @@ const ComplaintList = () => {
   const headers = [
     { key: "srNo", label: "Sr.No", className: thClass },
     { key: "referenceNo", label: "Request No.", className: thClass },
+    { key: "status", label: "Status", className: thClass },
+    { key: "createdAt", label: "Submit Date", className: thClass },
     { key: "fullName", label: "Organization Name", className: thClass },
     {
       key: "complaintCategory",
@@ -442,8 +444,6 @@ const ComplaintList = () => {
       className: thClass,
     },
     // { key: "details", label: "Complaint Details", className: thClass },
-    { key: "createdAt", label: "Submit Date", className: thClass },
-    { key: "status", label: "Status", className: thClass },
     { key: "actions", label: "Actions", className: stickyActionsHead },
   ];
 
@@ -634,6 +634,23 @@ const ComplaintList = () => {
                             {item.referenceNo}
                           </span>
                         </td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span
+                            className={`${BADGE_BASE} ${
+                              STATUS_STYLE[
+                                normalizeStatus(item.status).toLowerCase()
+                              ] ?? DEFAULT_STATUS_STYLE
+                            }`}
+                            title={item.status}
+                          >
+                            <span className="truncate">
+                              {normalizeStatus(item.status)}
+                            </span>
+                          </span>
+                        </td>
+                        <td className={`${td} whitespace-nowrap tabular-nums`}>
+                          {item.createdAt}
+                        </td>
 
                         <td className={`${td} whitespace-nowrap`}>
                           <span
@@ -650,23 +667,6 @@ const ComplaintList = () => {
                             title={item.complaintCategory}
                           >
                             {item.complaintCategory}
-                          </span>
-                        </td>
-                        <td className={`${td} whitespace-nowrap tabular-nums`}>
-                          {item.createdAt}
-                        </td>
-
-                        <td className={`${td} whitespace-nowrap`}>
-                          <span
-                            className={`${BADGE_BASE} ${
-                              STATUS_STYLE[normalizeStatus(item.status).toLowerCase()] ??
-                              DEFAULT_STATUS_STYLE
-                            }`}
-                            title={item.status}
-                          >
-                            <span className="truncate">
-                              {normalizeStatus(item.status)}
-                            </span>
                           </span>
                         </td>
 

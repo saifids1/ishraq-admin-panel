@@ -33,7 +33,8 @@ const BADGE_BASE =
 const STATUS_BADGE = {
   new: "bg-yellow-400 text-yellow-950 ring-yellow-500 shadow-yellow-400/30",
   open: "bg-blue-600 text-white ring-blue-700 shadow-blue-600/20",
-  "in-progress": "bg-orange-500 text-white ring-orange-600 shadow-orange-500/20",
+  "in-progress":
+    "bg-orange-500 text-white ring-orange-600 shadow-orange-500/20",
   hold: "bg-red-600 text-white ring-red-700 shadow-red-600/20",
   closed: "bg-emerald-600 text-white ring-emerald-700 shadow-emerald-600/20",
 };
@@ -165,11 +166,7 @@ const mapComplaint = (item) => ({
     "-",
   ),
 
-  details: getValue(
-    item,
-    ["cP_details", "complaintDetails", "details"],
-    "-",
-  ),
+  details: getValue(item, ["cP_details", "complaintDetails", "details"], "-"),
 
   status: getValue(item, ["statusName", "cP_status_name"], "-"),
 
@@ -374,11 +371,15 @@ const ComplaintList = () => {
   const headers = [
     { key: "srNo", label: "Sr.No", className: thClass },
     { key: "referenceNo", label: "Request No.", className: thClass },
-    { key: "fullName", label: "Full Name", className: thClass },
-    { key: "complaintCategory", label: "Complaint Category", className: thClass },
-    // { key: "details", label: "Complaint Details", className: thClass },
-    { key: "createdAt", label: "Submit Date", className: thClass },
     { key: "status", label: "Status", className: thClass },
+    { key: "createdAt", label: "Submit Date", className: thClass },
+    { key: "fullName", label: "Full Name", className: thClass },
+    {
+      key: "complaintCategory",
+      label: "Complaint Category",
+      className: thClass,
+    },
+    // { key: "details", label: "Complaint Details", className: thClass },
     { key: "actions", label: "Action", className: stickyActionsHead },
   ];
 
@@ -563,7 +564,17 @@ const ComplaintList = () => {
                           {item.referenceNo}
                         </span>
                       </td>
-
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span
+                          title={item.status}
+                          className={`${BADGE_BASE} ${statusBadgeClass(item.status)}`}
+                        >
+                          {item.status || "-"}
+                        </span>
+                      </td>
+                      <td className={`${td} whitespace-nowrap tabular-nums`}>
+                        {item.createdAt}
+                      </td>
                       <td className={`${td} whitespace-nowrap`}>
                         <span
                           className="block truncate font-medium text-slate-900"
@@ -579,21 +590,6 @@ const ComplaintList = () => {
                           title={item.complaintCategory}
                         >
                           {item.complaintCategory}
-                        </span>
-                      </td>
-
-                      
-
-                      <td className={`${td} whitespace-nowrap tabular-nums`}>
-                        {item.createdAt}
-                      </td>
-
-                      <td className={`${td} whitespace-nowrap`}>
-                        <span
-                          title={item.status}
-                          className={`${BADGE_BASE} ${statusBadgeClass(item.status)}`}
-                        >
-                          {item.status || "-"}
                         </span>
                       </td>
 
@@ -628,9 +624,8 @@ const ComplaintList = () => {
         <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
           <span>
             Showing{" "}
-            <strong className="font-semibold text-[#53677f]">{start}</strong>{" "}
-            to <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
-            of{" "}
+            <strong className="font-semibold text-[#53677f]">{start}</strong> to{" "}
+            <strong className="font-semibold text-[#53677f]">{end}</strong> of{" "}
             <strong className="font-semibold text-[#53677f]">
               {totalRecords}
             </strong>{" "}

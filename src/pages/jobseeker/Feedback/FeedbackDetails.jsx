@@ -211,7 +211,7 @@ const FeedbackDetails = () => {
 
               <h2 className="font-semibold text-slate-800">View Feedback</h2>
             </div>
-              <h2 className="font-semibold text-slate-800">{record.fB_request_no}</h2>
+              <h2 className="font-semibold text-slate-800">Request Id : {record.fB_request_no}</h2>
 
             {record && statusLabel && (
               <span

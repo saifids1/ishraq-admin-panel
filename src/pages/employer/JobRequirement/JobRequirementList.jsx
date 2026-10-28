@@ -105,7 +105,7 @@ const parseResponse = (response) => {
   const body =
     response?.totalRecords !== undefined || Array.isArray(response?.data)
       ? response
-      : response?.data ?? response;
+      : (response?.data ?? response);
 
   const rows = Array.isArray(body?.data)
     ? body.data
@@ -361,13 +361,13 @@ const JobRequirementList = () => {
   const headers = [
     { key: "srNo", label: "Sr.No", className: thClass },
     { key: "jdNo", label: "Job Requirement No", className: thClass },
+    { key: "status", label: "Status", className: thClass },
     { key: "position", label: "Position & Location", className: thClass },
     { key: "instituteType", label: "Institute Type", className: thClass },
     { key: "jobRole", label: "Job Role", className: thClass },
     { key: "jobCategory", label: "Job Category", className: thClass },
     { key: "vacancies", label: "Vacancies", className: thClass },
     { key: "applied", label: "Applied", className: thClass },
-    { key: "status", label: "Status", className: thClass },
     { key: "actions", label: "Actions", className: stickyActionsHead },
   ];
 
@@ -533,8 +533,15 @@ const JobRequirementList = () => {
                         <td className={`${td} tabular-nums`}>
                           {start + index}
                         </td>
-                        <td className={`${td} tabular-nums`}>
-                          {job.jdNo}
+                        <td className={`${td} tabular-nums`}>{job.jdNo}</td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span
+                            className={`${BADGE_BASE} ${
+                              toneOf(job.statusName).badge
+                            }`}
+                          >
+                            {job.statusName}
+                          </span>
                         </td>
 
                         <td className={`${td} whitespace-nowrap`}>
@@ -590,16 +597,6 @@ const JobRequirementList = () => {
                           {job.applied}
                         </td>
 
-                        <td className={`${td} whitespace-nowrap`}>
-                          <span
-                            className={`${BADGE_BASE} ${
-                              toneOf(job.statusName).badge
-                            }`}
-                          >
-                            {job.statusName}
-                          </span>
-                        </td>
-
                         <td
                           className={`${td} ${stickyActionsCell} text-center`}
                         >
@@ -646,8 +643,7 @@ const JobRequirementList = () => {
             <span>
               Showing{" "}
               <strong className="font-semibold text-[#53677f]">{start}</strong>{" "}
-              to{" "}
-              <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
+              to <strong className="font-semibold text-[#53677f]">{end}</strong>{" "}
               of{" "}
               <strong className="font-semibold text-[#53677f]">
                 {totalRecords}

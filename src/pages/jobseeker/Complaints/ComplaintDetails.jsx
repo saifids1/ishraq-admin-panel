@@ -332,7 +332,7 @@ const ComplaintDetails = ({ formType = "complaint" }) => {
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
             <h2 className="font-semibold text-slate-800">
-              {record?.CP_reference_no}
+             Request Id : {record?.CP_reference_no}
             </h2>
 
             {record && headerStatusLabel && (
