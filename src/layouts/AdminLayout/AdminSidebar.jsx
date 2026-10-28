@@ -424,7 +424,7 @@ export const AdminSidebar = ({ open = false, onClose }) => {
           <nav className="flex h-full flex-col border-r border-gray-200 bg-gradient-to-b from-white via-sky-50/40 to-indigo-50/60 shadow-xl">
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-100 px-3">
               <img
-                src="/IshraqHR.png"
+                src="/hrishraq.png"
                 alt="Ishraq logo"
                 className="h-10 w-auto shrink-0"
               />
@@ -476,7 +476,7 @@ export const AdminSidebar = ({ open = false, onClose }) => {
         >
           {expanded && (
             <img
-              src="/IshraqHR.png"
+              src="/hrishraq.png"
               alt="Ishraq logo"
               className="h-12 w-auto shrink-0"
             />

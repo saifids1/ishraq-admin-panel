@@ -41,7 +41,7 @@ const COLUMNS = [
   { key: "companyName", width: "190px", minWidth: "140px" },
   { key: "industry", width: "150px", minWidth: "110px" },
   { key: "status", width: "105px", minWidth: "90px" },
-  { key: "jobCount", width: "100px", minWidth: "85px" },
+  // { key: "jobCount", width: "100px", minWidth: "85px" },
   { key: "email", width: "190px", minWidth: "150px" },
   { key: "mobile", width: "125px", minWidth: "100px" },
   { key: "actions", width: "90px", minWidth: "90px", sticky: true },
@@ -422,30 +422,46 @@ const EmployerList = () => {
         )}
 
         {/* TABLE */}
-        <div className="common-scrollbar mt-4 h-[370px] w-full min-w-0 overflow-auto rounded-lg border border-[#cbe1f4]">
-          <table
-            className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
-            style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-          >
-            <colgroup>
-              {COLUMNS.map((c) => (
-                <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
-              ))}
-            </colgroup>
-            <thead className="sticky top-0 z-30">
-              <tr>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>Sr.No</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>Employer ID</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>Company Name</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>Industry</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>Status</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>Jobs Posted</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>Email</th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>Mobile</th>
-                <th scope="col" className={`${stickyActionsHead} sticky top-0`}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+     
+<div className="mt-4 w-full min-w-0">
+  {/* HEADER (fixed, no vertical scrollbar) */}
+  <div className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]">
+    <table
+      className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
+      style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+    >
+      <colgroup>
+        {COLUMNS.map((c) => (
+          <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+        ))}
+      </colgroup>
+      <thead>
+        <tr>
+          <th scope="col" className={thClass}>Sr.No</th>
+          <th scope="col" className={thClass}>Employer ID</th>
+          <th scope="col" className={thClass}>Company Name</th>
+          <th scope="col" className={thClass}>Industry</th>
+          <th scope="col" className={thClass}>Status</th>
+          <th scope="col" className={thClass}>Email</th>
+          <th scope="col" className={thClass}>Mobile</th>
+          <th scope="col" className={stickyActionsHead}>Actions</th>
+        </tr>
+      </thead>
+    </table>
+  </div>
+
+  {/* BODY (scrollable vertically + horizontally) */}
+  <div className="common-scrollbar h-[330px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0">
+    <table
+      className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
+      style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+    >
+      <colgroup>
+        {COLUMNS.map((c) => (
+          <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+        ))}
+      </colgroup>
+       <tbody>
               {loading ? (
                 <tr>
                   <td colSpan={COL_SPAN_ALL} className="px-4 py-12 text-center">
@@ -515,10 +531,10 @@ const EmployerList = () => {
                         {row.status || "-"}
                       </span>
                     </td>
-                    <td className={`${td} whitespace-nowrap tabular-nums`}>
+                    {/* <td className={`${td} whitespace-nowrap tabular-nums`}>
                       <strong className="font-semibold">{row.jobCount ?? 0}</strong>
                       <span className="text-[#6b7a88]"> jobs</span>
-                    </td>
+                    </td> */}
                     <td className={`${td} whitespace-nowrap`}>
                       {row.email ? (
                         <span
@@ -592,8 +608,9 @@ const EmployerList = () => {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+    </table>
+  </div>
+</div>
 
         {/* PAGINATION */}
         <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
