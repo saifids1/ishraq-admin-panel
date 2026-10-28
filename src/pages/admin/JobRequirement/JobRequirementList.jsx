@@ -270,8 +270,16 @@ const JobRequirementList = () => {
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusError, setStatusError] = useState("");
 
+  /* --------------------------- SCROLL SYNC REFS --------------------------- */
+
   const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
+
+  const handleBodyScroll = useCallback((e) => {
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  }, []);
 
   /* --------------------------- LOOKUPS --------------------------- */
 
@@ -343,19 +351,6 @@ const JobRequirementList = () => {
   useEffect(() => {
     load();
   }, [load]);
-
-  /* Sync header & body horizontal scroll */
-  useEffect(() => {
-    const body = bodyScrollRef.current;
-    const header = headerScrollRef.current;
-    if (!body || !header) return undefined;
-
-    const onScroll = () => {
-      header.scrollLeft = body.scrollLeft;
-    };
-    body.addEventListener("scroll", onScroll);
-    return () => body.removeEventListener("scroll", onScroll);
-  }, []);
 
   /* --------------------------- REFRESH --------------------------- */
 
@@ -570,83 +565,78 @@ const JobRequirementList = () => {
 
       <div className="mx-auto w-full min-w-0 max-w-[1400px] rounded-[14px] border border-[#e2e8ee] bg-white p-2.5 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:p-4 lg:px-5">
         {/* HEADER — identical structure to EmployerList */}
-      
-<div className="mb-4 flex min-w-0 flex-col justify-between gap-3 md:flex-row md:items-center">
-  <h1 className="m-0 shrink-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]">
-    Job Requirements
-  </h1>
+        <div className="mb-4 flex min-w-0 flex-col justify-between gap-3 md:flex-row md:items-center">
+          <h1 className="m-0 shrink-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]">
+            Job Requirements
+          </h1>
 
-  <div className="flex w-full min-w-0 flex-col gap-2.5 md:w-auto md:flex-row md:items-center">
-    {/* Search */}
-    <div className="relative w-full min-w-0 md:w-[240px] md:shrink-0">
-      <SearchIcon
-        size={15}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
-      />
-      <input
-        type="search"
-        aria-label="Search job requirements..."
-        placeholder="Search organization, position, location"
-        value={query.search}
-        onChange={(e) => patchFilter({ search: e.target.value })}
-        className="h-9 w-full min-w-0 rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
-      />
-    </div>
+          <div className="flex w-full min-w-0 flex-col gap-2.5 md:w-auto md:flex-row md:items-center">
+            {/* Search */}
+            <div className="relative w-full min-w-0 md:w-[240px] md:shrink-0">
+              <SearchIcon
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
+              />
+              <input
+                type="search"
+                aria-label="Search job requirements..."
+                placeholder="Search organization, position, location"
+                value={query.search}
+                onChange={(e) => patchFilter({ search: e.target.value })}
+                className="h-9 w-full min-w-0 rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
+              />
+            </div>
 
-    {/* Status */}
-    
+            {/* Actions */}
+            <div className="grid w-full min-w-0 grid-cols-3 gap-2 md:flex md:w-auto md:shrink-0 md:gap-2.5">
+              <button
+                type="button"
+                title={showFilters ? "Hide filters" : "Show filters"}
+                aria-label={showFilters ? "Hide filters" : "Show filters"}
+                aria-expanded={showFilters}
+                onClick={() => setShowFilters((v) => !v)}
+                className={`${btnFilter(showFilters)} w-full min-w-0 justify-center px-2 md:w-auto md:px-3`}
+              >
+                <SlidersHorizontal size={15} strokeWidth={2.2} />
+                <span>Filter</span>
+              </button>
 
-    {/* Actions */}
-    <div className="grid w-full min-w-0 grid-cols-3 gap-2 md:flex md:w-auto md:shrink-0 md:gap-2.5">
-      <button
-        type="button"
-        title={showFilters ? "Hide filters" : "Show filters"}
-        aria-label={showFilters ? "Hide filters" : "Show filters"}
-        aria-expanded={showFilters}
-        onClick={() => setShowFilters((v) => !v)}
-        className={`${btnFilter(showFilters)} w-full min-w-0 justify-center px-2 md:w-auto md:px-3`}
-      >
-        <SlidersHorizontal size={15} strokeWidth={2.2} />
-        <span>Filter</span>
-      </button>
+              <button
+                type="button"
+                title="Refresh table"
+                aria-label="Refresh table"
+                onClick={handleRefresh}
+                disabled={refreshing || loading}
+                className={`${btnRefresh} w-full min-w-0 justify-center px-2 md:w-auto md:px-3`}
+              >
+                <RefreshCw
+                  size={15}
+                  strokeWidth={2.2}
+                  className={`shrink-0 transition-transform duration-500 ${
+                    refreshing ? "animate-spin" : "group-hover:rotate-90"
+                  }`}
+                />
+                <span className="truncate">
+                  {refreshing ? "Refreshing..." : "Refresh"}
+                </span>
+              </button>
 
-      <button
-        type="button"
-        title="Refresh table"
-        aria-label="Refresh table"
-        onClick={handleRefresh}
-        disabled={refreshing || loading}
-        className={`${btnRefresh} w-full min-w-0 justify-center px-2 md:w-auto md:px-3`}
-      >
-        <RefreshCw
-          size={15}
-          strokeWidth={2.2}
-          className={`shrink-0 transition-transform duration-500 ${
-            refreshing ? "animate-spin" : "group-hover:rotate-90"
-          }`}
-        />
-        <span className="truncate">
-          {refreshing ? "Refreshing..." : "Refresh"}
-        </span>
-      </button>
-
-      <button
-        type="button"
-        title="Add"
-        onClick={() => navigate("/admin/job-requirements/create")}
-        className={`${btnPrimary} w-full min-w-0 justify-center px-2 md:w-auto md:px-3`}
-      >
-        <Plus
-          size={15}
-          strokeWidth={2.2}
-          className="shrink-0 transition-transform group-hover:scale-110"
-        />
-        <span>Add</span>
-      </button>
-    </div>
-  </div>
-</div>
-
+              <button
+                type="button"
+                title="Add"
+                onClick={() => navigate("/admin/job-requirements/create")}
+                className={`${btnPrimary} w-full min-w-0 justify-center px-2 md:w-auto md:px-3`}
+              >
+                <Plus
+                  size={15}
+                  strokeWidth={2.2}
+                  className="shrink-0 transition-transform group-hover:scale-110"
+                />
+                <span>Add</span>
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* FILTER PANEL (collapsible, inside card) */}
         {showFilters && (
@@ -763,261 +753,262 @@ const JobRequirementList = () => {
           </div>
         )}
 
-        {/* TABLE — same single-scroll pattern as EmployerList */}
-        <div className="common-scrollbar mt-4 h-[370px] w-full min-w-0 overflow-auto rounded-lg border border-[#cbe1f4]">
-          <table
-            className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
-            style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+        {/* TABLE: fixed header + scrollable body (vertical scrollbar only on values) */}
+        <div className="mt-4 w-full min-w-0">
+          {/* HEADER (no vertical scrollbar; synced horizontally with body) */}
+          <div
+            ref={headerScrollRef}
+            className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]"
           >
-            <colgroup>
-              {COLUMNS.map((c) => (
-                <col
-                  key={c.key}
-                  style={{ width: c.width, minWidth: c.minWidth }}
-                />
-              ))}
-            </colgroup>
-            <thead className="sticky top-0 z-30">
-              <tr>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>
-                  Sr.No
-                </th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>
-                  Job Request ID
-                </th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>
-                  Organization
-                </th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>
-                  Position
-                </th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>
-                  Status
-                </th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>
-                  Requirement Status
-                </th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>
-                  Job Category
-                </th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>
-                  Vacancies
-                </th>
-                <th scope="col" className={`${thClass} sticky top-0 z-30`}>
-                  Applicants
-                </th>
-                <th scope="col" className={`${stickyActionsHead} sticky top-0`}>
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
+            <table
+              className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
+              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+            >
+              <colgroup>
+                {COLUMNS.map((c) => (
+                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                ))}
+              </colgroup>
+              <thead>
                 <tr>
-                  <td colSpan={COL_SPAN_ALL} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center">
-                      <span
-                        aria-hidden="true"
-                        className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
-                      />
-                      <p className="mt-3 text-[14px] text-[#6b7a88] sm:text-[15px]">
-                        Loading...
-                      </p>
-                    </div>
-                  </td>
+                  <th scope="col" className={thClass}>Sr.No</th>
+                  <th scope="col" className={thClass}>Job Request ID</th>
+                  <th scope="col" className={thClass}>Organization</th>
+                  <th scope="col" className={thClass}>Position</th>
+                  <th scope="col" className={thClass}>Status</th>
+                  <th scope="col" className={thClass}>Requirement Status</th>
+                  <th scope="col" className={thClass}>Job Category</th>
+                  <th scope="col" className={thClass}>Vacancies</th>
+                  <th scope="col" className={thClass}>Applicants</th>
+                  <th scope="col" className={stickyActionsHead}>Actions</th>
                 </tr>
-              ) : pageRows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={COL_SPAN_ALL}
-                    className="border-t border-[#e2e8ee] px-4 py-12 text-center"
-                  >
-                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                      <Inbox size={22} />
-                    </div>
-                    <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
-                      No job requirements yet
-                    </p>
-                  </td>
-                </tr>
-              ) : (
-                pageRows.map((row, index) => (
-                  <tr
-                    key={row.id ?? index}
-                    style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
-                    className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
-                  >
-                    <td className={`${td} tabular-nums`}>
-                      {start + index + 1}
-                    </td>
+              </thead>
+            </table>
+          </div>
 
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span className="flex min-w-0 flex-col">
+          {/* BODY (vertical + horizontal scroll) */}
+          <div
+            ref={bodyScrollRef}
+            onScroll={handleBodyScroll}
+            className="common-scrollbar h-[330px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0"
+          >
+            <table
+              className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
+              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+            >
+              <colgroup>
+                {COLUMNS.map((c) => (
+                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                ))}
+              </colgroup>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={COL_SPAN_ALL} className="px-4 py-12 text-center">
+                      <div className="flex flex-col items-center">
                         <span
-                          className="truncate font-medium text-slate-900"
-                          title={row.requestId || "-"}
-                        >
-                          {row.requestId || "-"}
-                        </span>
-                      </span>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate font-medium text-slate-900">
-                          {row.organizationName || "-"}
-                        </span>
-                        {row.mobile && (
-                          <span className="truncate text-[11px] text-[#6b7a88] sm:text-[12px]">
-                            {row.mobile}
-                          </span>
-                        )}
-                      </span>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate font-medium text-slate-900">
-                          {row.position || "-"}
-                        </span>
-                        {row.department && (
-                          <span className="truncate text-[11px] text-[#6b7a88] sm:text-[12px]">
-                            {row.department}
-                          </span>
-                        )}
-                      </span>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span
-                        className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${toneOf(row.status).badge}`}
-                      >
-                        {row.status || "-"}
-                      </span>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span
-                        className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${toneOf(row.requirementStatus).badge}`}
-                      >
-                        {row.requirementStatus || "-"}
-                      </span>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap`}>
-                      {row.jobCategory ? (
-                        <span className="block truncate text-[12px] sm:text-[14px]">
-                          {row.jobCategory}
-                        </span>
-                      ) : (
-                        <span className="text-[#9aa5b1]">-</span>
-                      )}
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap tabular-nums`}>
-                      <strong className="font-semibold">
-                        {row.vacancies ?? 0}
-                      </strong>
-                    </td>
-
-                    <td className={`${td} whitespace-nowrap sm:w-10!`}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          navigate(`/admin/job-applicant/${row.id}`)
-                        }
-                        title={`View applicants for ${row.position || "this job"}`}
-                        aria-label={`View applicants for ${row.position || "this job"}`}
-                        className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] bg-sky-500 ring-sky-600 shadow-sky-500/20 sm:!h-7 sm:!min-w-[96px] sm:!text-[14px]`}
-                      >
-                        <Users
-                          size={12}
-                          strokeWidth={2.4}
-                          className="sm:hidden"
+                          aria-hidden="true"
+                          className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
                         />
-                        <Users
-                          size={13}
-                          strokeWidth={2.4}
-                          className="hidden sm:block"
-                        />
-                        {Number(row.applicants || 0)}
-                      </button>
-                    </td>
-
-                    <td className={stickyActionsCell}>
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          title={`View ${row.position || "Job"}`}
-                          aria-label={`View ${row.position || "Job"}`}
-                          onClick={() =>
-                            navigate(`/admin/job-requirements/${row.id}`)
-                          }
-                          className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                        >
-                          <ChevronsRight size={14} strokeWidth={2.2} />
-                        </button>
-
-                        <button
-                          type="button"
-                          title="Update requirement status and deadline"
-                          aria-label="Update requirement status and deadline"
-                          onClick={() => openStatusDialog(row)}
-                          className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#7c4dca] to-[#a878e8] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                        >
-                          <Flag size={14} strokeWidth={2.2} />
-                        </button>
-
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={row.isActive}
-                          aria-label={
-                            row.isActive
-                              ? `Deactivate ${row.position || "Job"}`
-                              : `Activate ${row.position || "Job"}`
-                          }
-                          title={
-                            row.isActive
-                              ? "Active. Click to deactivate"
-                              : "Inactive. Click to activate"
-                          }
-                          onClick={() => askToggle(row)}
-                          className={`relative h-6 w-[38px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:w-[42px] ${
-                            row.isActive
-                              ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                              : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                          }`}
-                        >
-                          <span
-                            className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                              row.isActive
-                                ? "translate-x-[14px] sm:translate-x-[18px]"
-                                : "translate-x-0"
-                            }`}
-                          >
-                            {row.isActive ? (
-                              <UserRoundCheck
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-emerald-700"
-                              />
-                            ) : (
-                              <UserRoundX
-                                size={13}
-                                strokeWidth={2.7}
-                                className="text-rose-700"
-                              />
-                            )}
-                          </span>
-                        </button>
+                        <p className="mt-3 text-[14px] text-[#6b7a88] sm:text-[15px]">
+                          Loading...
+                        </p>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : pageRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={COL_SPAN_ALL}
+                      className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+                    >
+                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                        <Inbox size={22} />
+                      </div>
+                      <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
+                        No job requirements yet
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  pageRows.map((row, index) => (
+                    <tr
+                      key={row.id ?? index}
+                      style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                      className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                    >
+                      <td className={`${td} tabular-nums`}>
+                        {start + index + 1}
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="flex min-w-0 flex-col">
+                          <span
+                            className="truncate font-medium text-slate-900"
+                            title={row.requestId || "-"}
+                          >
+                            {row.requestId || "-"}
+                          </span>
+                        </span>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium text-slate-900">
+                            {row.organizationName || "-"}
+                          </span>
+                          {row.mobile && (
+                            <span className="truncate text-[11px] text-[#6b7a88] sm:text-[12px]">
+                              {row.mobile}
+                            </span>
+                          )}
+                        </span>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium text-slate-900">
+                            {row.position || "-"}
+                          </span>
+                          {row.department && (
+                            <span className="truncate text-[11px] text-[#6b7a88] sm:text-[12px]">
+                              {row.department}
+                            </span>
+                          )}
+                        </span>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span
+                          className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${toneOf(row.status).badge}`}
+                        >
+                          {row.status || "-"}
+                        </span>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span
+                          className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${toneOf(row.requirementStatus).badge}`}
+                        >
+                          {row.requirementStatus || "-"}
+                        </span>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        {row.jobCategory ? (
+                          <span className="block truncate text-[12px] sm:text-[14px]">
+                            {row.jobCategory}
+                          </span>
+                        ) : (
+                          <span className="text-[#9aa5b1]">-</span>
+                        )}
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap tabular-nums`}>
+                        <strong className="font-semibold">
+                          {row.vacancies ?? 0}
+                        </strong>
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap sm:w-10!`}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(`/admin/job-applicant/${row.id}`)
+                          }
+                          title={`View applicants for ${row.position || "this job"}`}
+                          aria-label={`View applicants for ${row.position || "this job"}`}
+                          className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] bg-sky-500 ring-sky-600 shadow-sky-500/20 sm:!h-7 sm:!min-w-[96px] sm:!text-[14px]`}
+                        >
+                          <Users
+                            size={12}
+                            strokeWidth={2.4}
+                            className="sm:hidden"
+                          />
+                          <Users
+                            size={13}
+                            strokeWidth={2.4}
+                            className="hidden sm:block"
+                          />
+                          {Number(row.applicants || 0)}
+                        </button>
+                      </td>
+
+                      <td className={stickyActionsCell}>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            title={`View ${row.position || "Job"}`}
+                            aria-label={`View ${row.position || "Job"}`}
+                            onClick={() =>
+                              navigate(`/admin/job-requirements/${row.id}`)
+                            }
+                            className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                          >
+                            <ChevronsRight size={14} strokeWidth={2.2} />
+                          </button>
+
+                          <button
+                            type="button"
+                            title="Update requirement status and deadline"
+                            aria-label="Update requirement status and deadline"
+                            onClick={() => openStatusDialog(row)}
+                            className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#7c4dca] to-[#a878e8] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                          >
+                            <Flag size={14} strokeWidth={2.2} />
+                          </button>
+
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={row.isActive}
+                            aria-label={
+                              row.isActive
+                                ? `Deactivate ${row.position || "Job"}`
+                                : `Activate ${row.position || "Job"}`
+                            }
+                            title={
+                              row.isActive
+                                ? "Active. Click to deactivate"
+                                : "Inactive. Click to activate"
+                            }
+                            onClick={() => askToggle(row)}
+                            className={`relative h-6 w-[38px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:w-[42px] ${
+                              row.isActive
+                                ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                                : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
+                            }`}
+                          >
+                            <span
+                              className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                                row.isActive
+                                  ? "translate-x-[14px] sm:translate-x-[18px]"
+                                  : "translate-x-0"
+                              }`}
+                            >
+                              {row.isActive ? (
+                                <UserRoundCheck
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-emerald-700"
+                                />
+                              ) : (
+                                <UserRoundX
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-rose-700"
+                                />
+                              )}
+                            </span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* PAGINATION */}
