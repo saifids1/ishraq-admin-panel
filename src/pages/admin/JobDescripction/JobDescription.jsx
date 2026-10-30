@@ -273,7 +273,7 @@ const JobDescriptionList = () => {
     setLoading(true);
     setError("");
     try {
-      const params = { pageNo: page, pageSize };
+      const params = { pageNo: page, pageSize, JQ_is_CreatedByAdmin : true, JQ_employer_id : null };
       if (query.search.trim()) params.search = query.search.trim();
       if (query.isActive !== "All")
         params.isActive = query.isActive === "Active";

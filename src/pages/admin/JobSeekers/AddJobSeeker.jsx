@@ -20,6 +20,16 @@ const inputClass =
 
 const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
 
+/* ---------------- Lookup key mappings (tolerant of API casing) ---------------- */
+const COUNTRY_ID_KEYS = ["cM_Id", "CM_Id", "id"];
+const COUNTRY_NAME_KEYS = ["cM_CountryName", "CM_CountryName", "countryName", "name"];
+const STATE_ID_KEYS = ["sM_Id", "SM_Id", "id"];
+const STATE_NAME_KEYS = ["sM_StateName", "SM_StateName", "stateName", "name"];
+const CITY_ID_KEYS = ["ctM_Id", "CTM_Id", "id"];
+const CITY_NAME_KEYS = ["ctM_CityName", "CTM_CityName", "cityName", "name"];
+const INSTITUTE_ID_KEYS = ["iT_institute_type_id", "IT_institute_type_id", "id"];
+const INSTITUTE_NAME_KEYS = ["iT_name", "IT_name", "name"];
+
 const FieldRow = ({ label, required, error, children, fullWidth }) => (
   <div
     className={`flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3 ${
@@ -78,6 +88,18 @@ const extractRecord = (response) => {
     ? record
     : null;
 };
+
+/**
+ * Normalize a lookup list into `{ id, name }` so selects never crash on
+ * malformed items and every dropdown reads the same shape.
+ */
+const normalizeLookup = (list, idKeys, nameKeys) =>
+  (Array.isArray(list) ? list : [])
+    .map((item) => ({
+      id: idKeys.map((k) => item?.[k]).find((v) => v != null),
+      name: nameKeys.map((k) => item?.[k]).find((v) => v != null),
+    }))
+    .filter((item) => item.id != null && item.name != null);
 
 const firstValue = (item, ...keys) =>
   keys
@@ -282,47 +304,127 @@ const AddJobSeeker = ({ mode }) => {
   const [jobRoles, setJobRoles] = useState([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [roleError, setRoleError] = useState("");
+
   const [countries, setCountries] = useState([]);
+  const [loadingCountries, setLoadingCountries] = useState(true);
   const [states, setStates] = useState([]);
+  const [loadingStates, setLoadingStates] = useState(false);
   const [cities, setCities] = useState([]);
-  const [loadingLocations, setLoadingLocations] = useState(true);
+  const [loadingCities, setLoadingCities] = useState(false);
   const [locationError, setLocationError] = useState("");
 
+  /* Level 1: countries (once on mount) */
   useEffect(() => {
     let cancelled = false;
-    const loadLocations = async () => {
-      setLoadingLocations(true);
+    const loadCountries = async () => {
+      setLoadingCountries(true);
       setLocationError("");
       try {
-        const [countryResponse, stateResponse, cityResponse] =
-          await Promise.all([
-            countryMasterApi.getAllList(),
-            stateMasterApi.getAllList(),
-            cityMasterApi.getAllList(),
-          ]);
+        const response = await countryMasterApi.getAllList();
         if (!cancelled) {
-          setCountries(extractList(countryResponse));
-          setStates(extractList(stateResponse));
-          setCities(extractList(cityResponse));
+          setCountries(
+            normalizeLookup(
+              extractList(response),
+              COUNTRY_ID_KEYS,
+              COUNTRY_NAME_KEYS,
+            ),
+          );
         }
       } catch (err) {
         if (!cancelled) {
-          const message =
-            getApiErrorMessage(err) ||
-            "Unable to load country, state, and city options.";
-          setLocationError(message);
-          setServerError(message);
-          openStatus("error", message);
+          setLocationError(
+            getApiErrorMessage(err) || "Unable to load countries.",
+          );
         }
       } finally {
-        if (!cancelled) setLoadingLocations(false);
+        if (!cancelled) setLoadingCountries(false);
       }
     };
-    loadLocations();
+    loadCountries();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  /* Level 2: states for the selected country (GET /StateMaster/all?countryId=) */
+  useEffect(() => {
+    let cancelled = false;
+    setStates([]);
+
+    if (!form.countryId) {
+      setLoadingStates(false);
+      return undefined;
+    }
+
+    const loadStates = async () => {
+      setLoadingStates(true);
+      setLocationError("");
+      try {
+        const response = await stateMasterApi.getByCountry(
+          Number(form.countryId),
+        );
+        if (!cancelled) {
+          setStates(
+            normalizeLookup(
+              extractList(response),
+              STATE_ID_KEYS,
+              STATE_NAME_KEYS,
+            ),
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLocationError(getApiErrorMessage(err) || "Unable to load states.");
+        }
+      } finally {
+        if (!cancelled) setLoadingStates(false);
+      }
+    };
+
+    loadStates();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.countryId]);
+
+  /* Level 3: cities for the selected state (GET /CityMaster/all?stateId=) */
+  useEffect(() => {
+    let cancelled = false;
+    setCities([]);
+
+    if (!form.stateId) {
+      setLoadingCities(false);
+      return undefined;
+    }
+
+    const loadCities = async () => {
+      setLoadingCities(true);
+      setLocationError("");
+      try {
+        const response = await cityMasterApi.getByState(Number(form.stateId));
+        if (!cancelled) {
+          setCities(
+            normalizeLookup(
+              extractList(response),
+              CITY_ID_KEYS,
+              CITY_NAME_KEYS,
+            ),
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLocationError(getApiErrorMessage(err) || "Unable to load cities.");
+        }
+      } finally {
+        if (!cancelled) setLoadingCities(false);
+      }
+    };
+
+    loadCities();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.stateId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,7 +434,15 @@ const AddJobSeeker = ({ mode }) => {
       setCategoryError("");
       try {
         const response = await instituteTypeApi.getAllList();
-        if (!cancelled) setInstituteTypes(extractList(response));
+        if (!cancelled) {
+          setInstituteTypes(
+            normalizeLookup(
+              extractList(response),
+              INSTITUTE_ID_KEYS,
+              INSTITUTE_NAME_KEYS,
+            ),
+          );
+        }
       } catch (err) {
         if (!cancelled) {
           setCategoryError(
@@ -346,7 +456,6 @@ const AddJobSeeker = ({ mode }) => {
     };
 
     loadInstituteTypes();
-
     return () => {
       cancelled = true;
     };
@@ -439,6 +548,8 @@ const AddJobSeeker = ({ mode }) => {
     };
   }, [form.jobCategory]);
 
+  /* Edit mode: load the record. Setting countryId/stateId/cityId here
+     triggers the chained state and city loads above. */
   useEffect(() => {
     if (!id) return undefined;
 
@@ -496,6 +607,7 @@ const AddJobSeeker = ({ mode }) => {
     }));
   };
 
+  /* Clears child selections when a parent changes so stale IDs are never saved */
   const setLocation = (key) => (event) => {
     const value = event.target.value;
     setForm((current) => ({
@@ -637,6 +749,7 @@ const AddJobSeeker = ({ mode }) => {
 
     setServerError("");
     const foundErrors = validate(form, isCreate);
+
     if (
       form.jobCategory &&
       !jobCategories.some(
@@ -652,31 +765,27 @@ const AddJobSeeker = ({ mode }) => {
     ) {
       foundErrors.jobRole = "Select a job role for the selected profession.";
     }
+
+    /* Location: each value must exist in the list loaded for its parent.
+       Skipped while a list is still loading, since it would be empty. */
     if (
       form.countryId &&
-      !countries.some(
-        (country) => String(country.cM_Id) === String(form.countryId),
-      )
+      !loadingCountries &&
+      !countries.some((c) => String(c.id) === String(form.countryId))
     ) {
       foundErrors.countryId = "Select a valid country.";
     }
     if (
       form.stateId &&
-      !states.some(
-        (state) =>
-          String(state.sM_Id) === String(form.stateId) &&
-          String(state.sM_CountryId) === String(form.countryId),
-      )
+      !loadingStates &&
+      !states.some((s) => String(s.id) === String(form.stateId))
     ) {
       foundErrors.stateId = "Select a state for the selected country.";
     }
     if (
       form.cityId &&
-      !cities.some(
-        (city) =>
-          String(city.ctM_Id) === String(form.cityId) &&
-          String(city.ctM_StateId) === String(form.stateId),
-      )
+      !loadingCities &&
+      !cities.some((c) => String(c.id) === String(form.cityId))
     ) {
       foundErrors.cityId = "Select a city for the selected state.";
     }
@@ -702,13 +811,6 @@ const AddJobSeeker = ({ mode }) => {
     }
     await save();
   };
-
-  const filteredStates = states.filter(
-    (state) => String(state.sM_CountryId) === String(form.countryId),
-  );
-  const filteredCities = cities.filter(
-    (city) => String(city.ctM_StateId) === String(form.stateId),
-  );
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
@@ -854,11 +956,8 @@ const AddJobSeeker = ({ mode }) => {
                             : "Select Institute Type"}
                         </option>
                         {instituteTypes.map((item) => (
-                          <option
-                            key={item.iT_institute_type_id}
-                            value={String(item.iT_institute_type_id)}
-                          >
-                            {item.iT_name}
+                          <option key={item.id} value={String(item.id)}>
+                            {item.name}
                           </option>
                         ))}
                       </select>
@@ -1048,20 +1147,17 @@ const AddJobSeeker = ({ mode }) => {
                       <select
                         value={form.countryId}
                         onChange={setLocation("countryId")}
-                        disabled={saving || loadingLocations}
+                        disabled={saving || loadingCountries}
                         className={selectClass}
                       >
                         <option value="">
-                          {loadingLocations
+                          {loadingCountries
                             ? "Loading countries..."
                             : "Select Country"}
                         </option>
                         {countries.map((country) => (
-                          <option
-                            key={country.cM_Id}
-                            value={String(country.cM_Id)}
-                          >
-                            {country.cM_CountryName}
+                          <option key={country.id} value={String(country.id)}>
+                            {country.name}
                           </option>
                         ))}
                       </select>
@@ -1077,19 +1173,19 @@ const AddJobSeeker = ({ mode }) => {
                       <select
                         value={form.stateId}
                         onChange={setLocation("stateId")}
-                        disabled={saving || loadingLocations || !form.countryId}
+                        disabled={saving || !form.countryId || loadingStates}
                         className={selectClass}
                       >
                         <option value="">
                           {!form.countryId
                             ? "Select Country first"
-                            : loadingLocations
+                            : loadingStates
                               ? "Loading states..."
                               : "Select State"}
                         </option>
-                        {filteredStates.map((state) => (
-                          <option key={state.sM_Id} value={String(state.sM_Id)}>
-                            {state.sM_StateName}
+                        {states.map((state) => (
+                          <option key={state.id} value={String(state.id)}>
+                            {state.name}
                           </option>
                         ))}
                       </select>
@@ -1105,19 +1201,19 @@ const AddJobSeeker = ({ mode }) => {
                       <select
                         value={form.cityId}
                         onChange={setLocation("cityId")}
-                        disabled={saving || loadingLocations || !form.stateId}
+                        disabled={saving || !form.stateId || loadingCities}
                         className={selectClass}
                       >
                         <option value="">
                           {!form.stateId
                             ? "Select State first"
-                            : loadingLocations
+                            : loadingCities
                               ? "Loading cities..."
                               : "Select City"}
                         </option>
-                        {filteredCities.map((city) => (
-                          <option key={city.ctM_Id} value={String(city.ctM_Id)}>
-                            {city.ctM_CityName}
+                        {cities.map((city) => (
+                          <option key={city.id} value={String(city.id)}>
+                            {city.name}
                           </option>
                         ))}
                       </select>

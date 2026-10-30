@@ -27,6 +27,8 @@ const jdfornonregistercompanyApi = {
     pageSize,
     search,
     isActive,
+    JQ_is_CreatedByAdmin = true,
+    JQ_employer_id = null,
   } = {}) => {
     const response = await axiosInstance.get("/admin/job-descriptions", {
       params: {
@@ -35,6 +37,8 @@ const jdfornonregistercompanyApi = {
         PageSize: pageSize,
         Search: search,
         IsActive: isActive,
+        JQ_is_CreatedByAdmin,
+        JQ_employer_id,
       },
     });
     return response.data;
@@ -48,7 +52,7 @@ const jdfornonregistercompanyApi = {
   createJobDescription: async (payload) => {
     const response = await axiosInstance.post(
       "/admin/job-descriptions",
-      toFormData(payload)
+      toFormData(payload),
     );
     return response.data;
   },
@@ -56,7 +60,7 @@ const jdfornonregistercompanyApi = {
   updateJobDescription: async (id, payload) => {
     const response = await axiosInstance.put(
       `/admin/job-descriptions/${id}`,
-      toFormData(payload)
+      toFormData(payload),
     );
     return response.data;
   },
