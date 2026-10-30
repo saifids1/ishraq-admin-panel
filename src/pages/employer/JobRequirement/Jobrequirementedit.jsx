@@ -25,6 +25,7 @@ import StatusModal from "../../../components/common/StatusModal";
 
 const MAX_FILE_MB = 5;
 const LIST_PATH = "/employer/job-requirement-list";
+const FORM_ID = "job-requirement-form";
 const detailPath = (id) => `/employer/job-requirements/${id}`;
 
 const selectClass = (hasError) =>
@@ -40,16 +41,13 @@ const inputClass = (hasError) =>
 const FIELD_LABEL = "text-[13px] font-semibold text-black leading-tight";
 
 /**
- * Deduplicate concurrent API calls.
- * Prevents React StrictMode from triggering duplicate requests
- * while an earlier request is still running.
+ * Deduplicate concurrent API calls (protects against React StrictMode
+ * double-invoking effects while a request is still running).
  */
 const inFlightRequests = new Map();
 
 const requestOnce = (key, request) => {
-  if (inFlightRequests.has(key)) {
-    return inFlightRequests.get(key);
-  }
+  if (inFlightRequests.has(key)) return inFlightRequests.get(key);
 
   const promise = Promise.resolve()
     .then(request)
@@ -62,9 +60,9 @@ const requestOnce = (key, request) => {
 };
 
 /**
- * Cache master-list requests for this page session.
- * State and city lists are reused by the initial page load
- * and their dependent dropdowns.
+ * Cache full master lists (institute types, employment types, countries)
+ * for the page session. States and cities are NOT loaded as full lists
+ * except for the one-time fallback that finds a job's parent country/state.
  */
 const masterListCache = new WeakMap();
 
@@ -114,7 +112,7 @@ const CASCADE_RESETS = {
   stateId: ["cityId"],
 };
 
-// Field names used by the master APIs. Values are checked case-insensitively by pick().
+// Field names used by the master APIs. pick() also matches case-insensitively.
 const OPTION_CONFIG = {
   institute: {
     id: ["iT_institute_type_id", "IT_institute_type_id"],
@@ -200,33 +198,17 @@ const extractList = (response) => {
     result = nested;
   }
 
-  // A single category object instead of an array.
-  if (
-    result &&
-    typeof result === "object" &&
-    pick(result, "jC_job_category_id", "JC_job_category_id") !== undefined
-  ) {
-    return [result];
-  }
-
   return Array.isArray(result) ? result : [];
 };
 
 // Converts raw master rows into { value, label } options.
-// parentValue filters rows by their parent ID (country for states, state for cities).
-const toOptions = (list, config, parentValue) =>
-  list
-    .filter(
-      (item) =>
-        parentValue === undefined ||
-        (config.parent &&
-          String(pick(item, ...config.parent) ?? "") === String(parentValue)),
-    )
+const toOptions = (list, config) =>
+  (Array.isArray(list) ? list : [])
     .map((item) => ({
       value: String(pick(item, ...config.id) ?? ""),
       label: String(pick(item, ...config.label) ?? ""),
     }))
-    .filter((option) => option.value);
+    .filter((option) => option.value && option.label);
 
 // Institute type -> Job Category.
 const fetchCategories = (instituteTypeId) =>
@@ -248,18 +230,22 @@ const fetchRoles = (jobCategoryId) =>
     ),
   );
 
-const fetchStates = async (countryId) =>
-  toOptions(
-    await getMasterList(stateMasterApi),
-    OPTION_CONFIG.state,
-    String(countryId),
+// Country -> State: GET /StateMaster/all?countryId=
+const fetchStates = (countryId) =>
+  requestOnce(`states:${countryId}`, async () =>
+    toOptions(
+      extractList(await stateMasterApi.getByCountry(Number(countryId))),
+      OPTION_CONFIG.state,
+    ),
   );
 
-const fetchCities = async (stateId) =>
-  toOptions(
-    await getMasterList(cityMasterApi),
-    OPTION_CONFIG.city,
-    String(stateId),
+// State -> City: GET /CityMaster/all?stateId=
+const fetchCities = (stateId) =>
+  requestOnce(`cities:${stateId}`, async () =>
+    toOptions(
+      extractList(await cityMasterApi.getByState(Number(stateId))),
+      OPTION_CONFIG.city,
+    ),
   );
 
 // Loads options for a dropdown whenever its parent value changes.
@@ -271,7 +257,10 @@ const useDependentOptions = (parentValue, fetcher) => {
     let cancelled = false;
 
     setOptions([]);
-    if (!parentValue) return undefined;
+    if (!parentValue) {
+      setLoading(false);
+      return undefined;
+    }
 
     setLoading(true);
 
@@ -322,7 +311,42 @@ const getErrorMessage = (error) => {
   );
 };
 
-/* ---------------- Layout helpers (same as EditJobSeeker) ---------------- */
+/**
+ * Resolve the job's country and state IDs.
+ * Uses JQ_country_id / JQ_state_id when the API returns them. Otherwise
+ * it looks up the city in the master list once to find its parents.
+ */
+const resolveLocation = async (item) => {
+  let countryId = String(pick(item, "JQ_country_id") ?? "");
+  let stateId = String(pick(item, "JQ_state_id") ?? "");
+  const cityId = String(pick(item, "JQ_job_location") ?? "");
+
+  if (countryId && stateId) return { countryId, stateId, cityId };
+
+  if (!stateId && cityId) {
+    const cityRows = await getMasterList(cityMasterApi);
+    const cityRow = cityRows.find(
+      (row) => String(pick(row, ...OPTION_CONFIG.city.id)) === cityId,
+    );
+    stateId = cityRow
+      ? String(pick(cityRow, ...OPTION_CONFIG.city.parent) ?? "")
+      : "";
+  }
+
+  if (!countryId && stateId) {
+    const stateRows = await getMasterList(stateMasterApi);
+    const stateRow = stateRows.find(
+      (row) => String(pick(row, ...OPTION_CONFIG.state.id)) === stateId,
+    );
+    countryId = stateRow
+      ? String(pick(stateRow, ...OPTION_CONFIG.state.parent) ?? "")
+      : "";
+  }
+
+  return { countryId, stateId, cityId };
+};
+
+/* ---------------- Layout helpers ---------------- */
 
 const FieldRow = ({ label, required, error, children, fullWidth }) => (
   <div
@@ -340,7 +364,14 @@ const FieldRow = ({ label, required, error, children, fullWidth }) => (
   </div>
 );
 
-const SelectInput = ({ value, onChange, disabled, placeholder, options, hasError }) => (
+const SelectInput = ({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  options,
+  hasError,
+}) => (
   <div className="relative">
     <select
       value={value}
@@ -389,13 +420,13 @@ export default function JobRequirementEdit() {
     country: [],
   });
 
-  // Dependent dropdowns load from the parent selections.
+  // Dependent dropdowns load from their parent selections.
   const categories = useDependentOptions(form.instituteTypeId, fetchCategories);
   const roles = useDependentOptions(form.jobCategoryId, fetchRoles);
   const states = useDependentOptions(form.countryId, fetchStates);
   const cities = useDependentOptions(form.stateId, fetchCities);
 
-  /* ---------- modal helpers (same pattern as EditJobSeeker) ---------- */
+  /* ---------- modal helpers ---------- */
 
   const openStatus = (type, message, extra = {}) => {
     setModal({
@@ -464,23 +495,15 @@ export default function JobRequirementEdit() {
       setLoadingPage(true);
 
       try {
-        const [
-          jobResponse,
-          instituteRes,
-          employmentRes,
-          countryRes,
-          stateRes,
-          cityRes,
-        ] = await Promise.all([
-          requestOnce(`job-requirement:${numericId}`, () =>
-            getJobRequirementById(numericId),
-          ),
-          getMasterList(instituteTypeApi),
-          getMasterList(employmentTypeApi),
-          getMasterList(countryMasterApi),
-          getMasterList(stateMasterApi),
-          getMasterList(cityMasterApi),
-        ]);
+        const [jobResponse, instituteRes, employmentRes, countryRes] =
+          await Promise.all([
+            requestOnce(`job-requirement:${numericId}`, () =>
+              getJobRequirementById(numericId),
+            ),
+            getMasterList(instituteTypeApi),
+            getMasterList(employmentTypeApi),
+            getMasterList(countryMasterApi),
+          ]);
 
         const item = unwrap(jobResponse);
 
@@ -492,24 +515,9 @@ export default function JobRequirementEdit() {
           throw new Error("Job requirement not found.");
         }
 
+        const { countryId, stateId, cityId } = await resolveLocation(item);
+
         if (cancelled) return;
-
-        // The job response only has the city ID, so derive state and country from the masters.
-        const jobCityId = String(pick(item, "JQ_job_location") ?? "");
-
-        const city = cityRes.find(
-          (row) => String(pick(row, ...OPTION_CONFIG.city.id)) === jobCityId,
-        );
-        const stateId = city
-          ? String(pick(city, ...OPTION_CONFIG.city.parent) ?? "")
-          : "";
-
-        const state = stateRes.find(
-          (row) => String(pick(row, ...OPTION_CONFIG.state.id)) === stateId,
-        );
-        const countryId = state
-          ? String(pick(state, ...OPTION_CONFIG.state.parent) ?? "")
-          : "";
 
         setMasters({
           institute: toOptions(instituteRes, OPTION_CONFIG.institute),
@@ -530,7 +538,7 @@ export default function JobRequirementEdit() {
           salary: pick(item, "JQ_salary_range") ?? "",
           countryId,
           stateId,
-          cityId: jobCityId,
+          cityId,
           employmentTypeId: String(pick(item, "JQ_employment_type_id") ?? ""),
           dutyHours: pick(item, "JQ_duty_hours") ?? "",
           accommodation: toBooleanString(pick(item, "JQ_accommodation")),
@@ -600,11 +608,35 @@ export default function JobRequirementEdit() {
     if (!form.vacancies || Number(form.vacancies) < 1) {
       next.vacancies = "Enter at least one vacancy.";
     }
-    if (!form.employmentTypeId)
+    if (!form.employmentTypeId) {
       next.employmentTypeId = "Employment type is required.";
+    }
     if (!form.countryId) next.countryId = "Country is required.";
     if (!form.stateId) next.stateId = "State is required.";
     if (!form.cityId) next.cityId = "City is required.";
+
+    // Each selected value must exist in the list loaded for its parent.
+    // Skipped while that list is still loading.
+    if (
+      form.countryId &&
+      !masters.country.some((c) => c.value === form.countryId)
+    ) {
+      next.countryId = "Select a valid country.";
+    }
+    if (
+      form.stateId &&
+      !states.loading &&
+      !states.options.some((s) => s.value === form.stateId)
+    ) {
+      next.stateId = "Select a state for the selected country.";
+    }
+    if (
+      form.cityId &&
+      !cities.loading &&
+      !cities.options.some((c) => c.value === form.cityId)
+    ) {
+      next.cityId = "Select a city for the selected state.";
+    }
 
     setErrors(next);
     return next;
@@ -825,9 +857,6 @@ export default function JobRequirementEdit() {
     );
   }
 
-  const interestedCount = Number(
-    pick(job, "applicantsCount", "applicantCount", "applicants") || 0,
-  );
   const instituteTypeName = pick(job, "instituteTypeName") ?? "-";
   const existingAttachmentName = existingAttachmentPath
     ? existingAttachmentPath.split(/[\\/]/).pop()
@@ -855,7 +884,8 @@ export default function JobRequirementEdit() {
                 Edit Job Requirement
               </h2>
             </div>
-             <div className="flex justify-between gap-3">
+
+            <div className="flex justify-between gap-3">
               <button
                 type="button"
                 onClick={() => navigate(detailPath(id))}
@@ -865,8 +895,10 @@ export default function JobRequirementEdit() {
                 Cancel
               </button>
 
+              {/* Submit button lives outside the form, so it targets the form by id */}
               <button
                 type="submit"
+                form={FORM_ID}
                 disabled={saving}
                 className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -878,10 +910,10 @@ export default function JobRequirementEdit() {
                 {saving ? "Saving..." : "Save Changes"}
               </button>
             </div>
-            
           </div>
 
           <form
+            id={FORM_ID}
             onSubmit={submit}
             noValidate
             autoComplete="off"
@@ -1006,7 +1038,7 @@ export default function JobRequirementEdit() {
               </div>
             </section>
 
-            {/* LOCATION */}
+            {/* LOCATION: Country -> State -> City */}
             <section>
               <SectionTitle>Job Location</SectionTitle>
               <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
@@ -1063,8 +1095,8 @@ export default function JobRequirementEdit() {
                 <FieldRow label="Upload Job Description" fullWidth>
                   {existingAttachmentName && (
                     <p className="mb-2 text-xs text-slate-500">
-                      Current file: {existingAttachmentName}. Choose a new file to
-                      replace it.
+                      Current file: {existingAttachmentName}. Choose a new file
+                      to replace it.
                     </p>
                   )}
 
@@ -1111,9 +1143,6 @@ export default function JobRequirementEdit() {
                 </FieldRow>
               </div>
             </section>
-
-            {/* FOOTER */}
-           
           </form>
         </div>
       </div>

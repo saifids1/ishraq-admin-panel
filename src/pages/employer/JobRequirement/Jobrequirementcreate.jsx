@@ -67,7 +67,7 @@ const EMPTY = {
 };
 
 // When a parent selection changes, these child selections must be cleared
-// so that stale values (e.g. a role from the previous category) are not submitted.
+// so stale values (e.g. a role from the previous category) are not submitted.
 const CASCADE_RESETS = {
   instituteTypeId: ["jobCategoryId", "jobRoleId"],
   jobCategoryId: ["jobRoleId"],
@@ -107,10 +107,10 @@ const extractList = (response) => {
 
 // Converts raw master rows into { value, label } options for the select inputs.
 const toOptions = (list, idKey, labelKey) =>
-  list
+  (Array.isArray(list) ? list : [])
     .map((item) => ({
-      value: String(item[idKey] ?? item[idKey.toUpperCase()] ?? ""),
-      label: String(item[labelKey] ?? item[labelKey.toUpperCase()] ?? ""),
+      value: String(item?.[idKey] ?? item?.[idKey.toUpperCase()] ?? ""),
+      label: String(item?.[labelKey] ?? item?.[labelKey.toUpperCase()] ?? ""),
     }))
     .filter((option) => option.value);
 
@@ -124,7 +124,7 @@ const getErrorMessage = (error, fallback) =>
 // Runs the shared validator and maps its keys onto this form's field names.
 // The shared validator checks organizationName and mobile, which this form
 // does not have, so those are dropped. location and employmentType are
-// renamed to cityId and employmentTypeId so the errors show on the right fields.
+// renamed to cityId and employmentTypeId so errors show on the right fields.
 const validateCreateForm = (clean) => {
   const shared = validate({
     position: clean.position,
@@ -150,7 +150,7 @@ const validateCreateForm = (clean) => {
   return errors;
 };
 
-/* ---------------- Layout helpers (same as EditJobSeeker) ---------------- */
+/* ---------------- Layout helpers ---------------- */
 
 const FieldRow = ({ label, required, error, children, fullWidth }) => (
   <div
@@ -168,7 +168,14 @@ const FieldRow = ({ label, required, error, children, fullWidth }) => (
   </div>
 );
 
-const SelectInput = ({ value, onChange, disabled, placeholder, options, hasError }) => (
+const SelectInput = ({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  options,
+  hasError,
+}) => (
   <div className="relative">
     <select
       value={value}
@@ -235,7 +242,7 @@ const JobRequirementCreate = () => {
     instituteTypeId,
   });
 
-  /* ---------- modal helpers (same pattern as EditJobSeeker) ---------- */
+  /* ---------- modal helpers ---------- */
 
   const openStatus = (type, message, extra = {}) => {
     setModal({
@@ -273,18 +280,19 @@ const JobRequirementCreate = () => {
   const change = (name, value) => {
     setForm((previous) => {
       const next = { ...previous, [name]: value };
-
       (CASCADE_RESETS[name] || []).forEach((childKey) => {
         next[childKey] = "";
       });
-
       return next;
     });
 
-    setErrors((previous) => ({
-      ...previous,
-      [name]: undefined,
-    }));
+    setErrors((previous) => {
+      const next = { ...previous, [name]: undefined };
+      (CASCADE_RESETS[name] || []).forEach((childKey) => {
+        next[childKey] = undefined;
+      });
+      return next;
+    });
   };
 
   /* ---------- load the logged-in employer ---------- */
@@ -386,7 +394,10 @@ const JobRequirementCreate = () => {
     setJobCategories([]);
     setJobRoles([]);
 
-    if (!form.instituteTypeId) return undefined;
+    if (!form.instituteTypeId) {
+      setLoadingCategories(false);
+      return undefined;
+    }
 
     const loadCategories = async () => {
       setLoadingCategories(true);
@@ -423,7 +434,10 @@ const JobRequirementCreate = () => {
 
     setJobRoles([]);
 
-    if (!form.jobCategoryId) return undefined;
+    if (!form.jobCategoryId) {
+      setLoadingRoles(false);
+      return undefined;
+    }
 
     const loadRoles = async () => {
       setLoadingRoles(true);
@@ -453,32 +467,27 @@ const JobRequirementCreate = () => {
     };
   }, [form.jobCategoryId]);
 
-  /* ---------- Country -> State ---------- */
+  /* ---------- Country -> State: GET /StateMaster/all?countryId= ---------- */
 
   useEffect(() => {
     let cancelled = false;
 
     setStates([]);
-    setCities([]);
 
-    if (!form.countryId) return undefined;
+    if (!form.countryId) {
+      setLoadingStates(false);
+      return undefined;
+    }
 
     const loadStates = async () => {
       setLoadingStates(true);
 
       try {
-        const response = await stateMasterApi.getAllList();
-        const allStates = extractList(response);
+        const response = await stateMasterApi.getByCountry(
+          Number(form.countryId),
+        );
 
-        if (!cancelled) {
-          setStates(
-            allStates.filter(
-              (item) =>
-                String(item.sM_CountryId ?? item.SM_CountryId) ===
-                String(form.countryId),
-            ),
-          );
-        }
+        if (!cancelled) setStates(extractList(response));
       } catch (error) {
         if (!cancelled) {
           openStatus("error", getErrorMessage(error, "Failed to load states."));
@@ -495,31 +504,25 @@ const JobRequirementCreate = () => {
     };
   }, [form.countryId]);
 
-  /* ---------- State -> City ---------- */
+  /* ---------- State -> City: GET /CityMaster/all?stateId= ---------- */
 
   useEffect(() => {
     let cancelled = false;
 
     setCities([]);
 
-    if (!form.stateId) return undefined;
+    if (!form.stateId) {
+      setLoadingCities(false);
+      return undefined;
+    }
 
     const loadCities = async () => {
       setLoadingCities(true);
 
       try {
-        const response = await cityMasterApi.getAllList();
-        const allCities = extractList(response);
+        const response = await cityMasterApi.getByState(Number(form.stateId));
 
-        if (!cancelled) {
-          setCities(
-            allCities.filter(
-              (item) =>
-                String(item.ctM_StateId ?? item.CTM_StateId) ===
-                String(form.stateId),
-            ),
-          );
-        }
+        if (!cancelled) setCities(extractList(response));
       } catch (error) {
         if (!cancelled) {
           openStatus("error", getErrorMessage(error, "Failed to load cities."));
@@ -576,12 +579,11 @@ const JobRequirementCreate = () => {
 
   const save = async (clean) => {
     const employerId = Number(employer?.EM_employer_id);
-    const instituteTypeId = Number(organizationInstituteTypeId);
 
     const payload = new FormData();
 
     payload.append("JQ_employer_id", String(employerId));
-    payload.append("JQ_institute_type_id", String(instituteTypeId));
+    payload.append("JQ_institute_type_id", organizationInstituteTypeId);
     payload.append("JQ_job_role_id", clean.jobRoleId);
     payload.append("JQ_job_category_id", clean.jobCategoryId);
     payload.append("JQ_position_title", clean.position);
@@ -594,44 +596,18 @@ const JobRequirementCreate = () => {
     payload.append("JQ_accommodation", String(clean.accommodation === "Yes"));
     payload.append("JQ_food_facility", String(clean.food === "Yes"));
 
-    if (clean.department) {
-      payload.append("JQ_department_speciality", clean.department);
-    }
-
-    if (clean.qualification) {
-      payload.append("JQ_qualification_required", clean.qualification);
-    }
-
-    if (clean.experience) {
-      payload.append("JQ_experience_required", clean.experience);
-    }
-
-    if (clean.salary) {
-      payload.append("JQ_salary_range", clean.salary);
-    }
-
-    if (clean.dutyHours) {
-      payload.append("JQ_duty_hours", clean.dutyHours);
-    }
-
-    if (clean.deadline) {
-      payload.append("JQ_deadline", `${clean.deadline}T00:00:00`);
-    }
-
+    if (clean.department) payload.append("JQ_department_speciality", clean.department);
+    if (clean.qualification) payload.append("JQ_qualification_required", clean.qualification);
+    if (clean.experience) payload.append("JQ_experience_required", clean.experience);
+    if (clean.salary) payload.append("JQ_salary_range", clean.salary);
+    if (clean.dutyHours) payload.append("JQ_duty_hours", clean.dutyHours);
+    if (clean.deadline) payload.append("JQ_deadline", `${clean.deadline}T00:00:00`);
     if (clean.joiningDate) {
-      payload.append(
-        "JQ_expected_joining_date",
-        `${clean.joiningDate}T00:00:00`,
-      );
+      payload.append("JQ_expected_joining_date", `${clean.joiningDate}T00:00:00`);
     }
+    if (clean.description) payload.append("JQ_description", clean.description);
 
-    if (clean.description) {
-      payload.append("JQ_description", clean.description);
-    }
-
-    if (file) {
-      payload.append("Attachment", file);
-    }
+    if (file) payload.append("Attachment", file);
 
     setSaving(true);
 
@@ -682,14 +658,37 @@ const JobRequirementCreate = () => {
 
     const validationErrors = validateCreateForm(clean);
 
-    if (!clean.jobCategoryId)
-      validationErrors.jobCategoryId = "Select a job category.";
+    if (!clean.jobCategoryId) validationErrors.jobCategoryId = "Select a job category.";
     if (!clean.jobRoleId) validationErrors.jobRoleId = "Select a job role.";
     if (!clean.countryId) validationErrors.countryId = "Select a country.";
     if (!clean.stateId) validationErrors.stateId = "Select a state.";
     if (!clean.cityId) validationErrors.cityId = "Select a city.";
-    if (!clean.employmentTypeId)
+    if (!clean.employmentTypeId) {
       validationErrors.employmentTypeId = "Select an employment type.";
+    }
+
+    // Each selected value must exist in the list loaded for its parent.
+    // Skipped while that list is still loading.
+    if (
+      clean.countryId &&
+      !countries.some((c) => String(c.cM_Id) === clean.countryId)
+    ) {
+      validationErrors.countryId = "Select a valid country.";
+    }
+    if (
+      clean.stateId &&
+      !loadingStates &&
+      !states.some((s) => String(s.sM_Id) === clean.stateId)
+    ) {
+      validationErrors.stateId = "Select a state for the selected country.";
+    }
+    if (
+      clean.cityId &&
+      !loadingCities &&
+      !cities.some((c) => String(c.ctM_Id) === clean.cityId)
+    ) {
+      validationErrors.cityId = "Select a city for the selected state.";
+    }
 
     setErrors(validationErrors);
 
@@ -712,7 +711,6 @@ const JobRequirementCreate = () => {
       return;
     }
 
-    // Job type is always the organization's institute type.
     const instituteTypeId = Number(organizationInstituteTypeId);
 
     if (!Number.isInteger(instituteTypeId) || instituteTypeId <= 0) {
@@ -952,7 +950,7 @@ const JobRequirementCreate = () => {
                 </div>
               </section>
 
-              {/* LOCATION */}
+              {/* LOCATION: Country -> State -> City */}
               <section>
                 <SectionTitle>Job Location</SectionTitle>
                 <div className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">

@@ -179,7 +179,7 @@ const Login = () => {
   const { login } = useAuth();
 
   // Admin login must remain separate.
-  const isAdminLogin = location.pathname === "/admin/login" || "/admin/login/";
+  const isAdminLogin = location.pathname === "/admin/login";
 
   // Only Admin appears on /admin/login.
   // Employer and Job Seeker appear on /login.
