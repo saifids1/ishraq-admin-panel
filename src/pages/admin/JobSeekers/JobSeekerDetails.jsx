@@ -1,22 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   FileText as FileIcon,
   ChevronsLeft,
-  Mail,
-  MapPin,
   Download,
   Eye,
-  GraduationCap,
   Briefcase,
-  Wallet,
   Inbox,
   UserRound,
-  Navigation,
-  ExternalLink,
-  Building2,
   SlidersHorizontal,
   X,
+  Building2,
 } from "lucide-react";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import applicationApi from "../../../api/applicationApi";
@@ -283,7 +277,7 @@ const toJobseekerView = (item, id) => {
     expectedSalary: item?.jB_expected_salary ?? "",
     preferredCountry: "",
     preferredState: "",
-    preferredCity: item?.jB_preferred_locationName ?? "",
+    preferredCity: item?.jB_preferredLocationName ?? item?.jB_preferred_locationName ?? "",
     preferredJobLocation: item?.jB_preferred_locationName ?? "",
     willingToRelocate: toYesNo(item?.jB_willing_to_relocate),
     employmentPreference: "",
@@ -445,17 +439,17 @@ const JobSeekerDetails = ({ mode }) => {
   const [editError, setEditError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+
   const [instituteTypes, setInstituteTypes] = useState([]);
   const [jobCategories, setJobCategories] = useState([]);
   const [jobRoles, setJobRoles] = useState([]);
   const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
-  const [uploadFile, setUploadFile] = useState(null);
+  const [statesLoading, setStatesLoading] = useState(false);
+  const [citiesLoading, setCitiesLoading] = useState(false);
 
-  useEffect(() => {
-    setIsEditing(mode === "edit");
-  }, [mode]);
+  const [uploadFile, setUploadFile] = useState(null);
 
   /* Applied jobs state */
   const [appliedJobs, setAppliedJobs] = useState([]);
@@ -466,6 +460,12 @@ const JobSeekerDetails = ({ mode }) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
+  useEffect(() => {
+    setIsEditing(mode === "edit");
+  }, [mode]);
+
+  /* Load the jobseeker record. Seed both form and draft so the
+     edit route starts with the saved country/state/city IDs. */
   useEffect(() => {
     let cancelled = false;
 
@@ -480,6 +480,7 @@ const JobSeekerDetails = ({ mode }) => {
             const view = toJobseekerView(item, id);
             setUser(view);
             setForm({ ...EMPTY_FORM, ...view });
+            setDraft({ ...EMPTY_FORM, ...view });
           } else {
             setUser(null);
             setError("Jobseeker not found");
@@ -501,52 +502,32 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [id, refreshKey]);
 
+  /* Level 1: institute types and countries (edit mode only) */
   useEffect(() => {
     if (!isEditing) return undefined;
     let cancelled = false;
-    const loadLookups = async () => {
+
+    const loadBaseLookups = async () => {
       try {
-        const [
-          instituteResponse,
-          countryResponse,
-          stateResponse,
-          cityResponse,
-        ] = await Promise.all([
+        const [instituteResponse, countryResponse] = await Promise.all([
           instituteTypeApi.getAllList(),
           countryMasterApi.getAllList(),
-          stateMasterApi.getAllList(),
-          cityMasterApi.getAllList(),
         ]);
-        if (!cancelled) {
-          setInstituteTypes(
-            normalizeLookup(
-              extractList(instituteResponse),
-              ["iT_institute_type_id", "IT_institute_type_id"],
-              ["iT_name", "IT_name", "name"],
-            ),
-          );
-          setCountries(
-            normalizeLookup(
-              extractList(countryResponse),
-              ["cM_Id"],
-              ["cM_CountryName"],
-            ),
-          );
-          setStates(
-            normalizeLookup(
-              extractList(stateResponse),
-              ["sM_Id"],
-              ["sM_StateName"],
-            ),
-          );
-          setCities(
-            normalizeLookup(
-              extractList(cityResponse),
-              ["ctM_Id"],
-              ["ctM_CityName"],
-            ),
-          );
-        }
+        if (cancelled) return;
+        setInstituteTypes(
+          normalizeLookup(
+            extractList(instituteResponse),
+            ["iT_institute_type_id", "IT_institute_type_id"],
+            ["iT_name", "IT_name", "name"],
+          ),
+        );
+        setCountries(
+          normalizeLookup(
+            extractList(countryResponse),
+            ["cM_Id", "CM_Id"],
+            ["cM_CountryName", "CM_CountryName"],
+          ),
+        );
       } catch (err) {
         if (!cancelled) {
           setEditError(
@@ -557,12 +538,100 @@ const JobSeekerDetails = ({ mode }) => {
         }
       }
     };
-    loadLookups();
+
+    loadBaseLookups();
     return () => {
       cancelled = true;
     };
   }, [isEditing]);
 
+  /* Level 2: states for the selected country */
+  useEffect(() => {
+    if (!isEditing || !draft.countryId) {
+      setStates([]);
+      setStatesLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setStates([]);
+    setStatesLoading(true);
+
+    stateMasterApi
+      .getByCountry(Number(draft.countryId))
+      .then((response) => {
+        if (!cancelled) {
+          setStates(
+            normalizeLookup(
+              extractList(response),
+              ["sM_Id", "SM_Id"],
+              ["sM_StateName", "SM_StateName"],
+            ),
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setStates([]);
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load states.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setStatesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.countryId, isEditing]);
+
+  /* Level 3: cities for the selected state */
+  useEffect(() => {
+    if (!isEditing || !draft.stateId) {
+      setCities([]);
+      setCitiesLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setCities([]);
+    setCitiesLoading(true);
+
+    cityMasterApi
+      .getByState(Number(draft.stateId))
+      .then((response) => {
+        if (!cancelled) {
+          setCities(
+            normalizeLookup(
+              extractList(response),
+              ["ctM_Id", "CTM_Id"],
+              ["ctM_CityName", "CTM_CityName"],
+            ),
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCities([]);
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load cities.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCitiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.stateId, isEditing]);
+
+  /* Job category depends on institute type */
   useEffect(() => {
     if (!isEditing || !draft.instituteTypeId) {
       setJobCategories([]);
@@ -597,6 +666,7 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [draft.instituteTypeId, isEditing]);
 
+  /* Job role depends on job category */
   useEffect(() => {
     if (!isEditing || !draft.jobCategoryId) {
       setJobRoles([]);
@@ -668,18 +738,6 @@ const JobSeekerDetails = ({ mode }) => {
       cancelled = true;
     };
   }, [id, page, pageSize]);
-
-  const filteredStates = useMemo(
-    () =>
-      states.filter(
-        (state) => String(state.sM_CountryId) === draft.countryId,
-      ),
-    [states, draft.countryId],
-  );
-  const filteredCities = useMemo(
-    () => cities.filter((city) => String(city.ctM_StateId) === draft.stateId),
-    [cities, draft.stateId],
-  );
 
   const updateDraft = (key, value) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -798,6 +856,7 @@ const JobSeekerDetails = ({ mode }) => {
   };
 
   const pageTitle = form.fullName || "Jobseeker";
+
   const editInput = (key, type = "text") =>
     isEditing ? (
       <input
@@ -807,6 +866,7 @@ const JobSeekerDetails = ({ mode }) => {
         onChange={(event) => updateDraft(key, event.target.value)}
       />
     ) : undefined;
+
   const editSelect = (key, options, placeholder, onChange) =>
     isEditing ? (
       <select
@@ -934,7 +994,6 @@ const JobSeekerDetails = ({ mode }) => {
           {/* BODY */}
           <div className="p-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr] lg:grid-cols-[240px_1fr]">
-              
               {/* LEFT: vertical nav / horizontal scroll on mobile */}
               <aside className="md:sticky md:top-4 md:h-fit w-full md:w-auto">
                 <nav
@@ -981,222 +1040,238 @@ const JobSeekerDetails = ({ mode }) => {
                     <div className="space-y-6">
                       {/* Personal / Professional details */}
                       <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
-                      <div className="p-4">
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Personal & Professional Details
-                        </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Jobseeker ID"
-                            value={form.jobseekerNo}
-                          />
+                        <div className="p-4">
+                          <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                            Personal & Professional Details
+                          </h3>
+                          <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                            <FieldRow
+                              label="Jobseeker ID"
+                              value={form.jobseekerNo}
+                            />
 
-                          <FieldRow label="Full Name" value={form.fullName}>
-                            {editInput("fullName")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Mobile Number"
-                            value={form.mobile}
-                            mono
-                          >
-                            {editInput("mobile", "tel")}
-                          </FieldRow>
-                          <FieldRow
-                            label="WhatsApp Number"
-                            value={form.whatsapp}
-                            mono
-                          >
-                            {editInput("whatsapp", "tel")}
-                          </FieldRow>
+                            <FieldRow label="Full Name" value={form.fullName}>
+                              {editInput("fullName")}
+                            </FieldRow>
+                            <FieldRow
+                              label="Mobile Number"
+                              value={form.mobile}
+                              mono
+                            >
+                              {editInput("mobile", "tel")}
+                            </FieldRow>
+                            <FieldRow
+                              label="WhatsApp Number"
+                              value={form.whatsapp}
+                              mono
+                            >
+                              {editInput("whatsapp", "tel")}
+                            </FieldRow>
 
-                          <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-center sm:gap-3">
-                            <label className={`${FIELD_LABEL} text-left`}>
-                              Email Address
-                            </label>
-                            {isEditing ? (
-                              editInput("email", "email")
-                            ) : (
-                              <div className={FIELD_BOX()}>
-                                <span className="min-w-0 flex-1 truncate">
-                                  {form.email ? (
-                                    <a
-                                      href={`mailto:${form.email}`}
-                                      className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
-                                    >
-                                      {form.email}
-                                    </a>
-                                  ) : (
-                                    "—"
-                                  )}
-                                </span>
-                              </div>
-                            )}
+                            <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-center sm:gap-3">
+                              <label className={`${FIELD_LABEL} text-left`}>
+                                Email Address
+                              </label>
+                              {isEditing ? (
+                                editInput("email", "email")
+                              ) : (
+                                <div className={FIELD_BOX()}>
+                                  <span className="min-w-0 flex-1 truncate">
+                                    {form.email ? (
+                                      <a
+                                        href={`mailto:${form.email}`}
+                                        className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
+                                      >
+                                        {form.email}
+                                      </a>
+                                    ) : (
+                                      "—"
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            <FieldRow
+                              label="Institute Type"
+                              value={form.jobType}
+                            >
+                              {editSelect(
+                                "instituteTypeId",
+                                instituteTypes,
+                                "Select institute type",
+                                (value) => {
+                                  updateDraft("instituteTypeId", value);
+                                  updateDraft("jobCategoryId", "");
+                                  updateDraft("jobRoleId", "");
+                                },
+                              )}
+                            </FieldRow>
+                            <FieldRow
+                              label="Job Category"
+                              value={form.jobCategory}
+                            >
+                              {editSelect(
+                                "jobCategoryId",
+                                jobCategories,
+                                "Select profession",
+                                (value) => {
+                                  updateDraft("jobCategoryId", value);
+                                  updateDraft("jobRoleId", "");
+                                },
+                              )}
+                            </FieldRow>
+                            <FieldRow label="Role" value={form.jobRole}>
+                              {editSelect("jobRoleId", jobRoles, "Select role")}
+                            </FieldRow>
+                            <FieldRow
+                              label="Highest Qualification"
+                              value={form.highestQualification}
+                            >
+                              {editInput("highestQualification")}
+                            </FieldRow>
+                            <FieldRow
+                              label="Speciality / Department"
+                              value={form.speciality}
+                            >
+                              {editInput("speciality")}
+                            </FieldRow>
+                            <FieldRow
+                              label="Professional Reg. No."
+                              value={form.professionalRegistrationNumber}
+                              mono
+                            >
+                              {editInput("professionalRegistrationNumber")}
+                            </FieldRow>
+                            <FieldRow
+                              label="Total Experience (Years)"
+                              value={form.totalExperience}
+                            >
+                              {editInput("totalExperience", "number")}
+                            </FieldRow>
+                            <FieldRow
+                              label="Current Designation"
+                              value={form.currentDesignation}
+                            >
+                              {editInput("currentDesignation")}
+                            </FieldRow>
+                            <FieldRow
+                              label="Status"
+                              value={active ? "Active" : "Inactive"}
+                            />
+                            <FieldRow
+                              label="Consent Given"
+                              value={form.consentGiven}
+                            >
+                              {isEditing ? (
+                                <select
+                                  className={EDIT_INPUT}
+                                  value={toBoolean(draft.consentGiven) ? "true" : "false"}
+                                  onChange={(event) =>
+                                    updateDraft(
+                                      "consentGiven",
+                                      event.target.value === "true",
+                                    )
+                                  }
+                                >
+                                  <option value="true">Yes</option>
+                                  <option value="false">No</option>
+                                </select>
+                              ) : undefined}
+                            </FieldRow>
                           </div>
-
-                          <FieldRow
-                            label="Institute Type"
-                            value={form.jobType}
-                          >
-                            {editSelect(
-                              "instituteTypeId",
-                              instituteTypes,
-                              "Select institute type",
-                              (value) => {
-                                updateDraft("instituteTypeId", value);
-                                updateDraft("jobCategoryId", "");
-                                updateDraft("jobRoleId", "");
-                              },
-                            )}
-                          </FieldRow>
-                          <FieldRow
-                            label="Job Category"
-                            value={form.jobCategory}
-                          >
-                            {editSelect(
-                              "jobCategoryId",
-                              jobCategories,
-                              "Select profession",
-                              (value) => {
-                                updateDraft("jobCategoryId", value);
-                                updateDraft("jobRoleId", "");
-                              },
-                            )}
-                          </FieldRow>
-                          <FieldRow label="Role" value={form.jobRole}>
-                            {editSelect("jobRoleId", jobRoles, "Select role")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Highest Qualification"
-                            value={form.highestQualification}
-                          >
-                            {editInput("highestQualification")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Speciality / Department"
-                            value={form.speciality}
-                          >
-                            {editInput("speciality")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Professional Reg. No."
-                            value={form.professionalRegistrationNumber}
-                            mono
-                          >
-                            {editInput("professionalRegistrationNumber")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Total Experience (Years)"
-                            value={form.totalExperience}
-                          >
-                            {editInput("totalExperience", "number")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Current Designation"
-                            value={form.currentDesignation}
-                          >
-                            {editInput("currentDesignation")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Status"
-                            value={active ? "Active" : "Inactive"}
-                          />
-                          <FieldRow
-                            label="Consent Given"
-                            value={form.consentGiven}
-                          >
-                            {isEditing ? (
-                              <select
-                                className={EDIT_INPUT}
-                                value={toBoolean(draft.consentGiven) ? "true" : "false"}
-                                onChange={(event) =>
-                                  updateDraft(
-                                    "consentGiven",
-                                    event.target.value === "true",
-                                  )
-                                }
-                              >
-                                <option value="true">Yes</option>
-                                <option value="false">No</option>
-                              </select>
-                            ) : undefined}
-                          </FieldRow>
                         </div>
-                      </div>
                       </div>
 
                       {/* Current Location */}
                       <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
-                      <div className="p-4">
-                        <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          Current Location
-                        </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Country"
-                            value={form.currentCountry}
-                          >
-                            {editSelect(
-                              "countryId",
-                              countries,
-                              "Select country",
-                              (value) => {
-                                updateDraft("countryId", value);
-                                updateDraft("stateId", "");
-                                updateDraft("cityId", "");
-                              },
-                            )}
-                          </FieldRow>
-                          <FieldRow label="State" value={form.currentState}>
-                            {editSelect(
-                              "stateId",
-                              filteredStates,
-                              "Select state",
-                              (value) => {
-                                updateDraft("stateId", value);
-                                updateDraft("cityId", "");
-                              },
-                            )}
-                          </FieldRow>
-                          <FieldRow label="City" value={form.currentCity}>
-                            {editSelect(
-                              "cityId",
-                              filteredCities,
-                              "Select city",
-                            )}
-                          </FieldRow>
+                        <div className="p-4">
+                          <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                            Current Location
+                          </h3>
+                          <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                            <FieldRow
+                              label="Country"
+                              value={form.currentCountry}
+                            >
+                              {editSelect(
+                                "countryId",
+                                countries,
+                                "Select country",
+                                (value) => {
+                                  updateDraft("countryId", value);
+                                  updateDraft("stateId", "");
+                                  updateDraft("cityId", "");
+                                  updateDraft("preferredLocationId", "");
+                                },
+                              )}
+                            </FieldRow>
+
+                            <FieldRow label="State" value={form.currentState}>
+                              {editSelect(
+                                "stateId",
+                                states,
+                                !draft.countryId
+                                  ? "Select country first"
+                                  : statesLoading
+                                    ? "Loading states..."
+                                    : "Select state",
+                                (value) => {
+                                  updateDraft("stateId", value);
+                                  updateDraft("cityId", "");
+                                  updateDraft("preferredLocationId", "");
+                                },
+                              )}
+                            </FieldRow>
+
+                            <FieldRow label="City" value={form.currentCity}>
+                              {editSelect(
+                                "cityId",
+                                cities,
+                                !draft.stateId
+                                  ? "Select state first"
+                                  : citiesLoading
+                                    ? "Loading cities..."
+                                    : "Select city",
+                                (value) => {
+                                  updateDraft("cityId", value);
+                                  updateDraft("preferredLocationId", "");
+                                },
+                              )}
+                            </FieldRow>
+                          </div>
                         </div>
-                      </div>
                       </div>
 
                       {/* ---------- Audit Trail ---------- */}
                       <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
-                      <div className="p-4">
+                        <div className="p-4">
                           <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
-                          User Log
-                        </h3>
-                        <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow
-                            label="Created At"
-                            value={formatDateTime(form.createdAt)}
-                          />
-                          <FieldRow
-                            label="Created By"
-                            value={formatUser(form.CreatedByName)}
-                          />
-                          <FieldRow
-                            label="Updated At"
-                            value={formatDateTime(form.updatedAt)}
-                          />
-                          <FieldRow
-                            label="Updated By"
-                            value={formatUser(form.UpdatedByName)}
-                          />
-                          <FieldRow
-                            label="Activated At"
-                            value={formatDateTime(form.activatedAt)}
-                          />
+                            User Log
+                          </h3>
+                          <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                            <FieldRow
+                              label="Created At"
+                              value={formatDateTime(form.createdAt)}
+                            />
+                            <FieldRow
+                              label="Created By"
+                              value={formatUser(form.CreatedByName)}
+                            />
+                            <FieldRow
+                              label="Updated At"
+                              value={formatDateTime(form.updatedAt)}
+                            />
+                            <FieldRow
+                              label="Updated By"
+                              value={formatUser(form.UpdatedByName)}
+                            />
+                            <FieldRow
+                              label="Activated At"
+                              value={formatDateTime(form.activatedAt)}
+                            />
+                          </div>
                         </div>
-                      </div>
                       </div>
                     </div>
                   </section>
@@ -1265,7 +1340,11 @@ const JobSeekerDetails = ({ mode }) => {
                           {editSelect(
                             "preferredLocationId",
                             cities,
-                            "Select preferred location",
+                            !draft.stateId
+                              ? "Select state first"
+                              : citiesLoading
+                                ? "Loading cities..."
+                                : "Select preferred location",
                           )}
                         </FieldRow>
                         <FieldRow

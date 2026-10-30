@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FileText as FileIcon,
@@ -84,6 +84,20 @@ const NAV = [
   { id: "resume", label: "Documents", icon: FileIcon },
   // { id: "jobs", label: "Applied Jobs", icon: Briefcase },
 ];
+
+/* ---------------- Lookup key mappings (tolerant of API casing) ---------------- */
+const INSTITUTE_ID_KEYS = ["iT_institute_type_id", "IT_institute_type_id", "id"];
+const INSTITUTE_NAME_KEYS = ["iT_name", "IT_name", "name"];
+const COUNTRY_ID_KEYS = ["cM_Id", "CM_Id", "id"];
+const COUNTRY_NAME_KEYS = ["cM_CountryName", "CM_CountryName", "countryName", "name"];
+const STATE_ID_KEYS = ["sM_Id", "SM_Id", "id"];
+const STATE_NAME_KEYS = ["sM_StateName", "SM_StateName", "stateName", "name"];
+const CITY_ID_KEYS = ["ctM_Id", "CTM_Id", "id"];
+const CITY_NAME_KEYS = ["ctM_CityName", "CTM_CityName", "cityName", "name"];
+const JOB_CATEGORY_ID_KEYS = ["jC_job_category_id", "JC_job_category_id", "id"];
+const JOB_CATEGORY_NAME_KEYS = ["jC_name", "JC_name", "name"];
+const JOB_ROLE_ID_KEYS = ["jR_job_role_id", "JR_job_role_id", "id"];
+const JOB_ROLE_NAME_KEYS = ["jR_name", "JR_name", "name"];
 
 /* ---------------- Reusable row: label : input ---------------- */
 const FieldRow = ({ label, value, mono = false, children }) => (
@@ -409,12 +423,16 @@ const JobSeekerDetails = ({ mode }) => {
   const [editError, setEditError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+
   const [instituteTypes, setInstituteTypes] = useState([]);
   const [jobCategories, setJobCategories] = useState([]);
   const [jobRoles, setJobRoles] = useState([]);
   const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
+  const [statesLoading, setStatesLoading] = useState(false);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+
   const [uploadFile, setUploadFile] = useState(null);
 
   /* Applied jobs state (tab currently hidden) */
@@ -429,6 +447,8 @@ const JobSeekerDetails = ({ mode }) => {
     setIsEditing(mode === "edit");
   }, [mode]);
 
+  /* Load the jobseeker record. Seed both form and draft so the
+     /edit route starts with the saved country, state, and city IDs. */
   useEffect(() => {
     let cancelled = false;
 
@@ -443,6 +463,7 @@ const JobSeekerDetails = ({ mode }) => {
             const view = toJobseekerView(item, userId);
             setUser(view);
             setForm({ ...EMPTY_FORM, ...view });
+            setDraft({ ...EMPTY_FORM, ...view });
           } else {
             setUser(null);
             setError("Jobseeker not found");
@@ -464,52 +485,32 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [userId, refreshKey]);
 
+  /* Level 1: institute types and countries (edit mode only) */
   useEffect(() => {
     if (!isEditing) return undefined;
     let cancelled = false;
-    const loadLookups = async () => {
+
+    const loadBaseLookups = async () => {
       try {
-        const [
-          instituteResponse,
-          countryResponse,
-          stateResponse,
-          cityResponse,
-        ] = await Promise.all([
+        const [instituteResponse, countryResponse] = await Promise.all([
           instituteTypeApi.getAllList(),
           countryMasterApi.getAllList(),
-          stateMasterApi.getAllList(),
-          cityMasterApi.getAllList(),
         ]);
-        if (!cancelled) {
-          setInstituteTypes(
-            normalizeLookup(
-              extractList(instituteResponse),
-              ["iT_institute_type_id", "IT_institute_type_id"],
-              ["iT_name", "IT_name", "name"],
-            ),
-          );
-          setCountries(
-            normalizeLookup(
-              extractList(countryResponse),
-              ["cM_Id"],
-              ["cM_CountryName"],
-            ),
-          );
-          setStates(
-            normalizeLookup(
-              extractList(stateResponse),
-              ["sM_Id"],
-              ["sM_StateName"],
-            ),
-          );
-          setCities(
-            normalizeLookup(
-              extractList(cityResponse),
-              ["ctM_Id"],
-              ["ctM_CityName"],
-            ),
-          );
-        }
+        if (cancelled) return;
+        setInstituteTypes(
+          normalizeLookup(
+            extractList(instituteResponse),
+            INSTITUTE_ID_KEYS,
+            INSTITUTE_NAME_KEYS,
+          ),
+        );
+        setCountries(
+          normalizeLookup(
+            extractList(countryResponse),
+            COUNTRY_ID_KEYS,
+            COUNTRY_NAME_KEYS,
+          ),
+        );
       } catch (err) {
         if (!cancelled) {
           setEditError(
@@ -520,12 +521,100 @@ const JobSeekerDetails = ({ mode }) => {
         }
       }
     };
-    loadLookups();
+
+    loadBaseLookups();
     return () => {
       cancelled = true;
     };
   }, [isEditing]);
 
+  /* Level 2: states for the selected country (GET /StateMaster/all?countryId=) */
+  useEffect(() => {
+    if (!isEditing || !draft.countryId) {
+      setStates([]);
+      setStatesLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setStates([]);
+    setStatesLoading(true);
+
+    stateMasterApi
+      .getByCountry(Number(draft.countryId))
+      .then((response) => {
+        if (!cancelled) {
+          setStates(
+            normalizeLookup(
+              extractList(response),
+              STATE_ID_KEYS,
+              STATE_NAME_KEYS,
+            ),
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setStates([]);
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load states.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setStatesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.countryId, isEditing]);
+
+  /* Level 3: cities for the selected state (GET /CityMaster/all?stateId=) */
+  useEffect(() => {
+    if (!isEditing || !draft.stateId) {
+      setCities([]);
+      setCitiesLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setCities([]);
+    setCitiesLoading(true);
+
+    cityMasterApi
+      .getByState(Number(draft.stateId))
+      .then((response) => {
+        if (!cancelled) {
+          setCities(
+            normalizeLookup(
+              extractList(response),
+              CITY_ID_KEYS,
+              CITY_NAME_KEYS,
+            ),
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCities([]);
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load cities.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCitiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.stateId, isEditing]);
+
+  /* Job category depends on institute type */
   useEffect(() => {
     if (!isEditing || !draft.instituteTypeId) {
       setJobCategories([]);
@@ -537,12 +626,11 @@ const JobSeekerDetails = ({ mode }) => {
       .then((response) => {
         if (!cancelled) {
           setJobCategories(
-            extractList(response)
-              .map((item) => ({
-                id: item.jC_job_category_id ?? item.JC_job_category_id,
-                name: item.jC_name ?? item.JC_name ?? item.name,
-              }))
-              .filter((item) => item.id != null && item.name),
+            normalizeLookup(
+              extractList(response),
+              JOB_CATEGORY_ID_KEYS,
+              JOB_CATEGORY_NAME_KEYS,
+            ),
           );
         }
       })
@@ -560,6 +648,7 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [draft.instituteTypeId, isEditing]);
 
+  /* Job role depends on job category */
   useEffect(() => {
     if (!isEditing || !draft.jobCategoryId) {
       setJobRoles([]);
@@ -571,12 +660,11 @@ const JobSeekerDetails = ({ mode }) => {
       .then((response) => {
         if (!cancelled) {
           setJobRoles(
-            extractList(response)
-              .map((item) => ({
-                id: item.jR_job_role_id ?? item.JR_job_role_id,
-                name: item.jR_name ?? item.JR_name ?? item.name,
-              }))
-              .filter((item) => item.id != null && item.name),
+            normalizeLookup(
+              extractList(response),
+              JOB_ROLE_ID_KEYS,
+              JOB_ROLE_NAME_KEYS,
+            ),
           );
         }
       })
@@ -593,16 +681,6 @@ const JobSeekerDetails = ({ mode }) => {
       cancelled = true;
     };
   }, [draft.jobCategoryId, isEditing]);
-
-  const filteredStates = useMemo(
-    () =>
-      states.filter((state) => String(state.sM_CountryId) === draft.countryId),
-    [states, draft.countryId],
-  );
-  const filteredCities = useMemo(
-    () => cities.filter((city) => String(city.ctM_StateId) === draft.stateId),
-    [cities, draft.stateId],
-  );
 
   const updateDraft = (key, value) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -772,6 +850,19 @@ const JobSeekerDetails = ({ mode }) => {
         <option value="false">No</option>
       </select>
     ) : undefined;
+
+  /* Placeholders for the chained selects */
+  const statePlaceholder = !draft.countryId
+    ? "Select country first"
+    : statesLoading
+      ? "Loading states..."
+      : "Select state";
+
+  const cityPlaceholder = !draft.stateId
+    ? "Select state first"
+    : citiesLoading
+      ? "Loading cities..."
+      : "Select city";
 
   /* Loading */
   if (loading) {
@@ -1033,7 +1124,7 @@ const JobSeekerDetails = ({ mode }) => {
                       </div>
                     </div>
 
-                    {/* Current Location */}
+                    {/* Current Location: Country → State → City */}
                     <div className={SECTION_CARD}>
                       <div className={SECTION_BODY}>
                         <h3 className={SECTION_TITLE}>Current Location</h3>
@@ -1047,22 +1138,32 @@ const JobSeekerDetails = ({ mode }) => {
                                 updateDraft("countryId", value);
                                 updateDraft("stateId", "");
                                 updateDraft("cityId", "");
+                                updateDraft("preferredLocationId", "");
                               },
                             )}
                           </FieldRow>
                           <FieldRow label="State" value={form.currentState}>
                             {editSelect(
                               "stateId",
-                              filteredStates,
-                              "Select state",
+                              states,
+                              statePlaceholder,
                               (value) => {
                                 updateDraft("stateId", value);
                                 updateDraft("cityId", "");
+                                updateDraft("preferredLocationId", "");
                               },
                             )}
                           </FieldRow>
                           <FieldRow label="City" value={form.currentCity}>
-                            {editSelect("cityId", filteredCities, "Select city")}
+                            {editSelect(
+                              "cityId",
+                              cities,
+                              cityPlaceholder,
+                              (value) => {
+                                updateDraft("cityId", value);
+                                updateDraft("preferredLocationId", "");
+                              },
+                            )}
                           </FieldRow>
                         </div>
                       </div>
@@ -1151,7 +1252,7 @@ const JobSeekerDetails = ({ mode }) => {
                           {editSelect(
                             "preferredLocationId",
                             cities,
-                            "Select preferred location",
+                            cityPlaceholder,
                           )}
                         </FieldRow>
                         <FieldRow label="Expected Salary" value={form.expectedSalary}>
