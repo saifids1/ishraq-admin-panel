@@ -1,5 +1,5 @@
 // src/pages/admin/employer/CreateEmployer.jsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronsLeft, Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import employerApi from "../../../api/Services/adminemployeelistApi";
@@ -120,6 +120,8 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
   const [cities, setCities] = useState([]);
 
   const [loadingLookups, setLoadingLookups] = useState(true);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [modal, setModal] = useState(null);
@@ -145,83 +147,110 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
     });
   };
 
-  /* --------------------------- LOOKUPS (parallel) --------------------------- */
+  /* --------------------------- LEVEL 1: institute types + countries --------------------------- */
 
   useEffect(() => {
     let cancelled = false;
 
-    const fetchAll = async () => {
+    const fetchBase = async () => {
       setLoadingLookups(true);
-      const results = await Promise.allSettled([
+      const [types, countryRes] = await Promise.allSettled([
         instituteTypeApi.getAllList(),
         countryMasterApi.getAllList(),
-        stateMasterApi.getAllList(),
-        cityMasterApi.getAllList(),
       ]);
 
       if (cancelled) return;
-
-      const [types, countryRes, stateRes, cityRes] = results;
 
       if (types.status === "fulfilled") {
         setInstituteTypes(extractList(types.value));
       } else {
         setError(
-          (prev) =>
-            prev ||
-            getErrorMessage(types.reason, "Unable to load institute types."),
+          getErrorMessage(types.reason, "Unable to load institute types."),
         );
       }
 
       if (countryRes.status === "fulfilled") {
         setCountries(extractList(countryRes.value));
       } else {
-        setError(
-          (prev) =>
-            prev ||
-            getErrorMessage(countryRes.reason, "Unable to load countries."),
-        );
-      }
-
-      if (stateRes.status === "fulfilled") {
-        setStates(extractList(stateRes.value));
-      } else {
-        setError(
-          (prev) =>
-            prev ||
-            getErrorMessage(stateRes.reason, "Unable to load states."),
-        );
-      }
-
-      if (cityRes.status === "fulfilled") {
-        setCities(extractList(cityRes.value));
-      } else {
-        setError(
-          (prev) =>
-            prev || getErrorMessage(cityRes.reason, "Unable to load cities."),
-        );
+        setError(getErrorMessage(countryRes.reason, "Unable to load countries."));
       }
 
       setLoadingLookups(false);
     };
 
-    fetchAll();
+    fetchBase();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  /* --------------------------- DERIVED LISTS --------------------------- */
+  /* --------------------------- LEVEL 2: states for the selected country --------------------------- */
+  // GET /StateMaster/all?countryId=
 
-  const filteredStates = useMemo(
-    () => states.filter((s) => String(s.sM_CountryId) === String(countryId)),
-    [states, countryId],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    setStates([]);
 
-  const filteredCities = useMemo(
-    () => cities.filter((c) => String(c.ctM_StateId) === String(stateId)),
-    [cities, stateId],
-  );
+    if (!countryId) {
+      setLoadingStates(false);
+      return undefined;
+    }
+
+    setLoadingStates(true);
+
+    stateMasterApi
+      .getByCountry(Number(countryId))
+      .then((response) => {
+        if (!cancelled) setStates(extractList(response));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setStates([]);
+          setError(getErrorMessage(err, "Unable to load states."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStates(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [countryId]);
+
+  /* --------------------------- LEVEL 3: cities for the selected state --------------------------- */
+  // GET /CityMaster/all?stateId=
+
+  useEffect(() => {
+    let cancelled = false;
+    setCities([]);
+
+    if (!stateId) {
+      setLoadingCities(false);
+      return undefined;
+    }
+
+    setLoadingCities(true);
+
+    cityMasterApi
+      .getByState(Number(stateId))
+      .then((response) => {
+        if (!cancelled) setCities(extractList(response));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCities([]);
+          setError(getErrorMessage(err, "Unable to load cities."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCities(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stateId]);
 
   /* --------------------------- SUBMIT --------------------------- */
 
@@ -336,11 +365,11 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
     ) {
       validationMessage = "Select a valid Country.";
     } else if (
-      !filteredStates.some((item) => String(item.sM_Id) === String(stateId))
+      !states.some((item) => String(item.sM_Id) === String(stateId))
     ) {
       validationMessage = "Select a State for the selected Country.";
     } else if (
-      !filteredCities.some((item) => String(item.ctM_Id) === String(cityId))
+      !cities.some((item) => String(item.ctM_Id) === String(cityId))
     ) {
       validationMessage = "Select a City for the selected State.";
     }
@@ -418,9 +447,7 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
                     className={selectClass}
                   >
                     <option value="">
-                      {loadingLookups
-                        ? "Loading..."
-                        : "Select Organization Type"}
+                      {loadingLookups ? "Loading..." : "Select Organization Type"}
                     </option>
                     {instituteTypes.map((t) => (
                       <option
@@ -540,9 +567,7 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
                     onClick={() => setShowPassword((v) => !v)}
                     disabled={disabled}
                     title={showPassword ? "Hide password" : "Show password"}
-                    aria-label={
-                      showPassword ? "Hide password" : "Show password"
-                    }
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                     className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {showPassword ? (
@@ -554,12 +579,13 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
                 </div>
               </FieldRow>
 
-              {/* Country */}
+              {/* Country: level 1 */}
               <FieldRow label="Country" required>
                 <div className="relative">
                   <select
                     value={countryId}
                     onChange={(e) => {
+                      // Clearing the child selections keeps stale IDs from being submitted.
                       setCountryId(e.target.value);
                       setStateId("");
                       setCityId("");
@@ -584,7 +610,7 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
                 </div>
               </FieldRow>
 
-              {/* State */}
+              {/* State: level 2, loaded by country */}
               <FieldRow label="State" required>
                 <div className="relative">
                   <select
@@ -593,14 +619,18 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
                       setStateId(e.target.value);
                       setCityId("");
                     }}
-                    disabled={disabled || !countryId}
+                    disabled={disabled || !countryId || loadingStates}
                     required
                     className={selectClass}
                   >
                     <option value="">
-                      {!countryId ? "Select Country first" : "Select State"}
+                      {!countryId
+                        ? "Select Country first"
+                        : loadingStates
+                          ? "Loading states..."
+                          : "Select State"}
                     </option>
-                    {filteredStates.map((s) => (
+                    {states.map((s) => (
                       <option key={s.sM_Id} value={String(s.sM_Id)}>
                         {s.sM_StateName}
                       </option>
@@ -613,20 +643,24 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
                 </div>
               </FieldRow>
 
-              {/* City */}
+              {/* City: level 3, loaded by state */}
               <FieldRow label="City" required>
                 <div className="relative">
                   <select
                     value={cityId}
                     onChange={(e) => setCityId(e.target.value)}
-                    disabled={disabled || !stateId}
+                    disabled={disabled || !stateId || loadingCities}
                     required
                     className={selectClass}
                   >
                     <option value="">
-                      {!stateId ? "Select State first" : "Select City"}
+                      {!stateId
+                        ? "Select State first"
+                        : loadingCities
+                          ? "Loading cities..."
+                          : "Select City"}
                     </option>
-                    {filteredCities.map((c) => (
+                    {cities.map((c) => (
                       <option key={c.ctM_Id} value={String(c.ctM_Id)}>
                         {c.ctM_CityName}
                       </option>
