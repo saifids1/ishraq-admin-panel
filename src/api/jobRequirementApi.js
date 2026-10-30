@@ -132,6 +132,7 @@ export const getJobsForJobseeker = async ({
   jobseekerId,
   pageNo = 1,
   pageSize = 10,
+  JQ_is_CreatedByAdmin,
 }) => {
   if (!instituteTypeId || !jobRoleId || !jobCategoryId) {
     throw new Error(
@@ -148,6 +149,7 @@ export const getJobsForJobseeker = async ({
       pageNo,
       pageSize,
       IsActive: true,
+      JQ_is_CreatedByAdmin
     },
   });
 
