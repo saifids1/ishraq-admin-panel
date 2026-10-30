@@ -52,6 +52,10 @@ import FeedbackDetails from "../pages/admin/Enquiries/Feedback/FeedbackDetails";
 import StatusLogsList from "../pages/admin/Enquiries/StatusLogsList";
 import CreateEmployer from "../pages/admin/Employer/CreateEmployer.jsx";
 
+import CreateJobDescription from "../pages/admin/JobDescripction/CreateJobDescription.jsx";
+import JobDescriptionList from "../pages/admin/JobDescripction/JobDescription.jsx";
+// import CreateJobDescription from "../pages/admin/JobDescripction/CreateJobDescription.jsx";
+
 const AdminRoutes = (
   <Route element={<ProtectedRoute allowedRole="admin" />}>
     <Route path="/admin" element={<AdminLayout />}>
@@ -77,6 +81,8 @@ const AdminRoutes = (
         element={<JobSeekerDetails mode="edit" />}
       />
       <Route path="job-requirement-list" element={<JobRequirementList />} />
+      <Route path="jdbyadmin" element={<JobDescriptionList/>} />
+      <Route path="jdbyadmin/add" element={<CreateJobDescription/>} />
       {/* <Route path="/admin/job-requirements" element={<JobRequirementList />} /> */}
       <Route
         path="job-requirements/:id"
