@@ -1,70 +1,37 @@
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ChevronDown,
   Search as SearchIcon,
-  X as CloseIcon,
   Inbox,
-  UserRoundCheck,
-  UserRoundX,
   ChevronsRight,
   Plus,
   BriefcaseBusiness,
-  BadgeCheck,
   UserPlus,
   Users,
-  Flag,
   RefreshCw,
-  SlidersHorizontal,
 } from "lucide-react";
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
-import jdfornonregistercompanyApi from "../../../api/Services/jdfornonregistercompanyApi";
+import { getAllJDByAdmin } from "../../../api/Services/jdfornonregistercompanyApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
-const TABLE_MIN_WIDTH = 1560;
+const TABLE_MIN_WIDTH = 1000;
 
 const COLUMNS = [
-  { key: "srNo", width: "55px", minWidth: "50px" },
-  { key: "requestId", width: "170px", minWidth: "130px" },
-  { key: "organization", width: "200px", minWidth: "150px" },
-  { key: "position", width: "180px", minWidth: "140px" },
-  { key: "status", width: "120px", minWidth: "90px" },
-  { key: "requirementStatus", width: "150px", minWidth: "110px" },
-  { key: "jobCategory", width: "160px", minWidth: "120px" },
-  { key: "vacancies", width: "100px", minWidth: "85px" },
-  { key: "applicants", width: "110px", minWidth: "90px" },
+  { key: "srNo", width: "70px", minWidth: "60px" },
+  { key: "jobId", width: "120px", minWidth: "100px" },
+  { key: "organization", width: "220px", minWidth: "160px" },
+  { key: "position", width: "220px", minWidth: "160px" },
+  { key: "jobCategory", width: "180px", minWidth: "140px" },
+  { key: "vacancies", width: "110px", minWidth: "90px" },
+  { key: "applicants", width: "120px", minWidth: "100px" },
   { key: "actions", width: "110px", minWidth: "90px", sticky: true },
 ];
 
 const COL_SPAN_ALL = COLUMNS.length;
-
-const TONES = {
-  success: { badge: "bg-emerald-600 ring-emerald-700 shadow-emerald-600/20" },
-  danger: { badge: "bg-rose-600 ring-rose-700 shadow-rose-600/20" },
-  warning: { badge: "bg-amber-500 ring-amber-600 shadow-amber-500/20" },
-  neutral: { badge: "bg-slate-500 ring-slate-600 shadow-slate-500/20" },
-};
-
-const STATUS_TONES = {
-  Open: "success",
-  Closed: "danger",
-  Paused: "warning",
-  Active: "success",
-  Inactive: "danger",
-  Draft: "neutral",
-};
-
-const toneOf = (value) => TONES[STATUS_TONES[value]] ?? TONES.neutral;
 
 const BADGE_BASE =
   "inline-flex h-7 min-w-[96px] items-center justify-center gap-1.5 rounded-md px-2.5 text-[15px] text-white ring-1 ring-inset whitespace-nowrap shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
@@ -76,6 +43,7 @@ const firstValue = (item, ...keys) =>
     .map((key) => item?.[key])
     .find((value) => value !== undefined && value !== null) ?? "";
 
+// Finds the array inside an API response, whatever the wrapper looks like.
 const extractList = (response) => {
   const root = response?.data ?? response;
   const candidates = [
@@ -93,173 +61,58 @@ const extractList = (response) => {
   return [];
 };
 
-const parseListResponse = (response) => {
-  const root = response?.data ?? response;
-  const payload = root?.data ?? root?.Data ?? root;
-  const list = Array.isArray(payload)
-    ? payload
-    : payload?.data ?? payload?.Data ?? [];
-
-  return {
-    list: Array.isArray(list) ? list : [],
-    totalRecords: Number(
-      root?.totalRecords ?? payload?.totalRecords ?? list.length,
-    ),
-    totalPages: Number(root?.totalPages ?? payload?.totalPages ?? 0),
-  };
-};
-
-const toListRow = (item, srNo) => {
-  const status = firstValue(
+// Maps one /JDByAdmin record (PascalCase or jQ_ keys) into a table row.
+const toListRow = (item) => ({
+  id: firstValue(
     item,
-    "jobStatusName",
-    "status",
-    "JQ_status",
-    "JS_name",
-  );
-  const activeValue = firstValue(
+    "JobDescriptionId",
+    "jQ_job_description_id",
+    "JQ_job_description_id",
+    "jobDescriptionId",
+    "id",
+  ),
+  jobId: firstValue(
     item,
-    "jQ_is_active",
-    "JQ_is_active",
-    "isActive",
-  );
-  const hasActiveValue = activeValue !== "";
-  const isActive = hasActiveValue
-    ? [true, 1, "1", "true", "True"].includes(activeValue)
-    : status === "Open" || status === "Active";
-
-  return {
-    ...item,
-    id: firstValue(
-      item,
-      "jQ_job_requirement_id",
-      "JQ_job_requirement_id",
-      "JQ_id",
-      "jobRequirementId",
-      "id",
-    ),
-    requestId: firstValue(
-      item,
-      "jQ_job_re_id",
-      "JQ_job_re_id",
-      "jQ_request_no",
-      "requestNo",
-      "requestId",
-    ),
-    organizationName: firstValue(
-      item,
-      "employerName",
-      "organizationName",
-      "JQ_organization_name",
-      "JQ_organizationName",
-      "organization_name",
-    ),
-    position: firstValue(
-      item,
-      "jQ_position_title",
-      "JQ_position_title",
-      "position",
-      "JQ_position",
-      "JQ_position_required",
-      "positionRequired",
-    ),
-    department: firstValue(
-      item,
-      "jQ_department_speciality",
-      "JQ_department_speciality",
-      "department",
-      "JQ_department",
-      "departmentSpeciality",
-    ),
-    employmentType: firstValue(
-      item,
-      "employmentTypeName",
-      "employmentType",
-      "ET_name",
-      "ET_employment_type_name",
-      "JQ_employment_type",
-      "employment_type",
-    ),
-    jobCategory: firstValue(
-      item,
-      "jobCategoryName",
-      "jobCategory",
-      "JC_name",
-      "JQ_job_category",
-    ),
-    vacancies: firstValue(
-      item,
-      "jQ_vacancies",
-      "JQ_vacancies",
-      "vacancies",
-      "JQ_number_of_vacancies",
-      "numberOfVacancies",
-    ),
-    applicants:
-      firstValue(
-        item,
-        "appliedCount",
-        "applicants",
-        "applicantCount",
-        "JQ_applicants",
-      ) || 0,
-    location: firstValue(
-      item,
-      "jobLocationName",
-      "location",
-      "JQ_job_location",
-      "jobLocation",
-    ),
-    isActive,
-    status: hasActiveValue ? (isActive ? "Active" : "Inactive") : status || "-",
-    requirementStatus: status || "-",
-    requirementStatusId: firstValue(
-      item,
-      "jQ_job_status_id",
-      "JQ_job_status_id",
-      "jobStatusId",
-    ),
-    deadline: firstValue(item, "jQ_deadline", "JQ_deadline", "deadline"),
-    srNo,
-  };
-  };
+    "JobDescriptionId",
+    "jQ_job_description_id",
+    "JQ_job_description_id",
+    "jobDescriptionId",
+    "id",
+  ),
+  organizationName: firstValue(
+    item,
+    "instituteTypeName",
+    "InstituteTypeName",
+    "organizationName",
+  ),
+  position: firstValue(item, "jobRoleName", "JobRoleName", "position"),
+  jobCategory: firstValue(
+    item,
+    "jobCategoryName",
+    "JobCategoryName",
+    "jobCategory",
+  ),
+  vacancies: firstValue(item, "jQ_vacancies", "vacancies", "numberOfVacancies"),
+  applicants:
+    firstValue(item, "appliedCount", "applicants", "applicantCount") || 0,
+});
 
 const JobDescriptionList = () => {
   const navigate = useNavigate();
   const [toast] = useStatusToast();
 
-  const [jobs, setJobs] = useState([]);
+  const [allJobs, setAllJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
 
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-
-  const [query, setQuery] = useState({
-    search: "",
-    isActive: "All",
-  });
-
-  const [busy, setBusy] = useState(false);
-
-  const [statusDialog, setStatusDialog] = useState(null);
-  const [jobStatuses, setJobStatuses] = useState([]);
-  const [statusForm, setStatusForm] = useState({
-    jobStatusId: "",
-    deadline: "",
-  });
-  const [statusLoading, setStatusLoading] = useState(false);
-  const [statusSaving, setStatusSaving] = useState(false);
-  const [statusError, setStatusError] = useState("");
 
   /* --------------------------- SCROLL SYNC REFS --------------------------- */
 
   const headerScrollRef = useRef(null);
-  const bodyScrollRef = useRef(null);
 
   const handleBodyScroll = useCallback((e) => {
     if (headerScrollRef.current) {
@@ -273,43 +126,27 @@ const JobDescriptionList = () => {
     setLoading(true);
     setError("");
     try {
-      const params = { pageNo: page, pageSize, JQ_is_CreatedByAdmin : true };
-      if (query.search.trim()) params.search = query.search.trim();
-      if (query.isActive !== "All")
-        params.isActive = query.isActive === "Active";
-
-      const response = await jdfornonregistercompanyApi.getJobDescription(params);
-      const result = parseListResponse(response);
-
-      setJobs(
-        result.list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1)
-        ),
-      );
-      setTotalRecords(result.totalRecords);
-      setTotalPages(
-        result.totalPages ||
-          Math.max(1, Math.ceil(result.totalRecords / pageSize)),
-      );
+      const response = await getAllJDByAdmin();
+      setAllJobs(extractList(response).map(toListRow));
     } catch (err) {
-      setJobs([]);
-      setTotalRecords(0);
-      setTotalPages(0);
+      setAllJobs([]);
+      toast?.({
+        message: getApiErrorMessage(err) || "Unable to load job descriptions.",
+        type: "error",
+      });
       setError(
         getApiErrorMessage(err) || "Unable to load job description records.",
       );
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, query]);
+  }, [toast]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  /* --------------------------- REFRESH --------------------------- */
-
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = async () => {
     if (refreshing) return;
     setRefreshing(true);
     try {
@@ -317,7 +154,40 @@ const JobDescriptionList = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [load, refreshing]);
+  };
+
+  /* --------------------------- FILTER + PAGINATION (client side) --------------------------- */
+
+  const filteredJobs = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return allJobs;
+    return allJobs.filter((job) =>
+      [job.jobId, job.organizationName, job.position, job.jobCategory].some(
+        (value) => String(value ?? "").toLowerCase().includes(term),
+      ),
+    );
+  }, [allJobs, search]);
+
+  const count = filteredJobs.length;
+  const totalPages = Math.max(1, Math.ceil(count / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const start = (currentPage - 1) * pageSize;
+
+  const pageRows = useMemo(
+    () =>
+      filteredJobs
+        .slice(start, start + pageSize)
+        .map((row, index) => ({ ...row, srNo: start + index + 1 })),
+    [filteredJobs, start, pageSize],
+  );
+
+  const pageNumbers = useMemo(() => {
+    const win = 5;
+    let from = Math.max(1, currentPage - Math.floor(win / 2));
+    const to = Math.min(totalPages, from + win - 1);
+    from = Math.max(1, to - win + 1);
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  }, [currentPage, totalPages]);
 
   /* --------------------------- STATS --------------------------- */
 
@@ -325,7 +195,7 @@ const JobDescriptionList = () => {
     () => [
       {
         title: "Total Job Descriptions",
-        value: totalRecords,
+        value: allJobs.length,
         note: "All time",
         icon: BriefcaseBusiness,
         from: "#6366f1",
@@ -334,18 +204,8 @@ const JobDescriptionList = () => {
         color2: "#8b5cf6",
       },
       {
-        title: "Active Jobs",
-        value: jobs.filter((j) => j.isActive).length,
-        note: "Active requirements",
-        icon: BadgeCheck,
-        from: "#10b981",
-        to: "#059669",
-        color: "#10b981",
-        color2: "#34d399",
-      },
-      {
         title: "Total Vacancies",
-        value: jobs.reduce((s, j) => s + Number(j.vacancies || 0), 0),
+        value: allJobs.reduce((s, j) => s + Number(j.vacancies || 0), 0),
         note: "Across all jobs",
         icon: UserPlus,
         from: "#f59e0b",
@@ -355,7 +215,7 @@ const JobDescriptionList = () => {
       },
       {
         title: "Total Applicants",
-        value: jobs.reduce((s, j) => s + Number(j.applicants || 0), 0),
+        value: allJobs.reduce((s, j) => s + Number(j.applicants || 0), 0),
         note: "Interested across all jobs",
         icon: Users,
         from: "#0ea5e9",
@@ -364,101 +224,8 @@ const JobDescriptionList = () => {
         color2: "#38bdf8",
       },
     ],
-    [jobs, totalRecords],
+    [allJobs],
   );
-
-  /* --------------------------- TOGGLE --------------------------- */
-
-  const handleToggle = async (row) => {
-    setBusy(true);
-    try {
-      await jdfornonregistercompanyApi.toggleActive?.(row.id, !row.isActive);
-      await load();
-      toast?.({
-        message: `Job description ${!row.isActive ? "activated" : "deactivated"} successfully.`,
-        type: "success",
-      });
-    } catch (err) {
-      toast?.({
-        message: getApiErrorMessage(err) || "Failed to toggle status.",
-        type: "error",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const patchFilter = (patch) => {
-    setQuery((q) => ({ ...q, ...patch }));
-    setPage(1);
-  };
-
-  /* --------------------------- PAGINATION --------------------------- */
-
-  const count = totalRecords;
-  const totalPagesLocal = Math.max(1, totalPages);
-  const currentPage = Math.min(page, totalPagesLocal);
-  const start = (currentPage - 1) * pageSize;
-  const pageRows = jobs;
-
-  const pageNumbers = useMemo(() => {
-    const win = 5;
-    let from = Math.max(1, currentPage - Math.floor(win / 2));
-    const to = Math.min(totalPagesLocal, from + win - 1);
-    from = Math.max(1, to - win + 1);
-    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
-  }, [currentPage, totalPagesLocal]);
-
-  /* --------------------------- STATUS DIALOG --------------------------- */
-
-  const openStatusDialog = async (row) => {
-    setStatusDialog(row);
-    setStatusForm({
-      jobStatusId: row.requirementStatusId ?? "",
-      deadline: row.deadline ? String(row.deadline).slice(0, 10) : "",
-    });
-    setStatusError("");
-    setStatusLoading(true);
-
-    try {
-      const response = await jdfornonregistercompanyApi.getJobStatuses();
-      setJobStatuses(extractList(response));
-    } catch (err) {
-      setStatusError(getApiErrorMessage(err) || "Unable to load job statuses.");
-    } finally {
-      setStatusLoading(false);
-    }
-  };
-
-  const closeStatusDialog = () => {
-    setStatusDialog(null);
-    setStatusError("");
-  };
-
-  const submitStatusUpdate = async (e) => {
-    e.preventDefault();
-    if (!statusDialog) return;
-    setStatusSaving(true);
-    setStatusError("");
-    try {
-      if (jdfornonregistercompanyApi.updateStatusAndDeadline) {
-        await jdfornonregistercompanyApi.updateStatusAndDeadline(
-          statusDialog.id,
-          { jobStatusId: statusForm.jobStatusId, deadline: statusForm.deadline },
-        );
-      }
-      await load();
-      closeStatusDialog();
-      toast?.({
-        message: "Job description status updated successfully.",
-        type: "success",
-      });
-    } catch (err) {
-      setStatusError(getApiErrorMessage(err) || "Failed to update status.");
-    } finally {
-      setStatusSaving(false);
-    }
-  };
 
   /* ---------------------------- STYLES ---------------------------- */
 
@@ -467,8 +234,6 @@ const JobDescriptionList = () => {
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a]`;
   const td =
     "border-t border-[#e2e8ee] px-2 py-2 text-[13px] text-slate-900 sm:px-3.5 sm:py-2.5 sm:text-[15px]";
-  const filterInput =
-    "h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[14px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30";
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2";
   const btnRefresh =
@@ -496,92 +261,60 @@ const JobDescriptionList = () => {
             Job Descriptions
           </h1>
 
-          <div className="flex w-full flex-col gap-2.5 sm:flex-row sm:items-center md:w-auto">
+          <div className="flex w-full items-center gap-2.5 md:w-auto">
+            <div className="relative w-full md:w-[280px]">
+              <SearchIcon
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
+              />
+              <input
+                type="search"
+                aria-label="Search job descriptions"
+                placeholder="Search by job ID, organization, role or category"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
+              />
+            </div>
+
             <button
               type="button"
-              onClick={() => setShowFilters(!showFilters)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 py-2 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]/30"
+              title="Refresh table"
+              aria-label="Refresh table"
+              onClick={handleRefresh}
+              disabled={refreshing || loading}
+              className={`${btnRefresh} disabled:opacity-60`}
             >
-              <SlidersHorizontal size={14} strokeWidth={2.2} />
-              <span className="inline">{showFilters ? "Hide" : "Show"} Filters</span>
+              <RefreshCw
+                size={15}
+                strokeWidth={2.2}
+                className={`shrink-0 transition-transform duration-500 ${
+                  refreshing ? "animate-spin" : "group-hover:rotate-90"
+                }`}
+              />
+              <span className="hidden sm:inline">
+                {refreshing ? "Refreshing..." : "Refresh"}
+              </span>
             </button>
 
-            <div className="flex w-full items-center gap-2.5 sm:w-auto">
-              <div className="relative w-full sm:flex-1 md:w-[280px] md:flex-none">
-                <SearchIcon
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
-                />
-                <input
-                  type="search"
-                  aria-label="Search jobs..."
-                  placeholder="Search by job title, company or ID"
-                  value={query.search}
-                  onChange={(e) => setQuery({ ...query, search: e.target.value })}
-                  className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
-                />
-              </div>
-
-              <button
-                type="button"
-                title="Refresh table"
-                aria-label="Refresh table"
-                onClick={handleRefresh}
-                disabled={refreshing || loading}
-                className={`${btnRefresh} flex-1 sm:flex-none disabled:opacity-60`}
-              >
-                <RefreshCw
-                  size={15}
-                  strokeWidth={2.2}
-                  className={`shrink-0 transition-transform duration-500 ${
-                    refreshing ? "animate-spin" : "group-hover:rotate-90"
-                  }`}
-                />
-                <span className="truncate">
-                  {refreshing ? "Refreshing..." : "Refresh"}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                title="Add"
-                onClick={() => navigate("/admin/jdbyadmin/add")}
-                className={`${btnPrimary} flex-1 sm:flex-none`}
-              >
-                <Plus
-                  size={15}
-                  strokeWidth={2.2}
-                  className="shrink-0 transition-transform group-hover:scale-110"
-                />
-                <span>Add</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              title="Add"
+              onClick={() => navigate("/admin/jdbyadmin/add")}
+              className={btnPrimary}
+            >
+              <Plus
+                size={15}
+                strokeWidth={2.2}
+                className="shrink-0 transition-transform group-hover:scale-110"
+              />
+              <span>Add</span>
+            </button>
           </div>
         </div>
-
-        {/* FILTER PANEL (collapsible, inside card) */}
-        {showFilters && (
-          <div className="mt-1 rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] p-3">
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="relative">
-                <select
-                  aria-label="Status"
-                  value={query.isActive}
-                  onChange={(e) => patchFilter({ isActive: e.target.value })}
-                  className={filterInput}
-                >
-                  <option value="All">Status: All</option>
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-                <ChevronDown
-                  size={15}
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
-                />
-              </div>
-            </div>
-          </div>
-        )}
 
         <div
           aria-hidden="true"
@@ -623,8 +356,6 @@ const JobDescriptionList = () => {
                   <th scope="col" className={thClass}>Job ID</th>
                   <th scope="col" className={thClass}>Organization</th>
                   <th scope="col" className={thClass}>Position</th>
-                  <th scope="col" className={thClass}>Status</th>
-                  <th scope="col" className={thClass}>Requirement Status</th>
                   <th scope="col" className={thClass}>Job Category</th>
                   <th scope="col" className={thClass}>Vacancies</th>
                   <th scope="col" className={thClass}>Applicants</th>
@@ -635,7 +366,6 @@ const JobDescriptionList = () => {
           </div>
 
           <div
-            ref={bodyScrollRef}
             onScroll={handleBodyScroll}
             className="common-scrollbar h-[330px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0"
           >
@@ -673,7 +403,9 @@ const JobDescriptionList = () => {
                         <Inbox size={22} />
                       </div>
                       <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
-                        No job descriptions yet
+                        {allJobs.length === 0
+                          ? "No job descriptions yet"
+                          : "No job descriptions match your search"}
                       </p>
                     </td>
                   </tr>
@@ -681,53 +413,25 @@ const JobDescriptionList = () => {
                   pageRows.map((row, index) => (
                     <tr
                       key={row.id ?? index}
-                      style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
-                      className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                      className="group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
-                      <td className={`${td} tabular-nums`}>
-                        {start + index + 1}
-                      </td>
+                      <td className={`${td} tabular-nums`}>{row.srNo}</td>
 
                       <td className={`${td} whitespace-nowrap`}>
-                        <span className="flex min-w-0 flex-col">
-                          <span
-                            className="truncate font-medium text-slate-900"
-                            title={row.requestId || "-"}
-                          >
-                            {row.requestId || "-"}
-                          </span>
+                        <span className="block truncate font-medium text-slate-900">
+                          {row.jobId || "-"}
                         </span>
                       </td>
 
                       <td className={`${td} whitespace-nowrap`}>
-                        <span className="flex min-w-0 flex-col">
-                          <span className="truncate font-medium text-slate-900">
-                            {row.organizationName || "-"}
-                          </span>
+                        <span className="block truncate font-medium text-slate-900">
+                          {row.organizationName || "-"}
                         </span>
                       </td>
 
                       <td className={`${td} whitespace-nowrap`}>
-                        <span className="flex min-w-0 flex-col">
-                          <span className="truncate font-medium text-slate-900">
-                            {row.position || "-"}
-                          </span>
-                        </span>
-                      </td>
-
-                      <td className={`${td} whitespace-nowrap`}>
-                        <span
-                          className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${toneOf(row.status).badge}`}
-                        >
-                          {row.status || "-"}
-                        </span>
-                      </td>
-
-                      <td className={`${td} whitespace-nowrap`}>
-                        <span
-                          className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${toneOf(row.requirementStatus).badge}`}
-                        >
-                          {row.requirementStatus || "-"}
+                        <span className="block truncate font-medium text-slate-900">
+                          {row.position || "-"}
                         </span>
                       </td>
 
@@ -747,99 +451,25 @@ const JobDescriptionList = () => {
                         </strong>
                       </td>
 
-                      <td className={`${td} whitespace-nowrap sm:w-10!`}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(`/admin/jdbyadmin/${row.id}`)
-                          }
-                          title={`View ${row.position || "this job"}`}
-                          aria-label={`View ${row.position || "this job"}`}
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span
                           className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] bg-sky-500 ring-sky-600 shadow-sky-500/20 sm:!h-7 sm:!min-w-[96px] sm:!text-[14px]`}
                         >
-                          <Users
-                            size={12}
-                            strokeWidth={2.4}
-                            className="sm:hidden"
-                          />
-                          <Users
-                            size={13}
-                            strokeWidth={2.4}
-                            className="hidden sm:block"
-                          />
+                          <Users size={13} strokeWidth={2.4} />
                           {Number(row.applicants || 0)}
-                        </button>
+                        </span>
                       </td>
+
                       <td className={stickyActionsCell}>
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            title={`View ${row.position || "Job"}`}
-                            aria-label={`View ${row.position || "Job"}`}
-                            onClick={() =>
-                              navigate(`/admin/jdbyadmin/${row.id}`)
-                            }
-                            className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                          >
-                            <ChevronsRight size={14} strokeWidth={2.2} />
-                          </button>
-
-                          <button
-                            type="button"
-                            title="Update requirement status and deadline"
-                            aria-label="Update requirement status and deadline"
-                            onClick={() => openStatusDialog(row)}
-                            className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#7c4dca] to-[#a878e8] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                          >
-                            <Flag size={14} strokeWidth={2.2} />
-                          </button>
-
-                          {busy ? null : (
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={row.isActive}
-                              aria-label={
-                                row.isActive
-                                  ? `Deactivate ${row.position || "Job"}`
-                                  : `Activate ${row.position || "Job"}`
-                              }
-                              title={
-                                row.isActive
-                                  ? "Active. Click to deactivate"
-                                  : "Inactive. Click to activate"
-                              }
-                              onClick={() => handleToggle(row)}
-                              className={`relative h-6 w-[38px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:w-[42px] ${
-                                row.isActive
-                                  ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                                  : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                              }`}
-                            >
-                              <span
-                                className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                                  row.isActive
-                                    ? "translate-x-[14px] sm:translate-x-[18px]"
-                                    : "translate-x-0"
-                                }`}
-                              >
-                                {row.isActive ? (
-                                  <UserRoundCheck
-                                    size={13}
-                                    strokeWidth={2.7}
-                                    className="text-emerald-700"
-                                  />
-                                ) : (
-                                  <UserRoundX
-                                    size={13}
-                                    strokeWidth={2.7}
-                                    className="text-rose-700"
-                                  />
-                                )}
-                              </span>
-                            </button>
-                          )}
-                        </div>
+                        <button
+                          type="button"
+                          title={`View ${row.position || "job description"}`}
+                          aria-label={`View ${row.position || "job description"}`}
+                          onClick={() => navigate(`/admin/jdbyadmin/${row.id}`)}
+                          className="mx-auto grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                        >
+                          <ChevronsRight size={14} strokeWidth={2.2} />
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -884,15 +514,12 @@ const JobDescriptionList = () => {
             </label>
           </div>
 
-          <nav
-            aria-label="Pagination"
-            className="flex flex-wrap items-center gap-1"
-          >
+          <nav aria-label="Pagination" className="flex flex-wrap items-center gap-1">
             <button
               type="button"
               onClick={() => setPage(currentPage - 1)}
               disabled={currentPage === 1}
-              className={navBtn}
+              className={`${navBtn} disabled:opacity-50`}
             >
               Previous
             </button>
@@ -914,120 +541,13 @@ const JobDescriptionList = () => {
             <button
               type="button"
               onClick={() => setPage(currentPage + 1)}
-              disabled={currentPage === totalPagesLocal}
-              className={navBtn}
+              disabled={currentPage === totalPages}
+              className={`${navBtn} disabled:opacity-50`}
             >
               Next
             </button>
           </nav>
         </div>
-
-        {/* STATUS DIALOG — responsive like EmployerList modals */}
-        {statusDialog && (
-          <div className="fixed inset-0 z-50 grid place-items-center p-3 sm:p-4">
-            <div
-              className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
-              onClick={closeStatusDialog}
-              aria-hidden="true"
-            />
-            <form
-              onSubmit={submitStatusUpdate}
-              className="relative max-h-[90vh] w-full max-w-[520px] overflow-y-auto rounded-2xl bg-white shadow-2xl"
-            >
-              <div className="h-1.5 w-full bg-gradient-to-r from-[#2c6b8a] to-[#4a9bb3]" />
-              <div className="flex items-start justify-between gap-2 border-b border-[#e2e8ee] px-4 py-3.5 sm:px-6 sm:py-4">
-                <div className="min-w-0">
-                  <h2 className="text-[16px] font-bold text-[#1e2b36] sm:text-[18px]">
-                    Update Job Description Status
-                  </h2>
-                  <p className="mt-1 truncate text-[12px] text-[#6b7a88] sm:text-[13px]">
-                    {statusDialog.position || "Job description"}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeStatusDialog}
-                  disabled={statusSaving}
-                  aria-label="Close"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#9aa5b1] hover:bg-slate-100 disabled:opacity-50"
-                >
-                  <CloseIcon size={16} />
-                </button>
-              </div>
-
-              {statusError && (
-                <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600 sm:mx-6">
-                  {statusError}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 gap-4 px-4 py-4 sm:grid-cols-2 sm:gap-5 sm:px-6 sm:py-5">
-                <label className="text-sm font-medium text-slate-700">
-                  Job Description Status
-                  <select
-                    value={statusForm.jobStatusId}
-                    onChange={(event) =>
-                      setStatusForm((current) => ({
-                        ...current,
-                        jobStatusId: event.target.value,
-                      }))
-                    }
-                    disabled={statusLoading || statusSaving}
-                    required
-                    className="mt-1.5 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50"
-                  >
-                    <option value="">
-                      {statusLoading ? "Loading statuses..." : "Select status"}
-                    </option>
-                    {jobStatuses.map((item) => (
-                      <option
-                        key={item.jS_job_status_id ?? item.id}
-                        value={item.jS_job_status_id ?? item.id}
-                      >
-                        {item.jS_name ?? item.name ?? "-"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="text-sm font-medium text-slate-700">
-                  Deadline
-                  <input
-                    type="date"
-                    value={statusForm.deadline}
-                    onChange={(event) =>
-                      setStatusForm((current) => ({
-                        ...current,
-                        deadline: event.target.value,
-                      }))
-                    }
-                    disabled={statusLoading || statusSaving}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50"
-                  />
-                </label>
-              </div>
-
-              <div className="border-t border-[#e2e8ee] px-4 py-4 sm:px-6 sm:py-5 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeStatusDialog}
-                  disabled={statusSaving}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={statusSaving || !statusForm.jobStatusId}
-                  className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-[#2c6b8a] hover:bg-[#3b86a6] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {statusSaving ? "Saving..." : "Save"}
-                </button>
-              </div>
-
-            </form>
-          </div>
-        )}
       </div>
     </div>
   );

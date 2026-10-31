@@ -1,26 +1,50 @@
 // src/pages/admin/job/CreateJobDescription.jsx
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import ReactQuill from "react-quill-new";
+import "react-quill-new/dist/quill.snow.css";
 import { ChevronDown, ChevronsLeft, Loader2, Pencil } from "lucide-react";
-import jdApi from "../../../api/Services/jdfornonregistercompanyApi";
+import {
+  getJDByAdminById,
+  createJDByAdmin,
+  updateJDByAdmin,
+} from "../../../api/Services/jdfornonregistercompanyApi";
 import instituteTypeApi from "../../../api/Services/instituteTypeApi";
 import jobCategoryApi from "../../../api/Services/jobCategoryApi";
 import jobRoleApi from "../../../api/Services/jobRoleApi";
-import employmentTypeApi from "../../../api/Services/employmentTypeApi";
-import countryMasterApi from "../../../api/Services/countryMasterApi";
-import stateMasterApi from "../../../api/Services/stateMasterApi";
-import cityMasterApi from "../../../api/Services/cityMasterApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 
-/* ------------------------------ STYLES ------------------------------ */
-
-const inputClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:cursor-not-allowed disabled:bg-slate-50";
+/* ------------------------------ CONSTANTS ------------------------------ */
 
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:cursor-not-allowed disabled:bg-slate-50";
 
 const DESCRIPTION_MAX = 500;
+
+const QUILL_MODULES = {
+  toolbar: [
+    [{ header: [false] }],
+    ["bold", "italic", "underline", "blockquote"],
+    [{ color: [] }],
+    [{ list: "ordered" }, { list: "bullet" }],
+    [{ indent: "-1" }, { indent: "+1" }],
+    [{ align: [] }],
+    ["link", "clean"],
+  ],
+};
+
+const QUILL_FORMATS = [
+  "header",
+  "bold",
+  "italic",
+  "underline",
+  "blockquote",
+  "color",
+  "list",
+  "indent",
+  "align",
+  "link",
+];
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -62,139 +86,73 @@ const options = (response, idKeys, nameKeys) =>
     }))
     .filter((item) => item.id !== "" && item.name !== "");
 
-// Shows "—" for empty values in view mode.
+// Shows "—" for empty values.
 const v = (value) =>
   value === null || value === undefined || value === "" ? "—" : String(value);
 
-const yesNo = (value) => (value ? "Yes" : "No");
-
-const dateInput = (value) => (value ? String(value).slice(0, 10) : "");
-
-const fmtDate = (value) => {
+// Format used in the reference screenshot: 28-04-25 12:19 PM
+const fmtDateTime = (value) => {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  const pad = (n) => String(n).padStart(2, "0");
+  const hours24 = d.getHours();
+  const ampm = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = hours24 % 12 || 12;
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy} ${pad(hours12)}:${pad(d.getMinutes())} ${ampm}`;
 };
 
-const fileNameFromPath = (path) => {
-  if (!path) return "";
-  const part = String(path).split(/[\\/]/).pop() || String(path);
-  try {
-    return decodeURIComponent(part);
-  } catch {
-    return part;
-  }
-};
+// Strips HTML tags so rich text can be measured and checked for emptiness.
+const plainText = (html) =>
+  String(html ?? "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
 
 /* ------------------------------ FORM ------------------------------ */
 
 const EMPTY = {
-  organizationName: "",
   organizationTypeId: "",
   jobCategoryId: "",
   jobRoleId: "",
-  employmentTypeId: "",
-  positionRequired: "",
-  departmentSpeciality: "",
-  numberOfVacancies: "",
-  qualificationRequired: "",
-  experienceRequired: "",
-  salaryRange: "",
-  dutyHours: "",
-  accommodation: false,
-  foodFacility: false,
-  countryId: "",
-  stateId: "",
-  cityId: "",
-  deadline: "",
-  expectedJoiningDate: "",
   description: "",
-  attachment: null,
 };
 
-// Maps the GET record (jQ_* keys) to form state, used for edit mode.
-// Country and state IDs must come from the record so the dropdowns can load by ID.
+// Maps the GET response (PascalCase or jQ_ keys) into form state.
 const formFromRecord = (r) => ({
-  organizationName: String(first(r, "jQ_org_name")),
   organizationTypeId: String(
-    first(r, "jQ_institute_type_id", "jQ_org_type_id"),
+    first(r, "InstituteTypeId", "jQ_institute_type_id", "instituteTypeId"),
   ),
-  jobCategoryId: String(first(r, "jQ_job_category_id")),
-  jobRoleId: String(first(r, "jQ_job_role_id")),
-  employmentTypeId: String(first(r, "jQ_employment_type_id")),
-  positionRequired: String(first(r, "jQ_position_title")),
-  departmentSpeciality: String(first(r, "jQ_department_speciality")),
-  numberOfVacancies: String(first(r, "jQ_vacancies")),
-  qualificationRequired: String(first(r, "jQ_qualification_required")),
-  experienceRequired: String(first(r, "jQ_experience_required")),
-  salaryRange: String(first(r, "jQ_salary_range")),
-  dutyHours: String(first(r, "jQ_duty_hours")),
-  accommodation: Boolean(first(r, "jQ_accommodation")),
-  foodFacility: Boolean(first(r, "jQ_food_facility")),
-  countryId: String(first(r, "jQ_country_id", "jQ_job_country_id")),
-  stateId: String(first(r, "jQ_state_id", "jQ_job_state_id")),
-  cityId: String(first(r, "jQ_job_location", "jQ_city_id")),
-  deadline: dateInput(first(r, "jQ_deadline")),
-  expectedJoiningDate: dateInput(first(r, "jQ_expected_joining_date")),
-  description: String(first(r, "jQ_description")).slice(0, DESCRIPTION_MAX),
-  attachment: null,
+  jobCategoryId: String(
+    first(r, "CategoryId", "jQ_job_category_id", "JobCategoryId", "jobCategoryId"),
+  ),
+  jobRoleId: String(
+    first(r, "RoleId", "jQ_job_role_id", "JobRoleId", "jobRoleId"),
+  ),
+  description: String(first(r, "Description", "jQ_description", "description")),
 });
-
-const REQUIRED = {
-  organizationName: "Organization name is required",
-  organizationTypeId: "Select an organization type",
-  jobCategoryId: "Select a job category",
-  jobRoleId: "Select a job role",
-  employmentTypeId: "Select an employment type",
-  positionRequired: "Position is required",
-  numberOfVacancies: "Number of vacancies is required",
-  qualificationRequired: "Qualification is required",
-  experienceRequired: "Experience is required",
-  countryId: "Select a country",
-  stateId: "Select a state",
-  cityId: "Select a city",
-  description: "Job description is required",
-};
 
 const validate = (f) => {
   const errors = {};
-  Object.entries(REQUIRED).forEach(([key, msg]) => {
-    if (!String(f[key] ?? "").trim()) errors[key] = msg;
-  });
-  if (f.numberOfVacancies !== "" && Number(f.numberOfVacancies) < 1) {
-    errors.numberOfVacancies = "Must be at least 1";
-  }
+  if (!f.organizationTypeId) errors.organizationTypeId = "Select an organization type";
+  if (!f.jobCategoryId) errors.jobCategoryId = "Select a job category";
+  if (!f.jobRoleId) errors.jobRoleId = "Select a job role";
+
+  const text = plainText(f.description);
+  if (!text) errors.description = "Job description is required";
+  else if (text.length > DESCRIPTION_MAX)
+    errors.description = `Description must be ${DESCRIPTION_MAX} characters or less`;
+
   return errors;
 };
 
-// Builds the payload with the PascalCase names the admin DTO expects.
+// Field names match the existing backend DTOs exactly.
 const toPayload = (f) => ({
-  OrganizationName: f.organizationName.trim(),
-  OrganizationTypeId: Number(f.organizationTypeId),
-  JobCategoryId: Number(f.jobCategoryId),
-  JobRoleId: Number(f.jobRoleId),
-  EmploymentTypeId: Number(f.employmentTypeId),
-  CountryId: Number(f.countryId),
-  StateId: Number(f.stateId),
-  CityId: Number(f.cityId),
-  PositionRequired: f.positionRequired.trim(),
-  DepartmentSpeciality: f.departmentSpeciality.trim(),
-  NumberOfVacancies: Number(f.numberOfVacancies),
-  QualificationRequired: f.qualificationRequired.trim(),
-  ExperienceRequired: f.experienceRequired.trim(),
-  SalaryRange: f.salaryRange.trim(),
-  DutyHours: f.dutyHours.trim(),
-  Accommodation: f.accommodation,
-  FoodFacility: f.foodFacility,
-  Deadline: f.deadline || null,
-  ExpectedJoiningDate: f.expectedJoiningDate || null,
-  Description: f.description.trim(),
-  Attachment: f.attachment ?? null,
+  InstituteTypeId: Number(f.organizationTypeId),
+  CategoryId: Number(f.jobCategoryId),
+  RoleId: Number(f.jobRoleId),
+  Description: f.description,
 });
 
 /* ------------------------------ UI PIECES ------------------------------ */
@@ -215,32 +173,18 @@ const Field = ({ label, required, error, full, alignTop, children }) => (
     </label>
     <div className="min-w-0 flex-1">
       {children}
-      {error && (
-        <span className="mt-1 block text-xs text-red-500">{error}</span>
-      )}
+      {error && <span className="mt-1 block text-xs text-red-500">{error}</span>}
     </div>
   </div>
 );
 
-// Read-only display used in view mode.
-const ReadOnly = ({ children, multiline = false }) => (
-  <div
-    className={`min-h-[38px] rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 break-words ${
-      multiline ? "whitespace-pre-wrap" : ""
-    }`}
-  >
+const ReadOnly = ({ children }) => (
+  <div className="min-h-[38px] rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 break-words">
     {children}
   </div>
 );
 
-const SelectField = ({
-  value,
-  onChange,
-  items,
-  placeholder,
-  disabled,
-  loading,
-}) => (
+const SelectField = ({ value, onChange, items, placeholder, disabled, loading }) => (
   <div className="relative">
     <select
       value={value}
@@ -264,6 +208,37 @@ const SelectField = ({
   </div>
 );
 
+// Audit header shown at the top of the card, as in the reference screenshot.
+const AuditHeader = ({ rec }) => {
+  const createdBy = first(rec, "jQ_created_by", "created_by", "createdBy");
+  const createdAt = first(rec, "jQ_created_at", "created_at", "createdAt");
+  const updatedBy = first(rec, "jQ_updated_by", "updated_by", "updatedBy");
+  const updatedAt = first(rec, "jQ_updated_at", "updated_at", "updatedAt");
+
+  return (
+    <div className="flex flex-col gap-1 border-b border-slate-200 px-6 py-4 text-sm text-slate-700 md:flex-row md:justify-between">
+      <div className="flex flex-col gap-1">
+        <p>
+          <span className="font-medium">Created By :</span> {v(createdBy)}
+        </p>
+        <p>
+          <span className="font-medium">Created Date :</span>{" "}
+          {fmtDateTime(createdAt)}
+        </p>
+      </div>
+      <div className="flex flex-col gap-1 md:text-right">
+        <p>
+          <span className="font-medium">Last Updated By :</span> {v(updatedBy)}
+        </p>
+        <p>
+          <span className="font-medium">Last Updated Date :</span>{" "}
+          {fmtDateTime(updatedAt)}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 /* ------------------------------ COMPONENT ------------------------------ */
 
 export default function CreateJobDescription() {
@@ -272,28 +247,21 @@ export default function CreateJobDescription() {
   const isCreate = !id;
 
   const [isView, setIsView] = useState(Boolean(id));
-  const [record, setRecord] = useState(null); // raw GET response, used for view mode
+  const [record, setRecord] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [savedForm, setSavedForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState("");
   const [loadingRecord, setLoadingRecord] = useState(!isCreate);
   const [saving, setSaving] = useState(false);
-  const [fileInputKey, setFileInputKey] = useState(0);
 
   const [sources, setSources] = useState({
     institutes: [],
     categories: [],
     roles: [],
-    employmentTypes: [],
-    countries: [],
-    states: [],
-    cities: [],
   });
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
-  const [loadingStates, setLoadingStates] = useState(false);
-  const [loadingCities, setLoadingCities] = useState(false);
 
   const mastersLoadedRef = useRef(false);
   const categoryReqId = useRef(0);
@@ -304,8 +272,8 @@ export default function CreateJobDescription() {
     setLoadingRecord(true);
     setError("");
     try {
-      const res = await jdApi.getJobDescriptionById(recordId);
-      const data = res?.data ?? res?.Data ?? null;
+      const res = await getJDByAdminById(recordId);
+      const data = res?.data ?? res?.Data ?? res;
       if (!data || typeof data !== "object") {
         throw new Error("Job description was not found.");
       }
@@ -332,105 +300,25 @@ export default function CreateJobDescription() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  /* ----- base master data: only in create and edit, loaded once ----- */
+  /* ----- organization types: loaded once, create and edit only ----- */
   useEffect(() => {
     if (isView || mastersLoadedRef.current) return;
     mastersLoadedRef.current = true;
 
-    Promise.allSettled([
-      instituteTypeApi.getAllList(),
-      employmentTypeApi.getAllList(),
-      countryMasterApi.getAllList(),
-    ]).then(([inst, emp, ctry]) => {
-      const ok = (r) => (r.status === "fulfilled" ? r.value : null);
-
-      setSources((s) => ({
-        ...s,
-        institutes: options(ok(inst), ["iT_institute_type_id"], ["iT_name"]),
-        employmentTypes: options(
-          ok(emp),
-          ["eT_employment_type_id"],
-          ["eT_name"],
-        ),
-        countries: options(ok(ctry), ["cM_Id"], ["cM_CountryName"]),
-      }));
-
-      const failed = [inst, emp, ctry].some((r) => r.status === "rejected");
-      if (failed) setError("Some form options could not be loaded.");
-    });
+    instituteTypeApi
+      .getAllList()
+      .then((res) => {
+        setSources((s) => ({
+          ...s,
+          institutes: options(res, ["iT_institute_type_id"], ["iT_name"]),
+        }));
+      })
+      .catch((err) => {
+        setError(getApiErrorMessage(err) || "Unable to load organization types.");
+      });
   }, [isView]);
 
-  /* ----- states load by country ID (edit only) ----- */
-  useEffect(() => {
-    if (isView) return undefined;
-    let cancelled = false;
-
-    setSources((s) => ({ ...s, states: [], cities: [] }));
-
-    if (!form.countryId) {
-      setLoadingStates(false);
-      return undefined;
-    }
-
-    setLoadingStates(true);
-    stateMasterApi
-      .getByCountry(Number(form.countryId))
-      .then((res) => {
-        if (cancelled) return;
-        setSources((s) => ({
-          ...s,
-          states: options(res, ["sM_Id"], ["sM_StateName"]),
-        }));
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(getApiErrorMessage(err) || "Unable to load states.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingStates(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isView, form.countryId]);
-
-  /* ----- cities load by state ID (edit only) ----- */
-  useEffect(() => {
-    if (isView) return undefined;
-    let cancelled = false;
-
-    setSources((s) => ({ ...s, cities: [] }));
-
-    if (!form.stateId) {
-      setLoadingCities(false);
-      return undefined;
-    }
-
-    setLoadingCities(true);
-    cityMasterApi
-      .getByState(Number(form.stateId))
-      .then((res) => {
-        if (cancelled) return;
-        setSources((s) => ({
-          ...s,
-          cities: options(res, ["ctM_Id"], ["ctM_CityName"]),
-        }));
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(getApiErrorMessage(err) || "Unable to load cities.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingCities(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isView, form.stateId]);
-
-  /* ----- categories depend on organization type (edit only) ----- */
+  /* ----- categories depend on organization type (create and edit) ----- */
   useEffect(() => {
     if (isView) return undefined;
     const reqId = ++categoryReqId.current;
@@ -467,7 +355,7 @@ export default function CreateJobDescription() {
     };
   }, [isView, form.organizationTypeId]);
 
-  /* ----- roles depend on job category (edit only) ----- */
+  /* ----- roles depend on job category (create and edit) ----- */
   useEffect(() => {
     if (isView) return undefined;
     const reqId = ++roleReqId.current;
@@ -504,7 +392,7 @@ export default function CreateJobDescription() {
   }, [isView, form.jobCategoryId]);
 
   /* ----- handlers ----- */
-  // Changing a parent clears its dependent children. Only user actions do this.
+  // Changing a parent clears its dependent child.
   const setField = (name, value) => {
     setForm((cur) => {
       const next = { ...cur, [name]: value };
@@ -513,11 +401,6 @@ export default function CreateJobDescription() {
         next.jobRoleId = "";
       }
       if (name === "jobCategoryId") next.jobRoleId = "";
-      if (name === "countryId") {
-        next.stateId = "";
-        next.cityId = "";
-      }
-      if (name === "stateId") next.cityId = "";
       return next;
     });
 
@@ -529,11 +412,6 @@ export default function CreateJobDescription() {
         delete next.jobRoleId;
       }
       if (name === "jobCategoryId") delete next.jobRoleId;
-      if (name === "countryId") {
-        delete next.stateId;
-        delete next.cityId;
-      }
-      if (name === "stateId") delete next.cityId;
       return next;
     });
   };
@@ -547,7 +425,6 @@ export default function CreateJobDescription() {
     setForm(savedForm);
     setErrors({});
     setError("");
-    setFileInputKey((k) => k + 1);
     setIsView(true);
   };
 
@@ -565,14 +442,10 @@ export default function CreateJobDescription() {
       const payload = toPayload(form);
 
       if (isCreate) {
-        const res = await jdApi.createJobDescription(payload);
-
-        if (res?.success || res?.Success) {
-          navigate("/admin/jdbyadmin", { replace: true });
-        }
+        await createJDByAdmin(payload);
+        navigate("/admin/jdbyadmin", { replace: true });
       } else {
-        await jdApi.updateJobDescription(id, payload);
-        setFileInputKey((k) => k + 1);
+        await updateJDByAdmin(id, payload);
         setIsView(true);
         await loadRecord(id);
       }
@@ -590,6 +463,7 @@ export default function CreateJobDescription() {
     : isView
       ? "View Job Description"
       : "Edit Job Description";
+  const descriptionLength = plainText(form.description).length;
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
@@ -611,6 +485,9 @@ export default function CreateJobDescription() {
             </div>
           </div>
 
+          {/* AUDIT INFO (existing records only) */}
+          {!isCreate && !loadingRecord && record && <AuditHeader rec={rec} />}
+
           {error && (
             <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
               {error}
@@ -625,27 +502,6 @@ export default function CreateJobDescription() {
           ) : (
             <form onSubmit={submit} noValidate className="p-4">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <Field
-                  label="Organization Name"
-                  required
-                  error={errors.organizationName}
-                >
-                  {isView ? (
-                    <ReadOnly>{v(rec.jQ_org_name)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form.organizationName}
-                      onChange={(e) =>
-                        setField("organizationName", e.target.value)
-                      }
-                      placeholder="e.g. XYZ Pharma Pvt. Ltd."
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
                 <Field
                   label="Organization Type"
                   required
@@ -707,266 +563,6 @@ export default function CreateJobDescription() {
                 </Field>
 
                 <Field
-                  label="Employment Type"
-                  required
-                  error={errors.employmentTypeId}
-                >
-                  {isView ? (
-                    <ReadOnly>{v(rec.employmentTypeName)}</ReadOnly>
-                  ) : (
-                    <SelectField
-                      value={form.employmentTypeId}
-                      onChange={(val) => setField("employmentTypeId", val)}
-                      items={sources.employmentTypes}
-                      placeholder="Select employment type"
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field
-                  label="Position Required"
-                  required
-                  error={errors.positionRequired}
-                >
-                  {isView ? (
-                    <ReadOnly>{v(rec.jQ_position_title)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form.positionRequired}
-                      onChange={(e) =>
-                        setField("positionRequired", e.target.value)
-                      }
-                      placeholder="e.g. Senior Staff Nurse"
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Department / Speciality">
-                  {isView ? (
-                    <ReadOnly>{v(rec.jQ_department_speciality)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form.departmentSpeciality}
-                      onChange={(e) =>
-                        setField("departmentSpeciality", e.target.value)
-                      }
-                      placeholder="e.g. ICU"
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field
-                  label="Number of Vacancies"
-                  required
-                  error={errors.numberOfVacancies}
-                >
-                  {isView ? (
-                    <ReadOnly>{v(rec.jQ_vacancies)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="number"
-                      min="1"
-                      value={form.numberOfVacancies}
-                      onChange={(e) =>
-                        setField("numberOfVacancies", e.target.value)
-                      }
-                      placeholder="e.g. 5"
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field
-                  label="Qualification Required"
-                  required
-                  error={errors.qualificationRequired}
-                >
-                  {isView ? (
-                    <ReadOnly>{v(rec.jQ_qualification_required)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form.qualificationRequired}
-                      onChange={(e) =>
-                        setField("qualificationRequired", e.target.value)
-                      }
-                      placeholder="e.g. B.Sc Nursing"
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field
-                  label="Experience Required"
-                  required
-                  error={errors.experienceRequired}
-                >
-                  {isView ? (
-                    <ReadOnly>{v(rec.jQ_experience_required)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form.experienceRequired}
-                      onChange={(e) =>
-                        setField("experienceRequired", e.target.value)
-                      }
-                      placeholder="e.g. 3-5 years"
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Salary Range">
-                  {isView ? (
-                    <ReadOnly>{v(rec.jQ_salary_range)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form.salaryRange}
-                      onChange={(e) => setField("salaryRange", e.target.value)}
-                      placeholder="e.g. 25,000 - 35,000"
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Duty Hours">
-                  {isView ? (
-                    <ReadOnly>{v(rec.jQ_duty_hours)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form.dutyHours}
-                      onChange={(e) => setField("dutyHours", e.target.value)}
-                      placeholder="e.g. 9 AM - 5 PM"
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Facilities">
-                  {isView ? (
-                    <ReadOnly>
-                      Accommodation: {yesNo(rec.jQ_accommodation)} · Food
-                      Facility: {yesNo(rec.jQ_food_facility)}
-                    </ReadOnly>
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-6 pt-2">
-                      <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={form.accommodation}
-                          onChange={(e) =>
-                            setField("accommodation", e.target.checked)
-                          }
-                          disabled={saving}
-                          className="h-4 w-4 accent-[#2f6b8a]"
-                        />
-                        Accommodation
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={form.foodFacility}
-                          onChange={(e) =>
-                            setField("foodFacility", e.target.checked)
-                          }
-                          disabled={saving}
-                          className="h-4 w-4 accent-[#2f6b8a]"
-                        />
-                        Food Facility
-                      </label>
-                    </div>
-                  )}
-                </Field>
-
-                {!isView && (
-                  <Field label="Country" required error={errors.countryId}>
-                    <SelectField
-                      value={form.countryId}
-                      onChange={(val) => setField("countryId", val)}
-                      items={sources.countries}
-                      placeholder="Select country"
-                      disabled={saving}
-                    />
-                  </Field>
-                )}
-
-                {!isView && (
-                  <Field label="State" required error={errors.stateId}>
-                    <SelectField
-                      value={form.stateId}
-                      onChange={(val) => setField("stateId", val)}
-                      items={sources.states}
-                      placeholder={
-                        form.countryId ? "Select state" : "Select country first"
-                      }
-                      loading={loadingStates}
-                      disabled={saving || !form.countryId || loadingStates}
-                    />
-                  </Field>
-                )}
-
-                <Field label="City" required={!isView} error={errors.cityId}>
-                  {isView ? (
-                    <ReadOnly>{v(rec.jobLocationName)}</ReadOnly>
-                  ) : (
-                    <SelectField
-                      value={form.cityId}
-                      onChange={(val) => setField("cityId", val)}
-                      items={sources.cities}
-                      placeholder={
-                        form.stateId ? "Select city" : "Select state first"
-                      }
-                      loading={loadingCities}
-                      disabled={saving || !form.stateId || loadingCities}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Deadline">
-                  {isView ? (
-                    <ReadOnly>{fmtDate(rec.jQ_deadline)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="date"
-                      value={form.deadline}
-                      onChange={(e) => setField("deadline", e.target.value)}
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Expected Joining Date">
-                  {isView ? (
-                    <ReadOnly>{fmtDate(rec.jQ_expected_joining_date)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="date"
-                      value={form.expectedJoiningDate}
-                      onChange={(e) =>
-                        setField("expectedJoiningDate", e.target.value)
-                      }
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field
                   label="Job Description"
                   required
                   full
@@ -974,64 +570,42 @@ export default function CreateJobDescription() {
                   error={errors.description}
                 >
                   {isView ? (
-                    <ReadOnly multiline>{v(rec.jQ_description)}</ReadOnly>
+                    <div className="min-h-[38px] rounded-lg border border-slate-200 bg-slate-50 break-words">
+                      {plainText(rec.Description ?? rec.jQ_description) ? (
+                        <div
+                          className="ql-editor !px-3 !py-2 !text-sm !text-slate-800"
+                          dangerouslySetInnerHTML={{
+                            __html: rec.Description ?? rec.jQ_description,
+                          }}
+                        />
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-slate-800">—</div>
+                      )}
+                    </div>
                   ) : (
-                    <div>
-                      <textarea
-                        rows={5}
-                        maxLength={DESCRIPTION_MAX}
+                    <div className="mt-4">
+                      <ReactQuill
+                        theme="snow"
                         value={form.description}
-                        onChange={(e) =>
-                          setField("description", e.target.value)
-                        }
+                        onChange={(html) => setField("description", html)}
+                        modules={QUILL_MODULES}
+                        formats={QUILL_FORMATS}
+                        readOnly={saving}
                         placeholder="Describe the role, responsibilities, and expectations..."
-                        className={`${inputClass} resize-y`}
-                        disabled={saving}
+                        className="h-[200px]"
                       />
                       <div className="mt-1 flex justify-end">
-                        <span className="text-[11px] text-slate-500">
-                          {form.description.length}/{DESCRIPTION_MAX}
+                        <span
+                          className={`text-[11px] ${
+                            descriptionLength > DESCRIPTION_MAX
+                              ? "text-red-500"
+                              : "text-slate-500"
+                          }`}
+                        >
+                          {descriptionLength}/{DESCRIPTION_MAX}
                         </span>
                       </div>
                     </div>
-                  )}
-                </Field>
-
-                <Field label="Attachment (JD file)" full alignTop>
-                  {isView ? (
-                    <ReadOnly>
-                      {rec.jQ_jd_file_path
-                        ? fileNameFromPath(rec.jQ_jd_file_path)
-                        : "No file attached"}
-                    </ReadOnly>
-                  ) : (
-                    <>
-                      <input
-                        key={fileInputKey}
-                        type="file"
-                        accept=".pdf,.doc,.docx"
-                        onChange={(e) =>
-                          setField("attachment", e.target.files?.[0] ?? null)
-                        }
-                        disabled={saving}
-                        className="block w-full cursor-pointer text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-[#2f6b8a]/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-[#2f6b8a] hover:file:bg-[#2f6b8a]/20"
-                      />
-                      <p className="mt-1.5 text-xs text-slate-500">
-                        Optional. PDF / DOC / DOCX.
-                      </p>
-                      {form.attachment ? (
-                        <p className="mt-1 break-all text-xs text-slate-600">
-                          Selected: {form.attachment.name}
-                        </p>
-                      ) : (
-                        rec.jQ_jd_file_path && (
-                          <p className="mt-1 break-all text-xs text-slate-500">
-                            Current: {fileNameFromPath(rec.jQ_jd_file_path)}{" "}
-                            (upload a new file to replace it)
-                          </p>
-                        )
-                      )}
-                    </>
                   )}
                 </Field>
               </div>
@@ -1068,21 +642,11 @@ export default function CreateJobDescription() {
                     </button>
                     <button
                       type="submit"
-                      disabled={
-                        saving ||
-                        loadingCategories ||
-                        loadingRoles ||
-                        loadingStates ||
-                        loadingCities
-                      }
+                      disabled={saving || loadingCategories || loadingRoles}
                       className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {saving && <Loader2 size={16} className="animate-spin" />}
-                      {saving
-                        ? "Saving..."
-                        : isCreate
-                          ? "Create"
-                          : "Save Changes"}
+                      {saving ? "Saving..." : isCreate ? "Create" : "Save Changes"}
                     </button>
                   </>
                 )}
