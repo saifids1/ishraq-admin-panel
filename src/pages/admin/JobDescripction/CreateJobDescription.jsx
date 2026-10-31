@@ -48,7 +48,7 @@ const QUILL_FORMATS = [
 
 /* ------------------------------ HELPERS ------------------------------ */
 
-// Reads a key case-insensitively, so "jQ_org_name" also matches "JQ_org_name".
+// Reads a key case-insensitively, so "categoryId" also matches "CategoryId".
 const first = (item, ...keys) => {
   for (const key of keys) {
     if (item?.[key] !== undefined && item?.[key] !== null) return item[key];
@@ -76,6 +76,22 @@ const listFrom = (response) => {
     if (Array.isArray(value?.Data)) return value.Data;
   }
   return [];
+};
+
+// Finds the single job description object inside a GET response.
+const recordFrom = (response) => {
+  const root = response?.data ?? response;
+  for (const candidate of [root?.data, root?.Data, root]) {
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate) &&
+      ("jdbA_Id" in candidate || "id" in candidate || "roleId" in candidate)
+    ) {
+      return candidate;
+    }
+  }
+  return null;
 };
 
 const options = (response, idKeys, nameKeys) =>
@@ -119,18 +135,16 @@ const EMPTY = {
   description: "",
 };
 
-// Maps the GET response (PascalCase or jQ_ keys) into form state.
+// Maps the GET record (camelCase or PascalCase) into form state.
 const formFromRecord = (r) => ({
   organizationTypeId: String(
-    first(r, "InstituteTypeId", "jQ_institute_type_id", "instituteTypeId"),
+    first(r, "instituteTypeId", "InstituteTypeId", "jQ_institute_type_id"),
   ),
   jobCategoryId: String(
-    first(r, "CategoryId", "jQ_job_category_id", "JobCategoryId", "jobCategoryId"),
+    first(r, "categoryId", "CategoryId", "jQ_job_category_id"),
   ),
-  jobRoleId: String(
-    first(r, "RoleId", "jQ_job_role_id", "JobRoleId", "jobRoleId"),
-  ),
-  description: String(first(r, "Description", "jQ_description", "description")),
+  jobRoleId: String(first(r, "roleId", "RoleId", "jQ_job_role_id")),
+  description: String(first(r, "description", "Description", "jQ_description")),
 });
 
 const validate = (f) => {
@@ -210,10 +224,10 @@ const SelectField = ({ value, onChange, items, placeholder, disabled, loading })
 
 // Audit header shown at the top of the card, as in the reference screenshot.
 const AuditHeader = ({ rec }) => {
-  const createdBy = first(rec, "jQ_created_by", "created_by", "createdBy");
-  const createdAt = first(rec, "jQ_created_at", "created_at", "createdAt");
-  const updatedBy = first(rec, "jQ_updated_by", "updated_by", "updatedBy");
-  const updatedAt = first(rec, "jQ_updated_at", "updated_at", "updatedAt");
+  const createdBy = first(rec, "createdBy", "CreatedBy", "jQ_created_by");
+  const createdAt = first(rec, "createdAt", "CreatedAt", "jQ_created_at");
+  const updatedBy = first(rec, "updatedBy", "UpdatedBy", "jQ_updated_by");
+  const updatedAt = first(rec, "updatedAt", "UpdatedAt", "jQ_updated_at");
 
   return (
     <div className="flex flex-col gap-1 border-b border-slate-200 px-6 py-4 text-sm text-slate-700 md:flex-row md:justify-between">
@@ -273,8 +287,8 @@ export default function CreateJobDescription() {
     setError("");
     try {
       const res = await getJDByAdminById(recordId);
-      const data = res?.data ?? res?.Data ?? res;
-      if (!data || typeof data !== "object") {
+      const data = recordFrom(res);
+      if (!data) {
         throw new Error("Job description was not found.");
       }
       const mapped = formFromRecord(data);
@@ -310,7 +324,11 @@ export default function CreateJobDescription() {
       .then((res) => {
         setSources((s) => ({
           ...s,
-          institutes: options(res, ["iT_institute_type_id"], ["iT_name"]),
+          institutes: options(
+            res,
+            ["iT_institute_type_id", "instituteTypeId", "id"],
+            ["iT_name", "instituteTypeName", "name"],
+          ),
         }));
       })
       .catch((err) => {
@@ -338,7 +356,11 @@ export default function CreateJobDescription() {
         if (cancelled || reqId !== categoryReqId.current) return;
         setSources((s) => ({
           ...s,
-          categories: options(res, ["jC_job_category_id"], ["jC_name"]),
+          categories: options(
+            res,
+            ["jC_job_category_id", "categoryId", "id"],
+            ["jC_name", "categoryName", "name"],
+          ),
         }));
       })
       .catch((err) => {
@@ -375,7 +397,11 @@ export default function CreateJobDescription() {
         if (cancelled || reqId !== roleReqId.current) return;
         setSources((s) => ({
           ...s,
-          roles: options(res, ["jR_job_role_id"], ["jR_name"]),
+          roles: options(
+            res,
+            ["jR_job_role_id", "roleId", "id"],
+            ["jR_name", "roleName", "name"],
+          ),
         }));
       })
       .catch((err) => {
@@ -464,6 +490,7 @@ export default function CreateJobDescription() {
       ? "View Job Description"
       : "Edit Job Description";
   const descriptionLength = plainText(form.description).length;
+  const descriptionHtml = first(rec, "description", "Description");
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
@@ -508,7 +535,7 @@ export default function CreateJobDescription() {
                   error={errors.organizationTypeId}
                 >
                   {isView ? (
-                    <ReadOnly>{v(rec.instituteTypeName)}</ReadOnly>
+                    <ReadOnly>{v(first(rec, "instituteTypeName"))}</ReadOnly>
                   ) : (
                     <SelectField
                       value={form.organizationTypeId}
@@ -526,7 +553,7 @@ export default function CreateJobDescription() {
                   error={errors.jobCategoryId}
                 >
                   {isView ? (
-                    <ReadOnly>{v(rec.jobCategoryName)}</ReadOnly>
+                    <ReadOnly>{v(first(rec, "categoryName"))}</ReadOnly>
                   ) : (
                     <SelectField
                       value={form.jobCategoryId}
@@ -545,7 +572,7 @@ export default function CreateJobDescription() {
 
                 <Field label="Job Role" required error={errors.jobRoleId}>
                   {isView ? (
-                    <ReadOnly>{v(rec.jobRoleName)}</ReadOnly>
+                    <ReadOnly>{v(first(rec, "roleName"))}</ReadOnly>
                   ) : (
                     <SelectField
                       value={form.jobRoleId}
@@ -571,12 +598,10 @@ export default function CreateJobDescription() {
                 >
                   {isView ? (
                     <div className="min-h-[38px] rounded-lg border border-slate-200 bg-slate-50 break-words">
-                      {plainText(rec.Description ?? rec.jQ_description) ? (
+                      {plainText(descriptionHtml) ? (
                         <div
                           className="ql-editor !px-3 !py-2 !text-sm !text-slate-800"
-                          dangerouslySetInnerHTML={{
-                            __html: rec.Description ?? rec.jQ_description,
-                          }}
+                          dangerouslySetInnerHTML={{ __html: descriptionHtml }}
                         />
                       ) : (
                         <div className="px-3 py-2 text-sm text-slate-800">—</div>
