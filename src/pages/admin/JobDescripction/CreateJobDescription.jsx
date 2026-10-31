@@ -1,5 +1,5 @@
 // src/pages/admin/job/CreateJobDescription.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronsLeft, Loader2, Pencil } from "lucide-react";
 import jdApi from "../../../api/Services/jdfornonregistercompanyApi";
@@ -119,6 +119,7 @@ const EMPTY = {
 };
 
 // Maps the GET record (jQ_* keys) to form state, used for edit mode.
+// Country and state IDs must come from the record so the dropdowns can load by ID.
 const formFromRecord = (r) => ({
   organizationName: String(first(r, "jQ_org_name")),
   organizationTypeId: String(first(r, "jQ_institute_type_id", "jQ_org_type_id")),
@@ -135,10 +136,9 @@ const formFromRecord = (r) => ({
   dutyHours: String(first(r, "jQ_duty_hours")),
   accommodation: Boolean(first(r, "jQ_accommodation")),
   foodFacility: Boolean(first(r, "jQ_food_facility")),
-  // The GET response has no country or state, so they are derived from the city once masters load.
-  countryId: "",
-  stateId: "",
-  cityId: String(first(r, "jQ_job_location")),
+  countryId: String(first(r, "jQ_country_id", "jQ_job_country_id")),
+  stateId: String(first(r, "jQ_state_id", "jQ_job_state_id")),
+  cityId: String(first(r, "jQ_job_location", "jQ_city_id")),
   deadline: dateInput(first(r, "jQ_deadline")),
   expectedJoiningDate: dateInput(first(r, "jQ_expected_joining_date")),
   assignedTo: String(first(r, "jQ_assigned_to")),
@@ -288,17 +288,17 @@ export default function CreateJobDescription() {
   });
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
 
   const mastersLoadedRef = useRef(false);
   const categoryReqId = useRef(0);
   const roleReqId = useRef(0);
-  const derivedLocationRef = useRef(false);
 
   /* ----- load the record (view and edit) ----- */
   const loadRecord = async (recordId) => {
     setLoadingRecord(true);
     setError("");
-    derivedLocationRef.current = false;
     try {
       const res = await jdApi.getJobDescriptionById(recordId);
       const data = res?.data ?? res?.Data ?? null;
@@ -328,7 +328,7 @@ export default function CreateJobDescription() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  /* ----- master data: only in create and edit, loaded once ----- */
+  /* ----- base master data: only in create and edit, loaded once ----- */
   useEffect(() => {
     if (isView || mastersLoadedRef.current) return;
     mastersLoadedRef.current = true;
@@ -337,9 +337,7 @@ export default function CreateJobDescription() {
       instituteTypeApi.getAllList(),
       employmentTypeApi.getAllList(),
       countryMasterApi.getAllList(),
-      stateMasterApi.getAllList(),
-      cityMasterApi.getAllList(),
-    ]).then(([inst, emp, ctry, st, city]) => {
+    ]).then(([inst, emp, ctry]) => {
       const ok = (r) => (r.status === "fulfilled" ? r.value : null);
 
       setSources((s) => ({
@@ -347,46 +345,82 @@ export default function CreateJobDescription() {
         institutes: options(ok(inst), ["iT_institute_type_id"], ["iT_name"]),
         employmentTypes: options(ok(emp), ["eT_employment_type_id"], ["eT_name"]),
         countries: options(ok(ctry), ["cM_Id"], ["cM_CountryName"]),
-        states: listFrom(ok(st))
-          .map((item) => ({
-            id: first(item, "sM_Id"),
-            name: first(item, "sM_StateName"),
-            countryId: String(first(item, "sM_CountryId")),
-          }))
-          .filter((item) => item.id !== "" && item.name !== ""),
-        cities: listFrom(ok(city))
-          .map((item) => ({
-            id: first(item, "ctM_Id"),
-            name: first(item, "ctM_CityName"),
-            stateId: String(first(item, "ctM_StateId")),
-          }))
-          .filter((item) => item.id !== "" && item.name !== ""),
       }));
 
-      const failed = [inst, emp, ctry, st, city].some((r) => r.status === "rejected");
+      const failed = [inst, emp, ctry].some((r) => r.status === "rejected");
       if (failed) setError("Some form options could not be loaded.");
     });
   }, [isView]);
 
-  /* ----- derive country and state from the saved city (edit only) ----- */
+  /* ----- states load by country ID (edit only) ----- */
   useEffect(() => {
-    if (isView) return;
-    if (derivedLocationRef.current) return;
-    if (!form.cityId) return;
-    if (!sources.cities.length || !sources.states.length) return;
+    if (isView) return undefined;
+    let cancelled = false;
 
-    const city = sources.cities.find((c) => String(c.id) === String(form.cityId));
-    if (!city) return;
+    setSources((s) => ({ ...s, states: [], cities: [] }));
 
-    const state = sources.states.find((s) => String(s.id) === String(city.stateId));
-    derivedLocationRef.current = true;
+    if (!form.countryId) {
+      setLoadingStates(false);
+      return undefined;
+    }
 
-    setForm((cur) => ({
-      ...cur,
-      stateId: cur.stateId || (state ? String(state.id) : ""),
-      countryId: cur.countryId || (state ? String(state.countryId) : ""),
-    }));
-  }, [isView, form.cityId, sources.cities, sources.states]);
+    setLoadingStates(true);
+    stateMasterApi
+      .getByCountry(Number(form.countryId))
+      .then((res) => {
+        if (cancelled) return;
+        setSources((s) => ({
+          ...s,
+          states: options(res, ["sM_Id"], ["sM_StateName"]),
+        }));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(getApiErrorMessage(err) || "Unable to load states.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStates(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isView, form.countryId]);
+
+  /* ----- cities load by state ID (edit only) ----- */
+  useEffect(() => {
+    if (isView) return undefined;
+    let cancelled = false;
+
+    setSources((s) => ({ ...s, cities: [] }));
+
+    if (!form.stateId) {
+      setLoadingCities(false);
+      return undefined;
+    }
+
+    setLoadingCities(true);
+    cityMasterApi
+      .getByState(Number(form.stateId))
+      .then((res) => {
+        if (cancelled) return;
+        setSources((s) => ({
+          ...s,
+          cities: options(res, ["ctM_Id"], ["ctM_CityName"]),
+        }));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(getApiErrorMessage(err) || "Unable to load cities.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCities(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isView, form.stateId]);
 
   /* ----- categories depend on organization type (edit only) ----- */
   useEffect(() => {
@@ -459,17 +493,6 @@ export default function CreateJobDescription() {
       cancelled = true;
     };
   }, [isView, form.jobCategoryId]);
-
-  /* ----- filtered location lists (edit only) ----- */
-  const filteredStates = useMemo(
-    () => sources.states.filter((s) => String(s.countryId) === String(form.countryId)),
-    [sources.states, form.countryId]
-  );
-
-  const filteredCities = useMemo(
-    () => sources.cities.filter((c) => String(c.stateId) === String(form.stateId)),
-    [sources.cities, form.stateId]
-  );
 
   /* ----- handlers ----- */
   // Changing a parent clears its dependent children. Only user actions do this.
@@ -810,7 +833,7 @@ export default function CreateJobDescription() {
 
                 <Field label="Country" required error={errors.countryId}>
                   {isView ? (
-                    <ReadOnly>—</ReadOnly>
+                    <ReadOnly>{v(rec.countryName)}</ReadOnly>
                   ) : (
                     <SelectField
                       value={form.countryId}
@@ -824,14 +847,15 @@ export default function CreateJobDescription() {
 
                 <Field label="State" required error={errors.stateId}>
                   {isView ? (
-                    <ReadOnly>—</ReadOnly>
+                    <ReadOnly>{v(rec.stateName)}</ReadOnly>
                   ) : (
                     <SelectField
                       value={form.stateId}
                       onChange={(val) => setField("stateId", val)}
-                      items={filteredStates}
+                      items={sources.states}
                       placeholder={form.countryId ? "Select state" : "Select country first"}
-                      disabled={saving || !form.countryId}
+                      loading={loadingStates}
+                      disabled={saving || !form.countryId || loadingStates}
                     />
                   )}
                 </Field>
@@ -843,9 +867,10 @@ export default function CreateJobDescription() {
                     <SelectField
                       value={form.cityId}
                       onChange={(val) => setField("cityId", val)}
-                      items={filteredCities}
+                      items={sources.cities}
                       placeholder={form.stateId ? "Select city" : "Select state first"}
-                      disabled={saving || !form.stateId}
+                      loading={loadingCities}
+                      disabled={saving || !form.stateId || loadingCities}
                     />
                   )}
                 </Field>
@@ -997,7 +1022,7 @@ export default function CreateJobDescription() {
                     </button>
                     <button
                       type="submit"
-                      disabled={saving || loadingCategories || loadingRoles}
+                      disabled={saving || loadingCategories || loadingRoles || loadingStates || loadingCities}
                       className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {saving && <Loader2 size={16} className="animate-spin" />}

@@ -14,8 +14,7 @@ const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50 disabled:text-slate-500";
 
 /* ---------- field row: label : input ---------- */
-const FIELD_LABEL =
-  "text-[14px] font-semibold text-black leading-tight";
+const FIELD_LABEL = "text-[14px] font-semibold text-black leading-tight";
 
 const FieldRow = ({ label, required, children, fullWidth }) => (
   <div
@@ -146,9 +145,7 @@ const CreateCity = ({ mode }) => {
   const [error, setError] = useState("");
 
   // ─────────────────────────────────────────────────────────────────────
-  // Local StatusModal state (replaces StatusModalProvider)
-  // modal = { type, title, message, confirmText, cancelText, showCancel,
-  //           onConfirm, onCancel }
+  // Local StatusModal state
   // ─────────────────────────────────────────────────────────────────────
   const [modal, setModal] = useState(null);
 
@@ -191,7 +188,7 @@ const CreateCity = ({ mode }) => {
   };
 
   // ─────────────────────────────────────────────────────────────────────
-  // Load countries
+  // Countries (full list is fine here, it's the top-level dropdown)
   // ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
@@ -199,13 +196,12 @@ const CreateCity = ({ mode }) => {
       setLoadingCountries(true);
       try {
         const response = await countryMasterApi.getAllList();
-        const result = extractList(response);
-        if (!cancelled) setCountries(result);
+        if (!cancelled) setCountries(extractList(response));
       } catch (err) {
         if (!cancelled) {
-          console.error("Failed to load countries:", err);
-          setError("Failed to load countries.");
-          openStatus("error", "Failed to load countries.");
+          const msg = getErrorMessage(err, "Failed to load countries.");
+          setError(msg);
+          openStatus("error", msg);
         }
       } finally {
         if (!cancelled) setLoadingCountries(false);
@@ -215,35 +211,46 @@ const CreateCity = ({ mode }) => {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────
-  // Load states
+  // States by country ID: GET /StateMaster/country/{countryId}
+  // Runs in create, view and edit so the saved state name can display.
   // ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
+    setStates([]);
+
+    if (!countryId) {
+      setLoadingStates(false);
+      return undefined;
+    }
+
     let cancelled = false;
-    const loadStates = async () => {
-      setLoadingStates(true);
-      try {
-        const response = await stateMasterApi.getAllList();
-        const result = extractList(response);
-        if (!cancelled) setStates(result);
-      } catch (err) {
+    setLoadingStates(true);
+
+    stateMasterApi
+      .getByCountry(Number(countryId))
+      .then((response) => {
+        if (!cancelled) setStates(extractList(response));
+      })
+      .catch((err) => {
         if (!cancelled) {
-          console.error("Failed to load states:", err);
+          const msg = getErrorMessage(err, "Failed to load states.");
           setStates([]);
-          setError("Failed to load states.");
-          openStatus("error", "Failed to load states.");
+          setError(msg);
+          openStatus("error", msg);
         }
-      } finally {
+      })
+      .finally(() => {
         if (!cancelled) setLoadingStates(false);
-      }
-    };
-    loadStates();
+      });
+
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryId]);
 
   // ─────────────────────────────────────────────────────────────────────
   // Load record (view/edit)
@@ -260,12 +267,12 @@ const CreateCity = ({ mode }) => {
       setAudit({ createdAt: "", createdBy: "", updatedAt: "", updatedBy: "" });
       setError("");
       setLoading(false);
-      return;
+      return undefined;
     }
 
     if (!id) {
       setError("Record ID is missing.");
-      return;
+      return undefined;
     }
 
     const loadRecord = async () => {
@@ -288,6 +295,7 @@ const CreateCity = ({ mode }) => {
         setStatus(item[config.activeField] ? "Active" : "Inactive");
         setPostalCode(item[config.postalCodeField] ?? "");
 
+        // The city record only has its state ID, so the country is resolved from the state.
         const savedStateId = String(item[config.stateField] ?? "");
         setStateId(savedStateId);
 
@@ -299,20 +307,22 @@ const CreateCity = ({ mode }) => {
           }
         }
 
-        setAudit({
-          createdAt: formatDate(item[config.createdAtField]),
-          createdBy: pickUserDisplay(
-            item,
-            config.createdByNameField,
-            config.createdByField,
-          ),
-          updatedAt: formatDate(item[config.updatedAtField]),
-          updatedBy: pickUserDisplay(
-            item,
-            config.updatedByNameField || "-",
-            config.updatedByField,
-          ),
-        });
+        if (!cancelled) {
+          setAudit({
+            createdAt: formatDate(item[config.createdAtField]),
+            createdBy: pickUserDisplay(
+              item,
+              config.createdByNameField,
+              config.createdByField,
+            ),
+            updatedAt: formatDate(item[config.updatedAtField]),
+            updatedBy: pickUserDisplay(
+              item,
+              config.updatedByNameField,
+              config.updatedByField,
+            ),
+          });
+        }
       } catch (err) {
         if (!cancelled) {
           const msg = getErrorMessage(err, "Failed to load record.");
@@ -328,18 +338,18 @@ const CreateCity = ({ mode }) => {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isCreate]);
 
   // ─────────────────────────────────────────────────────────────────────
-  // Core save logic (shared by create and update)
+  // Save (shared by create and update)
   // ─────────────────────────────────────────────────────────────────────
   const runSave = async () => {
     setSaving(true);
     setError("");
 
     const trimmedName = name.trim();
-    // Current logged-in user id — used for both CreatedBy (create) and UpdatedBy (edit)
-    const currentUserId = getCurrentUserId2();
+    const currentUserId = Number(getCurrentUserId2());
 
     try {
       if (isCreate) {
@@ -348,7 +358,6 @@ const CreateCity = ({ mode }) => {
           [config.stateField]: Number(stateId),
           [config.postalCodeField]: postalCode.trim() || "",
           [config.activeField]: status === "Active",
-          // Only include CreatedBy when we have a valid user id
           ...(currentUserId > 0
             ? { [config.createdByField]: currentUserId }
             : {}),
@@ -372,7 +381,6 @@ const CreateCity = ({ mode }) => {
           [config.stateField]: Number(stateId),
           [config.postalCodeField]: postalCode.trim() || "",
           [config.activeField]: status === "Active",
-          // Only include UpdatedBy when we have a valid user id
           ...(currentUserId > 0
             ? { [config.updatedByField]: currentUserId }
             : {}),
@@ -403,7 +411,7 @@ const CreateCity = ({ mode }) => {
   };
 
   // ─────────────────────────────────────────────────────────────────────
-  // Submit handler
+  // Submit
   // ─────────────────────────────────────────────────────────────────────
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -425,6 +433,12 @@ const CreateCity = ({ mode }) => {
     }
     if (!stateId) {
       const msg = "State is required.";
+      setError(msg);
+      openStatus("warning", msg);
+      return;
+    }
+    if (!states.some((s) => String(s.sM_Id) === String(stateId))) {
+      const msg = "Select a State for the selected Country.";
       setError(msg);
       openStatus("warning", msg);
       return;
@@ -500,9 +514,7 @@ const CreateCity = ({ mode }) => {
                     className={selectClass}
                   >
                     <option value="">
-                      {loadingCountries
-                        ? "Loading countries..."
-                        : "Select Country"}
+                      {loadingCountries ? "Loading countries..." : "Select Country"}
                     </option>
                     {countries.map((country) => (
                       <option key={country.cM_Id} value={String(country.cM_Id)}>
@@ -517,7 +529,7 @@ const CreateCity = ({ mode }) => {
                 </div>
               </FieldRow>
 
-              {/* State */}
+              {/* State: loaded by country ID */}
               <FieldRow label="State" required={!isView}>
                 <div className="relative">
                   <select
@@ -534,16 +546,11 @@ const CreateCity = ({ mode }) => {
                           ? "Loading states..."
                           : "Select State"}
                     </option>
-                    {states
-                      .filter(
-                        (state) =>
-                          String(state.sM_CountryId) === String(countryId),
-                      )
-                      .map((state) => (
-                        <option key={state.sM_Id} value={String(state.sM_Id)}>
-                          {state.sM_StateName}
-                        </option>
-                      ))}
+                    {states.map((state) => (
+                      <option key={state.sM_Id} value={String(state.sM_Id)}>
+                        {state.sM_StateName}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown
                     size={17}
@@ -661,7 +668,7 @@ const CreateCity = ({ mode }) => {
               {!isView && (
                 <button
                   type="submit"
-                  disabled={disabled}
+                  disabled={disabled || loadingStates}
                   className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? "Saving..." : isCreate ? "Create" : "Update"}
@@ -672,7 +679,6 @@ const CreateCity = ({ mode }) => {
         </div>
       </div>
 
-      {/* ───── Directly mounted StatusModal (no provider needed) ───── */}
       <StatusModal
         isOpen={!!modal}
         type={modal?.type}

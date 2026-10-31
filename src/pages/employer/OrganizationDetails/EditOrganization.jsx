@@ -94,14 +94,10 @@ const getStateId = (item) =>
   getId(item, "sM_Id", "SM_Id", "sM_state_id", "SM_StateId");
 const getStateName = (item) =>
   getName(item, "sM_StateName", "SM_StateName", "stateName");
-const getStateCountryId = (item) =>
-  getId(item, "sM_CountryId", "SM_CountryId", "sM_country_id", "SM_CountryID");
 const getCityId = (item) =>
   getId(item, "ctM_Id", "CTM_Id", "ctM_city_id", "CTM_CityId");
 const getCityName = (item) =>
   getName(item, "ctM_CityName", "CTM_CityName", "cityName");
-const getCityStateId = (item) =>
-  getId(item, "ctM_StateId", "CTM_StateId", "ctM_state_id", "CTM_StateID");
 
 /* -------------------------- FORM MAPPING ------------------------- */
 
@@ -189,11 +185,13 @@ export default function EmployerEdit() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadingMasters, setLoadingMasters] = useState(true);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
 
   const [instituteTypes, setInstituteTypes] = useState([]);
   const [countries, setCountries] = useState([]);
-  const [allStates, setAllStates] = useState([]);
-  const [allCities, setAllCities] = useState([]);
+  const [states, setStates] = useState([]);
+  const [cities, setCities] = useState([]);
 
   /* ---------- modal helpers (same pattern as EditJobSeeker) ---------- */
 
@@ -228,7 +226,8 @@ export default function EmployerEdit() {
     });
   };
 
-  /* ---------------------- LOAD MASTER DATA ---------------------- */
+  /* ---------------------- LOAD BASE MASTERS ---------------------- */
+  // Institute types and countries are top-level lists. States and cities load by parent ID below.
 
   useEffect(() => {
     let cancelled = false;
@@ -237,20 +236,15 @@ export default function EmployerEdit() {
       setLoadingMasters(true);
 
       try {
-        const [instituteResponse, countryResponse, stateResponse, cityResponse] =
-          await Promise.all([
-            instituteTypeApi.getAllList(),
-            countryMasterApi.getAllList(),
-            stateMasterApi.getAllList(),
-            cityMasterApi.getAllList(),
-          ]);
+        const [instituteResponse, countryResponse] = await Promise.all([
+          instituteTypeApi.getAllList(),
+          countryMasterApi.getAllList(),
+        ]);
 
         if (cancelled) return;
 
         setInstituteTypes(extractList(instituteResponse));
         setCountries(extractList(countryResponse));
-        setAllStates(extractList(stateResponse));
-        setAllCities(extractList(cityResponse));
       } catch (error) {
         if (!cancelled) {
           openStatus(
@@ -268,6 +262,7 @@ export default function EmployerEdit() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ---------------------- LOAD EMPLOYER ------------------------- */
@@ -322,6 +317,82 @@ export default function EmployerEdit() {
     };
   }, [id]);
 
+  /* ---------------- STATES BY COUNTRY ID ----------------- */
+  // GET /StateMaster/country/{countryId}
+
+  useEffect(() => {
+    setStates([]);
+
+    if (!form.country) {
+      setLoadingStates(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setLoadingStates(true);
+
+    stateMasterApi
+      .getByCountry(Number(form.country))
+      .then((response) => {
+        if (!cancelled) setStates(extractList(response));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setStates([]);
+          openStatus(
+            "error",
+            getApiErrorMessage(error) || "Failed to load states.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStates(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.country]);
+
+  /* ---------------- CITIES BY STATE ID ----------------- */
+  // GET /CityMaster/state/{stateId}
+
+  useEffect(() => {
+    setCities([]);
+
+    if (!form.state) {
+      setLoadingCities(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setLoadingCities(true);
+
+    cityMasterApi
+      .getByState(Number(form.state))
+      .then((response) => {
+        if (!cancelled) setCities(extractList(response));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setCities([]);
+          openStatus(
+            "error",
+            getApiErrorMessage(error) || "Failed to load cities.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCities(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.state]);
+
   /* ---------------- CASCADING DROPDOWN OPTIONS ----------------- */
 
   const instituteOptions = useMemo(
@@ -342,19 +413,23 @@ export default function EmployerEdit() {
     [countries],
   );
 
-  const stateOptions = useMemo(() => {
-    if (!form.country) return [];
-    return allStates
-      .filter((item) => getStateCountryId(item) === String(form.country))
-      .map((item) => ({ value: getStateId(item), label: getStateName(item) }));
-  }, [allStates, form.country]);
+  const stateOptions = useMemo(
+    () =>
+      states.map((item) => ({
+        value: getStateId(item),
+        label: getStateName(item),
+      })),
+    [states],
+  );
 
-  const cityOptions = useMemo(() => {
-    if (!form.state) return [];
-    return allCities
-      .filter((item) => getCityStateId(item) === String(form.state))
-      .map((item) => ({ value: getCityId(item), label: getCityName(item) }));
-  }, [allCities, form.state]);
+  const cityOptions = useMemo(
+    () =>
+      cities.map((item) => ({
+        value: getCityId(item),
+        label: getCityName(item),
+      })),
+    [cities],
+  );
 
   /* --------------------------- CHANGE ---------------------------- */
 
@@ -496,6 +571,16 @@ export default function EmployerEdit() {
       return;
     }
 
+    if (!states.some((s) => String(getStateId(s)) === trimmed.state)) {
+      openStatus("warning", "Select a State for the selected Country.");
+      return;
+    }
+
+    if (!cities.some((c) => String(getCityId(c)) === trimmed.city)) {
+      openStatus("warning", "Select a City for the selected State.");
+      return;
+    }
+
     openConfirm({
       title: "Confirm update",
       message: "Are you sure you want to update this organization?",
@@ -628,8 +713,6 @@ export default function EmployerEdit() {
                     className={inputClass}
                   />
                 </FieldRow>
-
-             
               </div>
             </section>
 
@@ -704,8 +787,14 @@ export default function EmployerEdit() {
                   <SelectInput
                     value={form.state}
                     onChange={(e) => change("state", e.target.value)}
-                    disabled={saving || loadingMasters || !form.country}
-                    placeholder={!form.country ? "Select Country first" : "Select State"}
+                    disabled={saving || !form.country || loadingStates}
+                    placeholder={
+                      !form.country
+                        ? "Select Country first"
+                        : loadingStates
+                          ? "Loading states..."
+                          : "Select State"
+                    }
                     options={withSavedOption(stateOptions, form.state, emp.stateName)}
                   />
                 </FieldRow>
@@ -714,8 +803,14 @@ export default function EmployerEdit() {
                   <SelectInput
                     value={form.city}
                     onChange={(e) => change("city", e.target.value)}
-                    disabled={saving || loadingMasters || !form.state}
-                    placeholder={!form.state ? "Select State first" : "Select City"}
+                    disabled={saving || !form.state || loadingCities}
+                    placeholder={
+                      !form.state
+                        ? "Select State first"
+                        : loadingCities
+                          ? "Loading cities..."
+                          : "Select City"
+                    }
                     options={withSavedOption(cityOptions, form.city, emp.cityName)}
                   />
                 </FieldRow>
@@ -755,7 +850,7 @@ export default function EmployerEdit() {
 
               <button
                 type="submit"
-                disabled={saving || loadingMasters}
+                disabled={saving || loadingMasters || loadingStates || loadingCities}
                 className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Saving..." : "Update"}

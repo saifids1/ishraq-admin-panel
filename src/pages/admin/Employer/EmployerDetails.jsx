@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ChevronsLeft,
@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Inbox,
   ChevronsRight,
-  Save,
   X,
 } from "lucide-react";
 import {
@@ -80,7 +79,7 @@ const FIELD_BOX = (mono) =>
 const BTN_PRIMARY =
   "inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
 const EDIT_INPUT =
-  "h-9 w-full min-w-0 rounded-md border border-[#c9d5dd] bg-white px-3 text-[13px] text-[#1a2b3c] outline-none focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/20 disabled:bg-slate-100";
+  "h-9 w-full min-w-0 rounded-md border border-[#c9d5dd] bg-white px-3 text-[13px] text-[#1a2b3c] outline-none focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/20 disabled:bg-slate-100 disabled:text-slate-500";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MOBILE_RE = /^\d{10}$/;
 
@@ -152,6 +151,27 @@ const extractList = (response) => {
   return [];
 };
 
+const getErrorMessage = (error, fallback) =>
+  error?.response?.data?.message ||
+  error?.response?.data?.Message ||
+  error?.message ||
+  fallback;
+
+const draftFromEmployer = (emp) => ({
+  email: emp?.email ?? emp?.userName ?? "",
+  mobile: emp?.mobile ?? "",
+  fullName: emp?.fullName ?? "",
+  organizationName: emp?.eM_organization_name ?? "",
+  instituteTypeId: String(emp?.eM_institute_type_id ?? ""),
+  contactPerson: emp?.eM_contact_person ?? "",
+  designation: emp?.eM_designation ?? "",
+  countryId: String(emp?.eM_country_id ?? ""),
+  stateId: String(emp?.eM_state_id ?? ""),
+  cityId: String(emp?.eM_city_id ?? ""),
+  website: emp?.eM_website ?? "",
+  consentGiven: Boolean(emp?.eM_consent_given),
+});
+
 const parseDate = (value) => {
   if (value === null || value === undefined || String(value).trim() === "")
     return null;
@@ -204,10 +224,15 @@ const EmployerProfile = ({ mode }) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState("");
+
+  // Lookups
   const [instituteTypes, setInstituteTypes] = useState([]);
   const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
+
   const [draft, setDraft] = useState({});
   const [modal, setModal] = useState(null);
 
@@ -256,57 +281,111 @@ const EmployerProfile = ({ mode }) => {
     });
   };
 
+  /* --------------------------- Load draft when employer loads --------------------------- */
+
   useEffect(() => {
     if (!emp) return;
-    setDraft({
-      email: emp.email ?? emp.userName ?? "",
-      mobile: emp.mobile ?? "",
-      fullName: emp.fullName ?? "",
-      organizationName: emp.eM_organization_name ?? "",
-      instituteTypeId: String(emp.eM_institute_type_id ?? ""),
-      contactPerson: emp.eM_contact_person ?? "",
-      designation: emp.eM_designation ?? "",
-      countryId: String(emp.eM_country_id ?? ""),
-      stateId: String(emp.eM_state_id ?? ""),
-      cityId: String(emp.eM_city_id ?? ""),
-      website: emp.eM_website ?? "",
-      consentGiven: Boolean(emp.eM_consent_given),
-    });
+    setDraft(draftFromEmployer(emp));
   }, [emp]);
+
+  /* --------------------------- Lookups: institute types + countries (edit mode) --------------------------- */
 
   useEffect(() => {
     if (!isEditing) return undefined;
     let cancelled = false;
-    const loadLookups = async () => {
+
+    const loadBase = async () => {
       setEditError("");
       try {
-        const [instituteResponse, countryResponse, stateResponse, cityResponse] =
-          await Promise.all([
-            instituteTypeApi.getAllList(),
-            countryMasterApi.getAllList(),
-            stateMasterApi.getAllList(),
-            cityMasterApi.getAllList(),
-          ]);
+        const [typeRes, countryRes] = await Promise.all([
+          instituteTypeApi.getAllList(),
+          countryMasterApi.getAllList(),
+        ]);
         if (cancelled) return;
-        setInstituteTypes(extractList(instituteResponse));
-        setCountries(extractList(countryResponse));
-        setStates(extractList(stateResponse));
-        setCities(extractList(cityResponse));
+        setInstituteTypes(extractList(typeRes));
+        setCountries(extractList(countryRes));
       } catch (err) {
         if (!cancelled) {
           setEditError(
-            err?.response?.data?.message ||
-              err?.message ||
-              "Unable to load employer edit options.",
+            getErrorMessage(err, "Unable to load employer edit options."),
           );
         }
       }
     };
-    loadLookups();
+
+    loadBase();
     return () => {
       cancelled = true;
     };
   }, [isEditing]);
+
+  /* --------------------------- Level 2: states for the draft country (by id) --------------------------- */
+
+  useEffect(() => {
+    if (!isEditing) return undefined;
+    let cancelled = false;
+
+    if (!draft.countryId) {
+      setStates([]);
+      setLoadingStates(false);
+      return undefined;
+    }
+
+    setLoadingStates(true);
+    stateMasterApi
+      .getByCountry(Number(draft.countryId))
+      .then((res) => {
+        if (!cancelled) setStates(extractList(res));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setStates([]);
+          setEditError(getErrorMessage(err, "Unable to load states."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStates(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing, draft.countryId]);
+
+  /* --------------------------- Level 3: cities for the draft state (by id) --------------------------- */
+
+  useEffect(() => {
+    if (!isEditing) return undefined;
+    let cancelled = false;
+
+    if (!draft.stateId) {
+      setCities([]);
+      setLoadingCities(false);
+      return undefined;
+    }
+
+    setLoadingCities(true);
+    cityMasterApi
+      .getByState(Number(draft.stateId))
+      .then((res) => {
+        if (!cancelled) setCities(extractList(res));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCities([]);
+          setEditError(getErrorMessage(err, "Unable to load cities."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCities(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing, draft.stateId]);
+
+  /* --------------------------- Fetch employer + job requirements --------------------------- */
 
   useEffect(() => {
     let cancelled = false;
@@ -364,37 +443,46 @@ const EmployerProfile = ({ mode }) => {
   }, [id, refreshKey]);
 
   const goToEditProfile = () => {
-    setDraft({
-      email: emp?.email ?? emp?.userName ?? "",
-      mobile: emp?.mobile ?? "",
-      fullName: emp?.fullName ?? "",
-      organizationName: emp?.eM_organization_name ?? "",
-      instituteTypeId: String(emp?.eM_institute_type_id ?? ""),
-      contactPerson: emp?.eM_contact_person ?? "",
-      designation: emp?.eM_designation ?? "",
-      countryId: String(emp?.eM_country_id ?? ""),
-      stateId: String(emp?.eM_state_id ?? ""),
-      cityId: String(emp?.eM_city_id ?? ""),
-      website: emp?.eM_website ?? "",
-      consentGiven: Boolean(emp?.eM_consent_given),
-    });
+    setDraft(draftFromEmployer(emp));
     setEditError("");
     setIsEditing(true);
   };
 
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditError("");
+    if (mode === "edit") {
+      navigate(`/admin/employers/${id}`, { replace: true });
+    }
+  };
+
+  /* --------------------------- Cascading updates --------------------------- */
+
   const updateDraft = (key, value) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const filteredStates = useMemo(
-    () =>
-      states.filter((state) => String(state.sM_CountryId) === draft.countryId),
-    [states, draft.countryId],
-  );
-  const filteredCities = useMemo(
-    () =>
-      cities.filter((city) => String(city.ctM_StateId) === draft.stateId),
-    [cities, draft.stateId],
-  );
+  // Changing a parent clears all child selections so stale IDs are never saved.
+  const handleCountryChange = (value) => {
+    setDraft((current) => ({
+      ...current,
+      countryId: value,
+      stateId: "",
+      cityId: "",
+    }));
+    setStates([]);
+    setCities([]);
+  };
+
+  const handleStateChange = (value) => {
+    setDraft((current) => ({
+      ...current,
+      stateId: value,
+      cityId: "",
+    }));
+    setCities([]);
+  };
+
+  /* --------------------------- Save --------------------------- */
 
   const saveEmployer = async () => {
     const userId = Number(getCurrentUserId2());
@@ -431,12 +519,21 @@ const EmployerProfile = ({ mode }) => {
     if (
       !instituteTypes.some(
         (type) => String(type.iT_institute_type_id) === draft.instituteTypeId,
-      ) ||
-      !countries.some((country) => String(country.cM_Id) === draft.countryId) ||
-      !filteredStates.some((state) => String(state.sM_Id) === draft.stateId) ||
-      !filteredCities.some((city) => String(city.ctM_Id) === draft.cityId)
+      )
     ) {
-      setEditError("Select valid organization and location options.");
+      setEditError("Select a valid Organization Type.");
+      return;
+    }
+    if (!countries.some((c) => String(c.cM_Id) === draft.countryId)) {
+      setEditError("Select a valid Country.");
+      return;
+    }
+    if (!states.some((s) => String(s.sM_Id) === draft.stateId)) {
+      setEditError("Select a State for the selected Country.");
+      return;
+    }
+    if (!cities.some((c) => String(c.ctM_Id) === draft.cityId)) {
+      setEditError("Select a City for the selected State.");
       return;
     }
 
@@ -468,10 +565,7 @@ const EmployerProfile = ({ mode }) => {
         }
       } catch (err) {
         setEditError(
-          err?.response?.data?.message ||
-            err?.response?.data?.Message ||
-            err?.message ||
-            "Failed to update employer.",
+          getErrorMessage(err, "Failed to update employer."),
         );
       } finally {
         setSaving(false);
@@ -549,13 +643,7 @@ const EmployerProfile = ({ mode }) => {
                 <>
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsEditing(false);
-                      setEditError("");
-                      if (mode === "edit") {
-                        navigate(`/admin/employers/${id}`, { replace: true });
-                      }
-                    }}
+                    onClick={cancelEdit}
                     disabled={saving}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:gap-2 sm:px-4 sm:py-2.5"
                   >
@@ -816,8 +904,12 @@ const EmployerProfile = ({ mode }) => {
                               className={EDIT_INPUT}
                               value={draft.mobile ?? ""}
                               onChange={(event) =>
-                                updateDraft("mobile", event.target.value)
+                                updateDraft(
+                                  "mobile",
+                                  event.target.value.replace(/\D/g, "").slice(0, 10),
+                                )
                               }
+                              inputMode="numeric"
                             />
                           ) : undefined}
                         </FieldRow>
@@ -832,11 +924,10 @@ const EmployerProfile = ({ mode }) => {
                             <select
                               className={EDIT_INPUT}
                               value={draft.countryId ?? ""}
-                              onChange={(event) => {
-                                updateDraft("countryId", event.target.value);
-                                updateDraft("stateId", "");
-                                updateDraft("cityId", "");
-                              }}
+                              disabled={loadingStates}
+                              onChange={(event) =>
+                                handleCountryChange(event.target.value)
+                              }
                             >
                               <option value="">Select country</option>
                               {countries.map((country) => (
@@ -850,19 +941,25 @@ const EmployerProfile = ({ mode }) => {
                             </select>
                           ) : undefined}
                         </FieldRow>
+
                         <FieldRow label="State" value={emp.stateName}>
                           {isEditing ? (
                             <select
                               className={EDIT_INPUT}
                               value={draft.stateId ?? ""}
-                              disabled={!draft.countryId}
-                              onChange={(event) => {
-                                updateDraft("stateId", event.target.value);
-                                updateDraft("cityId", "");
-                              }}
+                              disabled={!draft.countryId || loadingStates}
+                              onChange={(event) =>
+                                handleStateChange(event.target.value)
+                              }
                             >
-                              <option value="">Select state</option>
-                              {filteredStates.map((state) => (
+                              <option value="">
+                                {!draft.countryId
+                                  ? "Select country first"
+                                  : loadingStates
+                                    ? "Loading states..."
+                                    : "Select state"}
+                              </option>
+                              {states.map((state) => (
                                 <option
                                   key={state.sM_Id}
                                   value={String(state.sM_Id)}
@@ -873,18 +970,25 @@ const EmployerProfile = ({ mode }) => {
                             </select>
                           ) : undefined}
                         </FieldRow>
+
                         <FieldRow label="City" value={emp.cityName}>
                           {isEditing ? (
                             <select
                               className={EDIT_INPUT}
                               value={draft.cityId ?? ""}
-                              disabled={!draft.stateId}
+                              disabled={!draft.stateId || loadingCities}
                               onChange={(event) =>
                                 updateDraft("cityId", event.target.value)
                               }
                             >
-                              <option value="">Select city</option>
-                              {filteredCities.map((city) => (
+                              <option value="">
+                                {!draft.stateId
+                                  ? "Select state first"
+                                  : loadingCities
+                                    ? "Loading cities..."
+                                    : "Select city"}
+                              </option>
+                              {cities.map((city) => (
                                 <option
                                   key={city.ctM_Id}
                                   value={String(city.ctM_Id)}

@@ -131,32 +131,6 @@ const validate = (form) => {
   return errors;
 };
 
-const EMPTY_FORM = {
-  fullName: "",
-  email: "",
-  mobile: "",
-  whatsapp: "",
-  instituteType: "",
-  jobCategory: "",
-  jobRole: "",
-  countryId: "",
-  stateId: "",
-  cityId: "",
-  highestQualification: "",
-  speciality: "",
-  registrationNumber: "",
-  totalExperience: "",
-  currentDesignation: "",
-  currentEmployer: "",
-  currentSalary: "",
-  expectedSalary: "",
-  preferredLocation: "",
-  willingToRelocate: false,
-  availabilityToJoin: "",
-  consentGiven: false,
-  document: null,
-};
-
 const FieldRow = ({ label, required, error, children, fullWidth }) => (
   <div className={`grid grid-cols-[160px_1fr] items-start gap-3 ${fullWidth ? "md:col-span-2" : ""}`}>
     <label className={`${FIELD_LABEL} pt-2`}>
@@ -192,6 +166,32 @@ const SectionTitle = ({ children }) => (
   </h3>
 );
 
+const EMPTY_FORM = {
+  fullName: "",
+  email: "",
+  mobile: "",
+  whatsapp: "",
+  instituteType: "",
+  jobCategory: "",
+  jobRole: "",
+  countryId: "",
+  stateId: "",
+  cityId: "",
+  highestQualification: "",
+  speciality: "",
+  registrationNumber: "",
+  totalExperience: "",
+  currentDesignation: "",
+  currentEmployer: "",
+  currentSalary: "",
+  expectedSalary: "",
+  preferredLocation: "",
+  willingToRelocate: false,
+  availabilityToJoin: "",
+  consentGiven: false,
+  document: null,
+};
+
 /* ========================================================= */
 
 export default function EditJobSeeker() {
@@ -216,9 +216,13 @@ export default function EditJobSeeker() {
   const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
+  const [allCities, setAllCities] = useState([]);
+
   const [loadingMasters, setLoadingMasters] = useState(true);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
 
   /* ---------- modal helpers (same pattern as AddJobSeeker) ---------- */
 
@@ -253,7 +257,9 @@ export default function EditJobSeeker() {
     });
   };
 
-  /* ---------- load masters ---------- */
+  /* ---------- load top-level masters ---------- */
+  // Institute types and countries are top-level lists.
+  // Preferred Job Location is an independent city pick, so it keeps the full city list.
 
   useEffect(() => {
     let cancelled = false;
@@ -261,17 +267,15 @@ export default function EditJobSeeker() {
     const loadMasters = async () => {
       setLoadingMasters(true);
       try {
-        const [institute, country, state, city] = await Promise.all([
+        const [institute, country, allCityRes] = await Promise.all([
           instituteTypeApi.getAllList(),
           countryMasterApi.getAllList(),
-          stateMasterApi.getAllList(),
           cityMasterApi.getAllList(),
         ]);
         if (!cancelled) {
           setInstituteTypes(extractList(institute));
           setCountries(extractList(country));
-          setStates(extractList(state));
-          setCities(extractList(city));
+          setAllCities(extractList(allCityRes));
         }
       } catch (err) {
         if (!cancelled) {
@@ -286,6 +290,7 @@ export default function EditJobSeeker() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ---------- load jobseeker record ---------- */
@@ -317,13 +322,86 @@ export default function EditJobSeeker() {
     };
   }, [id]);
 
-  /* ---------- dependent dropdowns ---------- */
+  /* ---------- states by country ID ---------- */
+  // GET /StateMaster/country/{countryId}
+
+  useEffect(() => {
+    setStates([]);
+
+    if (!form.countryId) {
+      setLoadingStates(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setLoadingStates(true);
+
+    stateMasterApi
+      .getByCountry(Number(form.countryId))
+      .then((response) => {
+        if (!cancelled) setStates(extractList(response));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setStates([]);
+          openStatus("error", getApiErrorMessage(err) || "Unable to load states.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStates(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.countryId]);
+
+  /* ---------- cities by state ID ---------- */
+  // GET /CityMaster/state/{stateId}
+
+  useEffect(() => {
+    setCities([]);
+
+    if (!form.stateId) {
+      setLoadingCities(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setLoadingCities(true);
+
+    cityMasterApi
+      .getByState(Number(form.stateId))
+      .then((response) => {
+        if (!cancelled) setCities(extractList(response));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCities([]);
+          openStatus("error", getApiErrorMessage(err) || "Unable to load cities.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCities(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.stateId]);
+
+  /* ---------- dependent dropdowns: categories and roles ---------- */
 
   useEffect(() => {
     let cancelled = false;
     setJobCategories([]);
 
-    if (!form.instituteType) return undefined;
+    if (!form.instituteType) {
+      setLoadingCategories(false);
+      return undefined;
+    }
 
     const loadCategories = async () => {
       setLoadingCategories(true);
@@ -355,7 +433,10 @@ export default function EditJobSeeker() {
     let cancelled = false;
     setJobRoles([]);
 
-    if (!form.jobCategory) return undefined;
+    if (!form.jobCategory) {
+      setLoadingRoles(false);
+      return undefined;
+    }
 
     const loadRoles = async () => {
       setLoadingRoles(true);
@@ -387,17 +468,9 @@ export default function EditJobSeeker() {
 
   const instituteOptions = toOptions(instituteTypes, ["iT_institute_type_id"], ["iT_name"]);
   const countryOptions = toOptions(countries, ["cM_Id"], ["cM_CountryName"]);
-  const stateOptions = toOptions(
-    states.filter((s) => String(s.sM_CountryId) === String(form.countryId)),
-    ["sM_Id"],
-    ["sM_StateName"],
-  );
-  const cityOptions = toOptions(
-    cities.filter((c) => String(c.ctM_StateId) === String(form.stateId)),
-    ["ctM_Id"],
-    ["ctM_CityName"],
-  );
-  const allCityOptions = toOptions(cities, ["ctM_Id"], ["ctM_CityName"]);
+  const stateOptions = toOptions(states, ["sM_Id"], ["sM_StateName"]);
+  const cityOptions = toOptions(cities, ["ctM_Id"], ["ctM_CityName"]);
+  const allCityOptions = toOptions(allCities, ["ctM_Id"], ["ctM_CityName"]);
 
   /* ---------- input handlers ---------- */
 
@@ -407,6 +480,7 @@ export default function EditJobSeeker() {
     setErrors((c) => ({ ...c, [key]: undefined }));
   };
 
+  // Changing a parent clears its dependent children. Only user actions do this.
   const setMasterData = (key) => (e) => {
     const value = e.target.value;
     setForm((c) => ({
@@ -526,6 +600,16 @@ export default function EditJobSeeker() {
 
     if (Object.keys(foundErrors).length) {
       openStatus("warning", Object.values(foundErrors)[0] || "Please correct the highlighted fields.");
+      return;
+    }
+
+    if (!stateOptions.some((s) => s.value === form.stateId)) {
+      openStatus("warning", "Select a State for the selected Country.");
+      return;
+    }
+
+    if (!cityOptions.some((c) => c.value === form.cityId)) {
+      openStatus("warning", "Select a City for the selected State.");
       return;
     }
 
@@ -770,8 +854,14 @@ export default function EditJobSeeker() {
                     <SelectInput
                       value={form.stateId}
                       onChange={setMasterData("stateId")}
-                      disabled={saving || loadingMasters || !form.countryId}
-                      placeholder={!form.countryId ? "Select Country first" : "Select State"}
+                      disabled={saving || !form.countryId || loadingStates}
+                      placeholder={
+                        !form.countryId
+                          ? "Select Country first"
+                          : loadingStates
+                            ? "Loading states..."
+                            : "Select State"
+                      }
                       options={stateOptions}
                     />
                   </FieldRow>
@@ -780,8 +870,14 @@ export default function EditJobSeeker() {
                     <SelectInput
                       value={form.cityId}
                       onChange={setMasterData("cityId")}
-                      disabled={saving || loadingMasters || !form.stateId}
-                      placeholder={!form.stateId ? "Select State first" : "Select City"}
+                      disabled={saving || !form.stateId || loadingCities}
+                      placeholder={
+                        !form.stateId
+                          ? "Select State first"
+                          : loadingCities
+                            ? "Loading cities..."
+                            : "Select City"
+                      }
                       options={cityOptions}
                     />
                   </FieldRow>
@@ -908,7 +1004,7 @@ export default function EditJobSeeker() {
 
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || loadingMasters || loadingCategories || loadingRoles || loadingStates || loadingCities}
                   className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? "Saving..." : "Update"}

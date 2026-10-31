@@ -149,7 +149,7 @@ export const getJobsForJobseeker = async ({
       pageNo,
       pageSize,
       IsActive: true,
-      JQ_is_CreatedByAdmin
+      JQ_is_CreatedByAdmin : false,
     },
   });
 

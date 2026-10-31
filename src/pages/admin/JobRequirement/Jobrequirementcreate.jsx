@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronsLeft, Pencil, Plus } from "lucide-react";
 import jobRequirementApi from "../../../api/Services/jobRequirementApi";
@@ -32,7 +32,9 @@ const first = (item, ...keys) => {
     const actualKey = Object.keys(item || {}).find(
       (candidate) => candidate.toLowerCase() === key.toLowerCase(),
     );
-    if (actualKey !== undefined) return item[actualKey];
+    if (actualKey !== undefined && item[actualKey] !== null) {
+      return item[actualKey];
+    }
   }
   return "";
 };
@@ -60,7 +62,7 @@ const options = (response, ids, names) =>
       name: first(item, ...names),
       raw: item,
     }))
-    .filter((item) => item.id && item.name);
+    .filter((item) => item.id !== "" && item.name !== "");
 
 /* ------------------------------ FORM SHAPE ------------------------------ */
 
@@ -128,18 +130,16 @@ const formFromRecord = (item) => ({
   JQ_salary_range: String(
     first(item, "jQ_salary_range", "JQ_salary_range") ?? "",
   ),
-  /* API does NOT return country/state — start empty, derive later from city */
-  JQ_country_id: "",
-  JQ_state_id: "",
+  // Country and state IDs must come from the record so their lists load by ID.
+  JQ_country_id: String(first(item, "jQ_country_id", "JQ_country_id") ?? ""),
+  JQ_state_id: String(first(item, "jQ_state_id", "JQ_state_id") ?? ""),
   JQ_job_location: String(
     first(item, "jQ_job_location", "JQ_job_location") ?? "",
   ),
   JQ_employment_type_id: String(
     first(item, "jQ_employment_type_id", "JQ_employment_type_id") ?? "",
   ),
-  JQ_duty_hours: String(
-    first(item, "jQ_duty_hours", "JQ_duty_hours") ?? "",
-  ),
+  JQ_duty_hours: String(first(item, "jQ_duty_hours", "JQ_duty_hours") ?? ""),
   JQ_accommodation: Boolean(first(item, "jQ_accommodation", "JQ_accommodation")),
   JQ_food_facility: Boolean(
     first(item, "jQ_food_facility", "JQ_food_facility"),
@@ -191,6 +191,8 @@ export default function JobRequirementCreate({ mode = "create" }) {
   const [loadingRecord, setLoadingRecord] = useState(!isCreate);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -203,7 +205,6 @@ export default function JobRequirementCreate({ mode = "create" }) {
   const roleReqId = useRef(0);
 
   const autoSyncedInstitute = useRef(false);
-  const autoDerivedLocation = useRef(false);
 
   /* --------------------------- MODE SYNC --------------------------- */
 
@@ -223,7 +224,6 @@ export default function JobRequirementCreate({ mode = "create" }) {
     let cancelled = false;
     setLoadingRecord(true);
     setError("");
-    autoDerivedLocation.current = false;
 
     jobRequirementApi
       .getById(id)
@@ -248,7 +248,8 @@ export default function JobRequirementCreate({ mode = "create" }) {
     };
   }, [id, isCreate]);
 
-  /* --------------------------- INITIAL OPTIONS --------------------------- */
+  /* --------------------------- BASE OPTIONS (loaded once) --------------------------- */
+  // Country is the only full-list master here. States and cities load by parent ID below.
 
   useEffect(() => {
     let cancelled = false;
@@ -302,32 +303,6 @@ export default function JobRequirementCreate({ mode = "create" }) {
       (countries) => setSources((s) => ({ ...s, countries })),
     );
 
-    load(
-      () => stateMasterApi.getAllList(),
-      (res) =>
-        listFrom(res)
-          .map((item) => ({
-            id: first(item, "sM_Id"),
-            name: first(item, "sM_StateName"),
-            countryId: String(first(item, "sM_CountryId") ?? ""),
-          }))
-          .filter((item) => item.id && item.name),
-      (states) => setSources((s) => ({ ...s, states })),
-    );
-
-    load(
-      () => cityMasterApi.getAllList(),
-      (res) =>
-        listFrom(res)
-          .map((item) => ({
-            id: first(item, "ctM_Id"),
-            name: first(item, "ctM_CityName"),
-            stateId: String(first(item, "ctM_StateId") ?? ""),
-          }))
-          .filter((item) => item.id && item.name),
-      (cities) => setSources((s) => ({ ...s, cities })),
-    );
-
     return () => {
       cancelled = true;
     };
@@ -366,50 +341,75 @@ export default function JobRequirementCreate({ mode = "create" }) {
     }
   }, [form.JQ_employer_id, form.JQ_institute_type_id, sources.employers]);
 
-  /* --------------------------- DERIVE COUNTRY/STATE FROM CITY (EDIT/VIEW) --------------------------- */
-  /* The GET API does not return JQ_country_id / JQ_state_id, only JQ_job_location (city id).
-     Once cities + states are loaded, fill country + state from that city. */
+  /* --------------------------- STATES BY COUNTRY ID --------------------------- */
 
   useEffect(() => {
-    if (autoDerivedLocation.current) return;
-    if (!form.JQ_job_location) return;
-    if (!sources.cities.length || !sources.states.length) return;
+    if (!form.JQ_country_id) {
+      setSources((s) => ({ ...s, states: [] }));
+      setLoadingStates(false);
+      return undefined;
+    }
 
-    const city = sources.cities.find(
-      (item) => String(item.id) === String(form.JQ_job_location),
-    );
-    if (!city) return;
+    let cancelled = false;
+    setLoadingStates(true);
 
-    const state = sources.states.find(
-      (item) => String(item.id) === String(city.stateId),
-    );
-    if (!state) return;
+    stateMasterApi
+      .getByCountry(Number(form.JQ_country_id))
+      .then((res) => {
+        if (cancelled) return;
+        setSources((s) => ({
+          ...s,
+          states: options(res, ["sM_Id"], ["sM_StateName"]),
+        }));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setSources((s) => ({ ...s, states: [] }));
+        setError(getApiErrorMessage(err) || "Unable to load states.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStates(false);
+      });
 
-    autoDerivedLocation.current = true;
-    setForm((current) => ({
-      ...current,
-      JQ_state_id: current.JQ_state_id || String(state.id),
-      JQ_country_id: current.JQ_country_id || String(state.countryId || ""),
-    }));
-  }, [form.JQ_job_location, sources.cities, sources.states]);
+    return () => {
+      cancelled = true;
+    };
+  }, [form.JQ_country_id]);
 
-  /* --------------------------- FILTERED LOCATION LISTS --------------------------- */
+  /* --------------------------- CITIES BY STATE ID --------------------------- */
 
-  const filteredStates = useMemo(
-    () =>
-      sources.states.filter(
-        (state) => String(state.countryId) === String(form.JQ_country_id),
-      ),
-    [sources.states, form.JQ_country_id],
-  );
+  useEffect(() => {
+    if (!form.JQ_state_id) {
+      setSources((s) => ({ ...s, cities: [] }));
+      setLoadingCities(false);
+      return undefined;
+    }
 
-  const filteredCities = useMemo(
-    () =>
-      sources.cities.filter(
-        (city) => String(city.stateId) === String(form.JQ_state_id),
-      ),
-    [sources.cities, form.JQ_state_id],
-  );
+    let cancelled = false;
+    setLoadingCities(true);
+
+    cityMasterApi
+      .getByState(Number(form.JQ_state_id))
+      .then((res) => {
+        if (cancelled) return;
+        setSources((s) => ({
+          ...s,
+          cities: options(res, ["ctM_Id"], ["ctM_CityName"]),
+        }));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setSources((s) => ({ ...s, cities: [] }));
+        setError(getApiErrorMessage(err) || "Unable to load cities.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCities(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.JQ_state_id]);
 
   /* --------------------------- CATEGORIES --------------------------- */
 
@@ -490,6 +490,7 @@ export default function JobRequirementCreate({ mode = "create" }) {
   }, [form.JQ_job_category_id]);
 
   /* --------------------------- SETTER --------------------------- */
+  // Only user actions go through here, so saved values are not cleared on load.
 
   const set = (name, value) => {
     setForm((current) => {
@@ -735,7 +736,12 @@ export default function JobRequirementCreate({ mode = "create" }) {
   );
 
   const submitDisabled =
-    loadingRecord || loadingCategories || loadingRoles || saving;
+    loadingRecord ||
+    loadingCategories ||
+    loadingRoles ||
+    loadingStates ||
+    loadingCities ||
+    saving;
 
   /* --------------------------- RENDER --------------------------- */
 
@@ -888,11 +894,12 @@ export default function JobRequirementCreate({ mode = "create" }) {
                 "State",
                 select(
                   "JQ_state_id",
-                  filteredStates,
-                  form.JQ_country_id
-                    ? "Select state"
-                    : "Select country first",
-                  { lock: !form.JQ_country_id },
+                  sources.states,
+                  form.JQ_country_id ? "Select state" : "Select country first",
+                  {
+                    lock: !form.JQ_country_id,
+                    isLoading: loadingStates,
+                  },
                 ),
               )}
 
@@ -901,9 +908,12 @@ export default function JobRequirementCreate({ mode = "create" }) {
                 "Job Location",
                 select(
                   "JQ_job_location",
-                  filteredCities,
+                  sources.cities,
                   form.JQ_state_id ? "Select city" : "Select state first",
-                  { lock: !form.JQ_state_id },
+                  {
+                    lock: !form.JQ_state_id,
+                    isLoading: loadingCities,
+                  },
                 ),
               )}
 

@@ -218,7 +218,6 @@ const JobsForYou = () => {
           jobseekerId: profile.jobseekerId,
           pageNo: page,
           pageSize,
-          JQ_is_CreatedByAdmin : true
         });
 
         if (isFailedResponse(response)) {
