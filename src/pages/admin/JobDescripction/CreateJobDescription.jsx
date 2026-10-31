@@ -29,9 +29,10 @@ const first = (item, ...keys) => {
   for (const key of keys) {
     if (item?.[key] !== undefined && item?.[key] !== null) return item[key];
     const actualKey = Object.keys(item || {}).find(
-      (candidate) => candidate.toLowerCase() === key.toLowerCase()
+      (candidate) => candidate.toLowerCase() === key.toLowerCase(),
     );
-    if (actualKey !== undefined && item[actualKey] !== null) return item[actualKey];
+    if (actualKey !== undefined && item[actualKey] !== null)
+      return item[actualKey];
   }
   return "";
 };
@@ -39,7 +40,13 @@ const first = (item, ...keys) => {
 // Finds the array inside a master API response, whatever the wrapper looks like.
 const listFrom = (response) => {
   const root = response?.data ?? response;
-  for (const value of [root?.data?.data, root?.Data?.Data, root?.data, root?.Data, root]) {
+  for (const value of [
+    root?.data?.data,
+    root?.Data?.Data,
+    root?.data,
+    root?.Data,
+    root,
+  ]) {
     if (Array.isArray(value)) return value;
     if (Array.isArray(value?.data)) return value.data;
     if (Array.isArray(value?.Data)) return value.Data;
@@ -67,7 +74,11 @@ const fmtDate = (value) => {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 };
 
 const fileNameFromPath = (path) => {
@@ -80,16 +91,6 @@ const fileNameFromPath = (path) => {
   }
 };
 
-/* --------------------------- STATIC OPTIONS ---------------------------
-   No master API was provided for job status, so it stays static.
-   Replace these IDs with the real JobStatus IDs from your database. */
-const JOB_STATUSES = [
-  { id: 1, name: "Open" },
-  { id: 2, name: "Draft" },
-  { id: 3, name: "Paused" },
-  { id: 4, name: "Closed" },
-];
-
 /* ------------------------------ FORM ------------------------------ */
 
 const EMPTY = {
@@ -98,7 +99,6 @@ const EMPTY = {
   jobCategoryId: "",
   jobRoleId: "",
   employmentTypeId: "",
-  jobStatusId: "",
   positionRequired: "",
   departmentSpeciality: "",
   numberOfVacancies: "",
@@ -113,7 +113,6 @@ const EMPTY = {
   cityId: "",
   deadline: "",
   expectedJoiningDate: "",
-  assignedTo: "",
   description: "",
   attachment: null,
 };
@@ -122,11 +121,12 @@ const EMPTY = {
 // Country and state IDs must come from the record so the dropdowns can load by ID.
 const formFromRecord = (r) => ({
   organizationName: String(first(r, "jQ_org_name")),
-  organizationTypeId: String(first(r, "jQ_institute_type_id", "jQ_org_type_id")),
+  organizationTypeId: String(
+    first(r, "jQ_institute_type_id", "jQ_org_type_id"),
+  ),
   jobCategoryId: String(first(r, "jQ_job_category_id")),
   jobRoleId: String(first(r, "jQ_job_role_id")),
   employmentTypeId: String(first(r, "jQ_employment_type_id")),
-  jobStatusId: String(first(r, "jQ_job_status_id")),
   positionRequired: String(first(r, "jQ_position_title")),
   departmentSpeciality: String(first(r, "jQ_department_speciality")),
   numberOfVacancies: String(first(r, "jQ_vacancies")),
@@ -141,7 +141,6 @@ const formFromRecord = (r) => ({
   cityId: String(first(r, "jQ_job_location", "jQ_city_id")),
   deadline: dateInput(first(r, "jQ_deadline")),
   expectedJoiningDate: dateInput(first(r, "jQ_expected_joining_date")),
-  assignedTo: String(first(r, "jQ_assigned_to")),
   description: String(first(r, "jQ_description")).slice(0, DESCRIPTION_MAX),
   attachment: null,
 });
@@ -152,7 +151,6 @@ const REQUIRED = {
   jobCategoryId: "Select a job category",
   jobRoleId: "Select a job role",
   employmentTypeId: "Select an employment type",
-  jobStatusId: "Select a status",
   positionRequired: "Position is required",
   numberOfVacancies: "Number of vacancies is required",
   qualificationRequired: "Qualification is required",
@@ -160,7 +158,6 @@ const REQUIRED = {
   countryId: "Select a country",
   stateId: "Select a state",
   cityId: "Select a city",
-  deadline: "Deadline is required",
   description: "Job description is required",
 };
 
@@ -182,7 +179,6 @@ const toPayload = (f) => ({
   JobCategoryId: Number(f.jobCategoryId),
   JobRoleId: Number(f.jobRoleId),
   EmploymentTypeId: Number(f.employmentTypeId),
-  JobStatusId: Number(f.jobStatusId),
   CountryId: Number(f.countryId),
   StateId: Number(f.stateId),
   CityId: Number(f.cityId),
@@ -197,7 +193,6 @@ const toPayload = (f) => ({
   FoodFacility: f.foodFacility,
   Deadline: f.deadline || null,
   ExpectedJoiningDate: f.expectedJoiningDate || null,
-  AssignedTo: f.assignedTo ? Number(f.assignedTo) : null,
   Description: f.description.trim(),
   Attachment: f.attachment ?? null,
 });
@@ -220,7 +215,9 @@ const Field = ({ label, required, error, full, alignTop, children }) => (
     </label>
     <div className="min-w-0 flex-1">
       {children}
-      {error && <span className="mt-1 block text-xs text-red-500">{error}</span>}
+      {error && (
+        <span className="mt-1 block text-xs text-red-500">{error}</span>
+      )}
     </div>
   </div>
 );
@@ -236,7 +233,14 @@ const ReadOnly = ({ children, multiline = false }) => (
   </div>
 );
 
-const SelectField = ({ value, onChange, items, placeholder, disabled, loading }) => (
+const SelectField = ({
+  value,
+  onChange,
+  items,
+  placeholder,
+  disabled,
+  loading,
+}) => (
   <div className="relative">
     <select
       value={value}
@@ -343,7 +347,11 @@ export default function CreateJobDescription() {
       setSources((s) => ({
         ...s,
         institutes: options(ok(inst), ["iT_institute_type_id"], ["iT_name"]),
-        employmentTypes: options(ok(emp), ["eT_employment_type_id"], ["eT_name"]),
+        employmentTypes: options(
+          ok(emp),
+          ["eT_employment_type_id"],
+          ["eT_name"],
+        ),
         countries: options(ok(ctry), ["cM_Id"], ["cM_CountryName"]),
       }));
 
@@ -450,7 +458,8 @@ export default function CreateJobDescription() {
         setError(getApiErrorMessage(err) || "Unable to load job categories.");
       })
       .finally(() => {
-        if (!cancelled && reqId === categoryReqId.current) setLoadingCategories(false);
+        if (!cancelled && reqId === categoryReqId.current)
+          setLoadingCategories(false);
       });
 
     return () => {
@@ -557,11 +566,9 @@ export default function CreateJobDescription() {
 
       if (isCreate) {
         const res = await jdApi.createJobDescription(payload);
-        const newId = first(res?.Data ?? res?.data ?? {}, "jQ_job_requirement_id", "id");
-        if (newId !== "") {
-          navigate(`/admin/job-descriptions/${newId}`, { replace: true });
-        } else {
-          navigate(-1);
+
+        if (res?.success || res?.Success) {
+          navigate("/admin/jdbyadmin", { replace: true });
         }
       } else {
         await jdApi.updateJobDescription(id, payload);
@@ -581,8 +588,8 @@ export default function CreateJobDescription() {
   const title = isCreate
     ? "Create Job Description"
     : isView
-    ? "View Job Description"
-    : "Edit Job Description";
+      ? "View Job Description"
+      : "Edit Job Description";
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
@@ -618,14 +625,20 @@ export default function CreateJobDescription() {
           ) : (
             <form onSubmit={submit} noValidate className="p-4">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <Field label="Organization Name" required error={errors.organizationName}>
+                <Field
+                  label="Organization Name"
+                  required
+                  error={errors.organizationName}
+                >
                   {isView ? (
                     <ReadOnly>{v(rec.jQ_org_name)}</ReadOnly>
                   ) : (
                     <input
                       type="text"
                       value={form.organizationName}
-                      onChange={(e) => setField("organizationName", e.target.value)}
+                      onChange={(e) =>
+                        setField("organizationName", e.target.value)
+                      }
                       placeholder="e.g. XYZ Pharma Pvt. Ltd."
                       className={inputClass}
                       disabled={saving}
@@ -633,7 +646,11 @@ export default function CreateJobDescription() {
                   )}
                 </Field>
 
-                <Field label="Organization Type" required error={errors.organizationTypeId}>
+                <Field
+                  label="Organization Type"
+                  required
+                  error={errors.organizationTypeId}
+                >
                   {isView ? (
                     <ReadOnly>{v(rec.instituteTypeName)}</ReadOnly>
                   ) : (
@@ -647,7 +664,11 @@ export default function CreateJobDescription() {
                   )}
                 </Field>
 
-                <Field label="Job Category" required error={errors.jobCategoryId}>
+                <Field
+                  label="Job Category"
+                  required
+                  error={errors.jobCategoryId}
+                >
                   {isView ? (
                     <ReadOnly>{v(rec.jobCategoryName)}</ReadOnly>
                   ) : (
@@ -656,7 +677,9 @@ export default function CreateJobDescription() {
                       onChange={(val) => setField("jobCategoryId", val)}
                       items={sources.categories}
                       placeholder={
-                        form.organizationTypeId ? "Select job category" : "Select organization type first"
+                        form.organizationTypeId
+                          ? "Select job category"
+                          : "Select organization type first"
                       }
                       loading={loadingCategories}
                       disabled={saving || !form.organizationTypeId}
@@ -672,14 +695,22 @@ export default function CreateJobDescription() {
                       value={form.jobRoleId}
                       onChange={(val) => setField("jobRoleId", val)}
                       items={sources.roles}
-                      placeholder={form.jobCategoryId ? "Select job role" : "Select job category first"}
+                      placeholder={
+                        form.jobCategoryId
+                          ? "Select job role"
+                          : "Select job category first"
+                      }
                       loading={loadingRoles}
                       disabled={saving || !form.jobCategoryId}
                     />
                   )}
                 </Field>
 
-                <Field label="Employment Type" required error={errors.employmentTypeId}>
+                <Field
+                  label="Employment Type"
+                  required
+                  error={errors.employmentTypeId}
+                >
                   {isView ? (
                     <ReadOnly>{v(rec.employmentTypeName)}</ReadOnly>
                   ) : (
@@ -693,14 +724,20 @@ export default function CreateJobDescription() {
                   )}
                 </Field>
 
-                <Field label="Position Required" required error={errors.positionRequired}>
+                <Field
+                  label="Position Required"
+                  required
+                  error={errors.positionRequired}
+                >
                   {isView ? (
                     <ReadOnly>{v(rec.jQ_position_title)}</ReadOnly>
                   ) : (
                     <input
                       type="text"
                       value={form.positionRequired}
-                      onChange={(e) => setField("positionRequired", e.target.value)}
+                      onChange={(e) =>
+                        setField("positionRequired", e.target.value)
+                      }
                       placeholder="e.g. Senior Staff Nurse"
                       className={inputClass}
                       disabled={saving}
@@ -715,7 +752,9 @@ export default function CreateJobDescription() {
                     <input
                       type="text"
                       value={form.departmentSpeciality}
-                      onChange={(e) => setField("departmentSpeciality", e.target.value)}
+                      onChange={(e) =>
+                        setField("departmentSpeciality", e.target.value)
+                      }
                       placeholder="e.g. ICU"
                       className={inputClass}
                       disabled={saving}
@@ -723,7 +762,11 @@ export default function CreateJobDescription() {
                   )}
                 </Field>
 
-                <Field label="Number of Vacancies" required error={errors.numberOfVacancies}>
+                <Field
+                  label="Number of Vacancies"
+                  required
+                  error={errors.numberOfVacancies}
+                >
                   {isView ? (
                     <ReadOnly>{v(rec.jQ_vacancies)}</ReadOnly>
                   ) : (
@@ -731,7 +774,9 @@ export default function CreateJobDescription() {
                       type="number"
                       min="1"
                       value={form.numberOfVacancies}
-                      onChange={(e) => setField("numberOfVacancies", e.target.value)}
+                      onChange={(e) =>
+                        setField("numberOfVacancies", e.target.value)
+                      }
                       placeholder="e.g. 5"
                       className={inputClass}
                       disabled={saving}
@@ -739,14 +784,20 @@ export default function CreateJobDescription() {
                   )}
                 </Field>
 
-                <Field label="Qualification Required" required error={errors.qualificationRequired}>
+                <Field
+                  label="Qualification Required"
+                  required
+                  error={errors.qualificationRequired}
+                >
                   {isView ? (
                     <ReadOnly>{v(rec.jQ_qualification_required)}</ReadOnly>
                   ) : (
                     <input
                       type="text"
                       value={form.qualificationRequired}
-                      onChange={(e) => setField("qualificationRequired", e.target.value)}
+                      onChange={(e) =>
+                        setField("qualificationRequired", e.target.value)
+                      }
                       placeholder="e.g. B.Sc Nursing"
                       className={inputClass}
                       disabled={saving}
@@ -754,14 +805,20 @@ export default function CreateJobDescription() {
                   )}
                 </Field>
 
-                <Field label="Experience Required" required error={errors.experienceRequired}>
+                <Field
+                  label="Experience Required"
+                  required
+                  error={errors.experienceRequired}
+                >
                   {isView ? (
                     <ReadOnly>{v(rec.jQ_experience_required)}</ReadOnly>
                   ) : (
                     <input
                       type="text"
                       value={form.experienceRequired}
-                      onChange={(e) => setField("experienceRequired", e.target.value)}
+                      onChange={(e) =>
+                        setField("experienceRequired", e.target.value)
+                      }
                       placeholder="e.g. 3-5 years"
                       className={inputClass}
                       disabled={saving}
@@ -802,8 +859,8 @@ export default function CreateJobDescription() {
                 <Field label="Facilities">
                   {isView ? (
                     <ReadOnly>
-                      Accommodation: {yesNo(rec.jQ_accommodation)} · Food Facility:{" "}
-                      {yesNo(rec.jQ_food_facility)}
+                      Accommodation: {yesNo(rec.jQ_accommodation)} · Food
+                      Facility: {yesNo(rec.jQ_food_facility)}
                     </ReadOnly>
                   ) : (
                     <div className="flex flex-wrap items-center gap-6 pt-2">
@@ -811,7 +868,9 @@ export default function CreateJobDescription() {
                         <input
                           type="checkbox"
                           checked={form.accommodation}
-                          onChange={(e) => setField("accommodation", e.target.checked)}
+                          onChange={(e) =>
+                            setField("accommodation", e.target.checked)
+                          }
                           disabled={saving}
                           className="h-4 w-4 accent-[#2f6b8a]"
                         />
@@ -821,7 +880,9 @@ export default function CreateJobDescription() {
                         <input
                           type="checkbox"
                           checked={form.foodFacility}
-                          onChange={(e) => setField("foodFacility", e.target.checked)}
+                          onChange={(e) =>
+                            setField("foodFacility", e.target.checked)
+                          }
                           disabled={saving}
                           className="h-4 w-4 accent-[#2f6b8a]"
                         />
@@ -831,10 +892,8 @@ export default function CreateJobDescription() {
                   )}
                 </Field>
 
-                <Field label="Country" required error={errors.countryId}>
-                  {isView ? (
-                    <ReadOnly>{v(rec.countryName)}</ReadOnly>
-                  ) : (
+                {!isView && (
+                  <Field label="Country" required error={errors.countryId}>
                     <SelectField
                       value={form.countryId}
                       onChange={(val) => setField("countryId", val)}
@@ -842,25 +901,25 @@ export default function CreateJobDescription() {
                       placeholder="Select country"
                       disabled={saving}
                     />
-                  )}
-                </Field>
+                  </Field>
+                )}
 
-                <Field label="State" required error={errors.stateId}>
-                  {isView ? (
-                    <ReadOnly>{v(rec.stateName)}</ReadOnly>
-                  ) : (
+                {!isView && (
+                  <Field label="State" required error={errors.stateId}>
                     <SelectField
                       value={form.stateId}
                       onChange={(val) => setField("stateId", val)}
                       items={sources.states}
-                      placeholder={form.countryId ? "Select state" : "Select country first"}
+                      placeholder={
+                        form.countryId ? "Select state" : "Select country first"
+                      }
                       loading={loadingStates}
                       disabled={saving || !form.countryId || loadingStates}
                     />
-                  )}
-                </Field>
+                  </Field>
+                )}
 
-                <Field label="City" required error={errors.cityId}>
+                <Field label="City" required={!isView} error={errors.cityId}>
                   {isView ? (
                     <ReadOnly>{v(rec.jobLocationName)}</ReadOnly>
                   ) : (
@@ -868,14 +927,16 @@ export default function CreateJobDescription() {
                       value={form.cityId}
                       onChange={(val) => setField("cityId", val)}
                       items={sources.cities}
-                      placeholder={form.stateId ? "Select city" : "Select state first"}
+                      placeholder={
+                        form.stateId ? "Select city" : "Select state first"
+                      }
                       loading={loadingCities}
                       disabled={saving || !form.stateId || loadingCities}
                     />
                   )}
                 </Field>
 
-                <Field label="Deadline" required error={errors.deadline}>
+                <Field label="Deadline">
                   {isView ? (
                     <ReadOnly>{fmtDate(rec.jQ_deadline)}</ReadOnly>
                   ) : (
@@ -896,44 +957,22 @@ export default function CreateJobDescription() {
                     <input
                       type="date"
                       value={form.expectedJoiningDate}
-                      onChange={(e) => setField("expectedJoiningDate", e.target.value)}
+                      onChange={(e) =>
+                        setField("expectedJoiningDate", e.target.value)
+                      }
                       className={inputClass}
                       disabled={saving}
                     />
                   )}
                 </Field>
 
-                <Field label="Assigned To (User ID)">
-                  {isView ? (
-                    <ReadOnly>{v(rec.assignedToName ?? rec.jQ_assigned_to)}</ReadOnly>
-                  ) : (
-                    <input
-                      type="number"
-                      min="1"
-                      value={form.assignedTo}
-                      onChange={(e) => setField("assignedTo", e.target.value)}
-                      placeholder="Optional"
-                      className={inputClass}
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Status" required error={errors.jobStatusId}>
-                  {isView ? (
-                    <ReadOnly>{v(rec.jobStatusName)}</ReadOnly>
-                  ) : (
-                    <SelectField
-                      value={form.jobStatusId}
-                      onChange={(val) => setField("jobStatusId", val)}
-                      items={JOB_STATUSES}
-                      placeholder="Select status"
-                      disabled={saving}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Job Description" required full alignTop error={errors.description}>
+                <Field
+                  label="Job Description"
+                  required
+                  full
+                  alignTop
+                  error={errors.description}
+                >
                   {isView ? (
                     <ReadOnly multiline>{v(rec.jQ_description)}</ReadOnly>
                   ) : (
@@ -942,7 +981,9 @@ export default function CreateJobDescription() {
                         rows={5}
                         maxLength={DESCRIPTION_MAX}
                         value={form.description}
-                        onChange={(e) => setField("description", e.target.value)}
+                        onChange={(e) =>
+                          setField("description", e.target.value)
+                        }
                         placeholder="Describe the role, responsibilities, and expectations..."
                         className={`${inputClass} resize-y`}
                         disabled={saving}
@@ -969,11 +1010,15 @@ export default function CreateJobDescription() {
                         key={fileInputKey}
                         type="file"
                         accept=".pdf,.doc,.docx"
-                        onChange={(e) => setField("attachment", e.target.files?.[0] ?? null)}
+                        onChange={(e) =>
+                          setField("attachment", e.target.files?.[0] ?? null)
+                        }
                         disabled={saving}
                         className="block w-full cursor-pointer text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-[#2f6b8a]/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-[#2f6b8a] hover:file:bg-[#2f6b8a]/20"
                       />
-                      <p className="mt-1.5 text-xs text-slate-500">Optional. PDF / DOC / DOCX.</p>
+                      <p className="mt-1.5 text-xs text-slate-500">
+                        Optional. PDF / DOC / DOCX.
+                      </p>
                       {form.attachment ? (
                         <p className="mt-1 break-all text-xs text-slate-600">
                           Selected: {form.attachment.name}
@@ -981,7 +1026,8 @@ export default function CreateJobDescription() {
                       ) : (
                         rec.jQ_jd_file_path && (
                           <p className="mt-1 break-all text-xs text-slate-500">
-                            Current: {fileNameFromPath(rec.jQ_jd_file_path)} (upload a new file to replace it)
+                            Current: {fileNameFromPath(rec.jQ_jd_file_path)}{" "}
+                            (upload a new file to replace it)
                           </p>
                         )
                       )}
@@ -1022,11 +1068,21 @@ export default function CreateJobDescription() {
                     </button>
                     <button
                       type="submit"
-                      disabled={saving || loadingCategories || loadingRoles || loadingStates || loadingCities}
+                      disabled={
+                        saving ||
+                        loadingCategories ||
+                        loadingRoles ||
+                        loadingStates ||
+                        loadingCities
+                      }
                       className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {saving && <Loader2 size={16} className="animate-spin" />}
-                      {saving ? "Saving..." : isCreate ? "Create" : "Save Changes"}
+                      {saving
+                        ? "Saving..."
+                        : isCreate
+                          ? "Create"
+                          : "Save Changes"}
                     </button>
                   </>
                 )}
