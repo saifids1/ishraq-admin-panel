@@ -1,6 +1,6 @@
 // src/pages/admin/job/CreateJobDescription.jsx
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { ChevronDown, ChevronsLeft, Loader2, Pencil } from "lucide-react";
@@ -13,11 +13,17 @@ import instituteTypeApi from "../../../api/Services/instituteTypeApi";
 import jobCategoryApi from "../../../api/Services/jobCategoryApi";
 import jobRoleApi from "../../../api/Services/jobRoleApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
+import { getCurrentUserId2 } from "../../../utils/authUtils.js";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
+const LIST_PATH = "/admin/jdbyadmin";
+
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:cursor-not-allowed disabled:bg-slate-50";
+
+const readOnlyInputClass =
+  "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none cursor-default";
 
 const DESCRIPTION_MAX = 500;
 
@@ -55,8 +61,9 @@ const first = (item, ...keys) => {
     const actualKey = Object.keys(item || {}).find(
       (candidate) => candidate.toLowerCase() === key.toLowerCase(),
     );
-    if (actualKey !== undefined && item[actualKey] !== null)
+    if (actualKey !== undefined && item[actualKey] !== null) {
       return item[actualKey];
+    }
   }
   return "";
 };
@@ -135,7 +142,6 @@ const EMPTY = {
   description: "",
 };
 
-// Maps the GET record (camelCase or PascalCase) into form state.
 const formFromRecord = (r) => ({
   organizationTypeId: String(
     first(r, "instituteTypeId", "InstituteTypeId", "jQ_institute_type_id"),
@@ -149,7 +155,8 @@ const formFromRecord = (r) => ({
 
 const validate = (f) => {
   const errors = {};
-  if (!f.organizationTypeId) errors.organizationTypeId = "Select an organization type";
+  if (!f.organizationTypeId)
+    errors.organizationTypeId = "Select an organization type";
   if (!f.jobCategoryId) errors.jobCategoryId = "Select a job category";
   if (!f.jobRoleId) errors.jobRoleId = "Select a job role";
 
@@ -162,12 +169,19 @@ const validate = (f) => {
 };
 
 // Field names match the existing backend DTOs exactly.
-const toPayload = (f) => ({
-  InstituteTypeId: Number(f.organizationTypeId),
-  CategoryId: Number(f.jobCategoryId),
-  RoleId: Number(f.jobRoleId),
-  Description: f.description,
-});
+// Field names match the backend DTO. Create sends CreatedBy, update sends UpdatedBy.
+const toPayload = (f, userId, isCreate) => {
+  const base = {
+    InstituteTypeId: Number(f.organizationTypeId),
+    CategoryId: Number(f.jobCategoryId),
+    RoleId: Number(f.jobRoleId),
+    Description: f.description,
+  };
+
+  return isCreate
+    ? { ...base, CreatedBy: userId }
+    : { ...base, UpdatedBy: userId };
+};
 
 /* ------------------------------ UI PIECES ------------------------------ */
 
@@ -187,7 +201,9 @@ const Field = ({ label, required, error, full, alignTop, children }) => (
     </label>
     <div className="min-w-0 flex-1">
       {children}
-      {error && <span className="mt-1 block text-xs text-red-500">{error}</span>}
+      {error && (
+        <span className="mt-1 block text-xs text-red-500">{error}</span>
+      )}
     </div>
   </div>
 );
@@ -198,7 +214,21 @@ const ReadOnly = ({ children }) => (
   </div>
 );
 
-const SelectField = ({ value, onChange, items, placeholder, disabled, loading }) => (
+const ReadOnlyInput = ({ label, value }) => (
+  <label className="flex flex-col gap-1.5">
+    <span className="text-sm font-medium text-slate-700">{label}</span>
+    <input type="text" readOnly value={value} className={readOnlyInputClass} />
+  </label>
+);
+
+const SelectField = ({
+  value,
+  onChange,
+  items,
+  placeholder,
+  disabled,
+  loading,
+}) => (
   <div className="relative">
     <select
       value={value}
@@ -222,32 +252,62 @@ const SelectField = ({ value, onChange, items, placeholder, disabled, loading })
   </div>
 );
 
-// Audit header shown at the top of the card, as in the reference screenshot.
-const AuditHeader = ({ rec }) => {
-  const createdBy = first(rec, "createdBy", "CreatedBy", "jQ_created_by");
-  const createdAt = first(rec, "createdAt", "CreatedAt", "jQ_created_at");
-  const updatedBy = first(rec, "updatedBy", "UpdatedBy", "jQ_updated_by");
-  const updatedAt = first(rec, "updatedAt", "UpdatedAt", "jQ_updated_at");
+// Confirmation popup. Matches the page's slate and #2f6b8a palette.
+const ConfirmDialog = ({
+  open,
+  title,
+  message,
+  confirmLabel,
+  loading,
+  onConfirm,
+  onCancel,
+}) => {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape" && !loading) onCancel();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, loading, onCancel]);
+
+  if (!open) return null;
 
   return (
-    <div className="flex flex-col gap-1 border-b border-slate-200 px-6 py-4 text-sm text-slate-700 md:flex-row md:justify-between">
-      <div className="flex flex-col gap-1">
-        <p>
-          <span className="font-medium">Created By :</span> {v(createdBy)}
-        </p>
-        <p>
-          <span className="font-medium">Created Date :</span>{" "}
-          {fmtDateTime(createdAt)}
-        </p>
-      </div>
-      <div className="flex flex-col gap-1 md:text-right">
-        <p>
-          <span className="font-medium">Last Updated By :</span> {v(updatedBy)}
-        </p>
-        <p>
-          <span className="font-medium">Last Updated Date :</span>{" "}
-          {fmtDateTime(updatedAt)}
-        </p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-dialog-title"
+    >
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+        <h3
+          id="confirm-dialog-title"
+          className="text-base font-semibold text-slate-800"
+        >
+          {title}
+        </h3>
+        <p className="mt-2 text-sm text-slate-600">{message}</p>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            {loading ? "Please wait..." : confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -257,10 +317,16 @@ const AuditHeader = ({ rec }) => {
 
 export default function CreateJobDescription() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
-  const isCreate = !id;
 
-  const [isView, setIsView] = useState(Boolean(id));
+  // Mode comes from the URL, not local state:
+  //   /admin/jdbyadmin/add        -> create
+  //   /admin/jdbyadmin/:id        -> view
+  //   /admin/jdbyadmin/:id/edit   -> edit
+  const isCreate = !id;
+  const isView = !isCreate && !location.pathname.endsWith("/edit");
+
   const [record, setRecord] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [savedForm, setSavedForm] = useState(EMPTY);
@@ -268,6 +334,7 @@ export default function CreateJobDescription() {
   const [error, setError] = useState("");
   const [loadingRecord, setLoadingRecord] = useState(!isCreate);
   const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const [sources, setSources] = useState({
     institutes: [],
@@ -277,51 +344,52 @@ export default function CreateJobDescription() {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
 
-  const mastersLoadedRef = useRef(false);
-  const categoryReqId = useRef(0);
-  const roleReqId = useRef(0);
-
   /* ----- load the record (view and edit) ----- */
-  const loadRecord = async (recordId) => {
-    setLoadingRecord(true);
-    setError("");
-    try {
-      const res = await getJDByAdminById(recordId);
-      const data = recordFrom(res);
-      if (!data) {
-        throw new Error("Job description was not found.");
-      }
-      const mapped = formFromRecord(data);
-      setRecord(data);
-      setForm(mapped);
-      setSavedForm(mapped);
-    } catch (err) {
-      setError(getApiErrorMessage(err) || "Unable to load job description.");
-    } finally {
-      setLoadingRecord(false);
-    }
-  };
-
   useEffect(() => {
     if (isCreate) {
       setRecord(null);
       setForm(EMPTY);
       setSavedForm(EMPTY);
       setLoadingRecord(false);
-      return;
+      return undefined;
     }
-    loadRecord(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
 
-  /* ----- organization types: loaded once, create and edit only ----- */
+    let cancelled = false;
+    setLoadingRecord(true);
+    setError("");
+
+    getJDByAdminById(id)
+      .then((res) => {
+        if (cancelled) return;
+        const data = recordFrom(res);
+        if (!data) throw new Error("Job description was not found.");
+        const mapped = formFromRecord(data);
+        setRecord(data);
+        setForm(mapped);
+        setSavedForm(mapped);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(getApiErrorMessage(err) || "Unable to load job description.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRecord(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isCreate]);
+
+  /* ----- organization types: edit and create only ----- */
   useEffect(() => {
-    if (isView || mastersLoadedRef.current) return;
-    mastersLoadedRef.current = true;
+    if (isView) return undefined;
+    let cancelled = false;
 
     instituteTypeApi
       .getAllList()
       .then((res) => {
+        if (cancelled) return;
         setSources((s) => ({
           ...s,
           institutes: options(
@@ -332,17 +400,24 @@ export default function CreateJobDescription() {
         }));
       })
       .catch((err) => {
-        setError(getApiErrorMessage(err) || "Unable to load organization types.");
+        if (!cancelled) {
+          setError(
+            getApiErrorMessage(err) || "Unable to load organization types.",
+          );
+        }
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isView]);
 
-  /* ----- categories depend on organization type (create and edit) ----- */
+  /* ----- categories follow organization type ----- */
   useEffect(() => {
     if (isView) return undefined;
-    const reqId = ++categoryReqId.current;
     let cancelled = false;
 
-    setSources((s) => ({ ...s, categories: [], roles: [] }));
+    setSources((s) => ({ ...s, categories: [] }));
 
     if (!form.organizationTypeId) {
       setLoadingCategories(false);
@@ -353,7 +428,7 @@ export default function CreateJobDescription() {
     jobCategoryApi
       .getByInstituteType(Number(form.organizationTypeId))
       .then((res) => {
-        if (cancelled || reqId !== categoryReqId.current) return;
+        if (cancelled) return;
         setSources((s) => ({
           ...s,
           categories: options(
@@ -364,12 +439,12 @@ export default function CreateJobDescription() {
         }));
       })
       .catch((err) => {
-        if (cancelled || reqId !== categoryReqId.current) return;
-        setError(getApiErrorMessage(err) || "Unable to load job categories.");
+        if (!cancelled) {
+          setError(getApiErrorMessage(err) || "Unable to load job categories.");
+        }
       })
       .finally(() => {
-        if (!cancelled && reqId === categoryReqId.current)
-          setLoadingCategories(false);
+        if (!cancelled) setLoadingCategories(false);
       });
 
     return () => {
@@ -377,10 +452,9 @@ export default function CreateJobDescription() {
     };
   }, [isView, form.organizationTypeId]);
 
-  /* ----- roles depend on job category (create and edit) ----- */
+  /* ----- roles follow job category ----- */
   useEffect(() => {
     if (isView) return undefined;
-    const reqId = ++roleReqId.current;
     let cancelled = false;
 
     setSources((s) => ({ ...s, roles: [] }));
@@ -394,7 +468,7 @@ export default function CreateJobDescription() {
     jobRoleApi
       .getByJobCategory(Number(form.jobCategoryId))
       .then((res) => {
-        if (cancelled || reqId !== roleReqId.current) return;
+        if (cancelled) return;
         setSources((s) => ({
           ...s,
           roles: options(
@@ -405,11 +479,12 @@ export default function CreateJobDescription() {
         }));
       })
       .catch((err) => {
-        if (cancelled || reqId !== roleReqId.current) return;
-        setError(getApiErrorMessage(err) || "Unable to load job roles.");
+        if (!cancelled) {
+          setError(getApiErrorMessage(err) || "Unable to load job roles.");
+        }
       })
       .finally(() => {
-        if (!cancelled && reqId === roleReqId.current) setLoadingRoles(false);
+        if (!cancelled) setLoadingRoles(false);
       });
 
     return () => {
@@ -418,7 +493,8 @@ export default function CreateJobDescription() {
   }, [isView, form.jobCategoryId]);
 
   /* ----- handlers ----- */
-  // Changing a parent clears its dependent child.
+
+  // Changing a parent clears its dependent children.
   const setField = (name, value) => {
     setForm((cur) => {
       const next = { ...cur, [name]: value };
@@ -444,42 +520,69 @@ export default function CreateJobDescription() {
 
   const handleEdit = () => {
     setError("");
-    setIsView(false);
+    navigate(`/admin/jdbyadmin/${id}/edit`);
   };
 
-  const handleCancelEdit = () => {
+  const handleCancel = () => {
+    setError("");
+    if (isCreate) {
+      navigate(LIST_PATH);
+      return;
+    }
+    // Discard unsaved changes and return to view mode.
     setForm(savedForm);
     setErrors({});
-    setError("");
-    setIsView(true);
+    navigate(`/admin/jdbyadmin/${id}`);
   };
 
-  const submit = async (e) => {
+  // Validate first, then ask for confirmation. The API call happens in handleConfirm.
+  const handleSubmit = (e) => {
     e.preventDefault();
-    if (isView) return;
-    setError("");
+    if (isView || saving) return;
 
+    setError("");
     const nextErrors = validate(form);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = async () => {
+    // Read the logged-in user's ID at save time.
+    const userId = Number(getCurrentUserId2());
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      setConfirmOpen(false);
+      setError("Unable to identify the current user. Please log in again.");
+      return;
+    }
+
     setSaving(true);
+    setError("");
+
     try {
-      const payload = toPayload(form);
+      const payload = toPayload(form, userId, isCreate);
 
       if (isCreate) {
         await createJDByAdmin(payload);
-        navigate("/admin/jdbyadmin", { replace: true });
+        setConfirmOpen(false);
+        navigate(LIST_PATH, { replace: true });
       } else {
         await updateJDByAdmin(id, payload);
-        setIsView(true);
-        await loadRecord(id);
+        setConfirmOpen(false);
+        navigate(`/admin/jdbyadmin`, { replace: true });
       }
     } catch (err) {
+      setConfirmOpen(false);
       setError(getApiErrorMessage(err) || "Unable to save job description.");
     } finally {
       setSaving(false);
     }
+  };
+
+  const closeConfirm = () => {
+    if (!saving) setConfirmOpen(false);
   };
 
   /* ----- render ----- */
@@ -487,10 +590,17 @@ export default function CreateJobDescription() {
   const title = isCreate
     ? "Create Job Description"
     : isView
-      ? "View Job Description"
+      ? "View Details"
       : "Edit Job Description";
   const descriptionLength = plainText(form.description).length;
   const descriptionHtml = first(rec, "description", "Description");
+
+  const createdAt = fmtDateTime(first(rec, "createdAt", "CreatedAt"));
+  const createdBy = v(first(rec, "createdByName", "CreatedByName"));
+  const updatedAt = fmtDateTime(first(rec, "updatedAt", "UpdatedAt"));
+  const updatedBy = v(first(rec, "updatedByName", "UpdatedByName"));
+
+  const isBusy = saving || loadingCategories || loadingRoles;
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
@@ -512,9 +622,6 @@ export default function CreateJobDescription() {
             </div>
           </div>
 
-          {/* AUDIT INFO (existing records only) */}
-          {!isCreate && !loadingRecord && record && <AuditHeader rec={rec} />}
-
           {error && (
             <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
               {error}
@@ -527,7 +634,7 @@ export default function CreateJobDescription() {
               Loading job description...
             </div>
           ) : (
-            <form onSubmit={submit} noValidate className="p-4">
+            <form onSubmit={handleSubmit} noValidate className="p-4">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Field
                   label="Organization Type"
@@ -604,7 +711,9 @@ export default function CreateJobDescription() {
                           dangerouslySetInnerHTML={{ __html: descriptionHtml }}
                         />
                       ) : (
-                        <div className="px-3 py-2 text-sm text-slate-800">—</div>
+                        <div className="px-3 py-2 text-sm text-slate-800">
+                          —
+                        </div>
                       )}
                     </div>
                   ) : (
@@ -633,33 +742,40 @@ export default function CreateJobDescription() {
                     </div>
                   )}
                 </Field>
+
+                {/* AUDIT FIELDS (view only) */}
+                {isView && (
+                  <>
+                    <div className="md:col-span-2 mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <ReadOnlyInput label="Created At" value={createdAt} />
+                      <ReadOnlyInput label="Created By" value={createdBy} />
+                      <ReadOnlyInput label="Updated At" value={updatedAt} />
+                      <ReadOnlyInput label="Updated By" value={updatedBy} />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* FOOTER */}
-              <div className="mt-6 flex justify-between gap-3 border-t border-slate-100 pt-4">
+              <div
+                className={`mt-6 flex gap-3 border-t border-slate-100 pt-4 ${
+                  isView ? "justify-end" : "justify-between"
+                }`}
+              >
                 {isView ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => navigate(-1)}
-                      className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                    >
-                      Back
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleEdit}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
-                    >
-                      <Pencil size={16} />
-                      Edit
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={handleEdit}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
+                  >
+                    <Pencil size={16} />
+                    Edit
+                  </button>
                 ) : (
                   <>
                     <button
                       type="button"
-                      onClick={isCreate ? () => navigate(-1) : handleCancelEdit}
+                      onClick={handleCancel}
                       disabled={saving}
                       className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
                     >
@@ -667,11 +783,15 @@ export default function CreateJobDescription() {
                     </button>
                     <button
                       type="submit"
-                      disabled={saving || loadingCategories || loadingRoles}
+                      disabled={isBusy}
                       className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {saving && <Loader2 size={16} className="animate-spin" />}
-                      {saving ? "Saving..." : isCreate ? "Create" : "Save Changes"}
+                      {saving
+                        ? "Saving..."
+                        : isCreate
+                          ? "Create"
+                          : "Save Changes"}
                     </button>
                   </>
                 )}
@@ -680,6 +800,21 @@ export default function CreateJobDescription() {
           )}
         </div>
       </div>
+
+      {/* CONFIRMATION POPUP */}
+      <ConfirmDialog
+        open={confirmOpen}
+        title={isCreate ? "Create job description?" : "Save changes?"}
+        message={
+          isCreate
+            ? "This will create a new job description. Do you want to continue?"
+            : "This will update the job description. Do you want to save your changes?"
+        }
+        confirmLabel={isCreate ? "Yes, create" : "Yes, save"}
+        loading={saving}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }

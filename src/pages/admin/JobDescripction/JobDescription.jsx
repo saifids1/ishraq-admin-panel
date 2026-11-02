@@ -6,25 +6,19 @@ import {
   Search as SearchIcon,
   Inbox,
   Plus,
-  BriefcaseBusiness,
-  UserPlus,
-  Users,
   RefreshCw,
-  Eye,
   CheckCircle2,
   XCircle,
   UserRoundCheck,
   UserRoundX,
-  ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
 
-import { StatCardGrid } from "../../../components/common/Dashboardkit";
-
 import {
-  getAllJDByAdmin,
+  getJDByAdminPagination,
   updateJDByAdminActiveStatus,
 } from "../../../api/Services/jdfornonregistercompanyApi";
+import ConfirmDialog from "../../../components/common/ConfirmDialog";
 
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 
@@ -33,6 +27,7 @@ import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 ================================ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
+const SEARCH_DEBOUNCE_MS = 400;
 const TABLE_MIN_WIDTH = 1000;
 
 const COLUMNS = [
@@ -51,159 +46,29 @@ const COL_SPAN_ALL = COLUMNS.length;
    NORMALIZE API RESPONSE
 ================================ */
 
-const firstValue = (item, ...keys) =>
-  keys
-    .map((key) => item?.[key])
-    .find((value) => value !== undefined && value !== null) ?? "";
-
-const extractList = (response) => {
-  const root = response?.data ?? response;
-
-  const candidates = [
-    root?.data?.data,
-    root?.Data?.Data,
-    root?.data,
-    root?.Data,
-    root,
-  ];
-
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) return candidate;
-    if (Array.isArray(candidate?.data)) return candidate.data;
-    if (Array.isArray(candidate?.Data)) return candidate.Data;
-  }
-
-  return [];
-};
-
 // Convert API active status into boolean.
 const normalizeStatus = (value) => {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value === 1;
 
   if (typeof value === "string") {
-    return ["true", "1", "active", "yes"].includes(
-      value.toLowerCase().trim()
-    );
+    return ["true", "1", "active", "yes"].includes(value.toLowerCase().trim());
   }
 
   return null;
 };
 
-// The controller requires an integer ID.
-// Never use the generated IR-JDBYADMIN reference as the route ID.
-const getNumericId = (item) => {
-  const rawId = firstValue(
-    item,
-    "id",
-    "Id",
-    "jdbA_RecordId",
-    "jdByAdminId",
-    "jdByAdminID"
-  );
-
-  const numericId = Number(rawId);
-
-  if (Number.isInteger(numericId) && numericId > 0) {
-    return numericId;
-  }
-
-  // Only use jdbA_Id if it is actually numeric.
-  const referenceId = Number(item?.jdbA_Id);
-
-  if (
-    item?.jdbA_Id !== "" &&
-    item?.jdbA_Id !== null &&
-    item?.jdbA_Id !== undefined &&
-    Number.isInteger(referenceId) &&
-    referenceId > 0
-  ) {
-    return referenceId;
-  }
-
-  return null;
-};
-
-/* ================================
-   MAP API DATA
-================================ */
-
-const toListRow = (item) => {
-  const activeValue = firstValue(
-    item,
-    "isActive",
-    "IsActive",
-    "jdbA_IsActive",
-    "active"
-  );
-
-  return {
-    id: getNumericId(item),
-
-    // Generated reference ID
-    jobId: firstValue(item, "jdbA_Id", "JdbA_Id"),
-
-    // Actual API fields
-    instituteTypeId: firstValue(item, "instituteTypeId", "InstituteTypeId"),
-
-    organizationName: firstValue(
-      item,
-      "organizationName",
-      "OrganizationName",
-      "orgName",
-      "instituteTypeName",
-      "InstituteTypeName"
-    ),
-
-    position: firstValue(item, "roleName", "RoleName"),
-
-    roleId: firstValue(item, "roleId", "RoleId"),
-
-    jobCategory: firstValue(item, "categoryName", "CategoryName"),
-
-    categoryId: firstValue(item, "categoryId", "CategoryId"),
-
-    description: firstValue(item, "description", "Description"),
-
-    createdAt: firstValue(item, "createdAt", "CreatedAt"),
-
-    createdBy: firstValue(item, "createdBy", "CreatedBy"),
-
-    updatedAt: firstValue(item, "updatedAt", "UpdatedAt"),
-
-    updatedBy: firstValue(item, "updatedBy", "UpdatedBy"),
-
-    vacancies: firstValue(
-      item,
-      "vacancies",
-      "numberOfVacancies",
-      "jQ_vacancies"
-    ),
-
-    applicants:
-      firstValue(item, "appliedCount", "applicants", "applicantCount") || 0,
-
-    isActive: activeValue === "" ? null : normalizeStatus(activeValue),
-  };
-};
-
-/* ================================
-   DATE FORMAT
-================================ */
-
-const formatDate = (value) => {
-  if (!value) return "-";
-
-  const date = new Date(value);
-
-  if (isNaN(date.getTime())) return "-";
-
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-};
+const toListRow = (item) => ({
+  id:
+    Number.isInteger(Number(item?.id)) && Number(item?.id) > 0
+      ? Number(item.id)
+      : null,
+  jobId: item?.jdbA_Id ?? "",
+  organizationName: item?.instituteTypeName ?? "",
+  position: item?.roleName ?? "",
+  jobCategory: item?.categoryName ?? "",
+  isActive: normalizeStatus(item?.isActive),
+});
 
 /* ================================
    COMPONENT
@@ -213,19 +78,31 @@ const JobDescriptionList = () => {
   const navigate = useNavigate();
   const [toast] = useStatusToast();
 
-  const [allJobs, setAllJobs] = useState([]);
+  // The row waiting for confirmation before its status changes
+  const [statusTarget, setStatusTarget] = useState(null);
+
+  // Current page data
+  const [rows, setRows] = useState([]);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
-  const [search, setSearch] = useState("");
+  // Pagination and search state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
 
-  // Track the row whose status is being updated.
+  // Row whose status is being updated
   const [updatingStatusId, setUpdatingStatusId] = useState(null);
 
   const headerScrollRef = useRef(null);
+
+  // Guards against out-of-order responses overwriting newer ones
+  const requestIdRef = useRef(0);
 
   /* ================================
      SCROLL SYNC
@@ -238,21 +115,57 @@ const JobDescriptionList = () => {
   }, []);
 
   /* ================================
-     FETCH ALL JOBS
+     DEBOUNCE SEARCH
   ================================ */
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const trimmed = searchInput.trim();
+      setSearch((prev) => {
+        if (prev !== trimmed) setPage(1);
+        return trimmed;
+      });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  /* ================================
+     FETCH PAGE
+  ================================ */
+
+  const fetchJobs = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+
     setLoading(true);
     setError("");
 
     try {
-      const response = await getAllJDByAdmin();
+      const result = await getJDByAdminPagination({
+        pageNo: page,
+        pageSize,
+        search,
+      });
 
-      const mappedJobs = extractList(response).map(toListRow);
+      if (requestId !== requestIdRef.current) return;
 
-      setAllJobs(mappedJobs);
+      const items = Array.isArray(result?.data) ? result.data : [];
+      const serverTotalPages = Math.max(1, result?.totalPages ?? 1);
+
+      setRows(items.map(toListRow));
+      setTotalRecords(result?.totalRecords ?? 0);
+      setTotalPages(serverTotalPages);
+
+      // Records were removed, so move back to the last valid page
+      if (page > serverTotalPages) {
+        setPage(serverTotalPages);
+      }
     } catch (err) {
-      setAllJobs([]);
+      if (requestId !== requestIdRef.current) return;
+
+      setRows([]);
+      setTotalRecords(0);
+      setTotalPages(1);
 
       const message =
         getApiErrorMessage(err) || "Unable to load job descriptions.";
@@ -264,13 +177,15 @@ const JobDescriptionList = () => {
         type: "error",
       });
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [toast]);
+  }, [page, pageSize, search, toast]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    fetchJobs();
+  }, [fetchJobs]);
 
   /* ================================
      REFRESH
@@ -282,17 +197,22 @@ const JobDescriptionList = () => {
     setRefreshing(true);
 
     try {
-      await load();
+      await fetchJobs();
     } finally {
       setRefreshing(false);
     }
   };
 
   /* ================================
-     ACTIVE / INACTIVE TOGGLE API
+     ACTIVE / INACTIVE TOGGLE
   ================================ */
 
-  const handleToggleStatus = async (job) => {
+  /* ================================
+   ACTIVE / INACTIVE TOGGLE
+================================ */
+
+  // Step 1: the switch click opens the confirmation dialog
+  const requestToggleStatus = (job) => {
     if (!job.id) {
       toast?.({
         message:
@@ -304,7 +224,20 @@ const JobDescriptionList = () => {
 
     if (updatingStatusId !== null) return;
 
-    // Unknown status is treated as a request to activate.
+    setStatusTarget(job);
+  };
+
+  // Closes the dialog without changing anything
+  const closeStatusDialog = () => {
+    if (updatingStatusId === null) setStatusTarget(null);
+  };
+
+  // Step 2: the user confirms, so the API call runs
+  const confirmToggleStatus = async () => {
+    const job = statusTarget;
+    if (!job || updatingStatusId !== null) return;
+
+    // Unknown status is treated as a request to activate
     const nextStatus = job.isActive !== true;
 
     setUpdatingStatusId(job.id);
@@ -312,17 +245,14 @@ const JobDescriptionList = () => {
     try {
       const response = await updateJDByAdminActiveStatus(job.id, nextStatus);
 
-      // Update only after successful API response.
-      setAllJobs((previousJobs) =>
-        previousJobs.map((item) =>
-          item.id === job.id
-            ? {
-                ...item,
-                isActive: nextStatus,
-              }
-            : item
-        )
+      // Update the row only after a successful response
+      setRows((previous) =>
+        previous.map((item) =>
+          item.id === job.id ? { ...item, isActive: nextStatus } : item,
+        ),
       );
+
+      setStatusTarget(null);
 
       toast?.({
         message:
@@ -333,6 +263,8 @@ const JobDescriptionList = () => {
         type: "success",
       });
     } catch (err) {
+      setStatusTarget(null);
+
       toast?.({
         message: getApiErrorMessage(err) || "Unable to update job status.",
         type: "error",
@@ -343,99 +275,30 @@ const JobDescriptionList = () => {
   };
 
   /* ================================
-     SEARCH
+     PAGINATION HELPERS
   ================================ */
-
-  const filteredJobs = useMemo(() => {
-    const term = search.trim().toLowerCase();
-
-    if (!term) return allJobs;
-
-    return allJobs.filter((job) =>
-      [
-        job.jobId,
-        job.organizationName,
-        job.position,
-        job.jobCategory,
-        job.description,
-      ].some((value) => String(value ?? "").toLowerCase().includes(term))
-    );
-  }, [allJobs, search]);
-
-  /* ================================
-     PAGINATION
-  ================================ */
-
-  const count = filteredJobs.length;
-
-  const totalPages = Math.max(1, Math.ceil(count / pageSize));
 
   const currentPage = Math.min(page, totalPages);
-
   const start = (currentPage - 1) * pageSize;
 
   const pageRows = useMemo(
     () =>
-      filteredJobs
-        .slice(start, start + pageSize)
-        .map((row, index) => ({
-          ...row,
-          srNo: start + index + 1,
-        })),
-    [filteredJobs, start, pageSize]
+      rows.map((row, index) => ({
+        ...row,
+        srNo: start + index + 1,
+      })),
+    [rows, start],
   );
 
   const pageNumbers = useMemo(() => {
     const win = 5;
 
     let from = Math.max(1, currentPage - Math.floor(win / 2));
-
     const to = Math.min(totalPages, from + win - 1);
-
     from = Math.max(1, to - win + 1);
 
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
   }, [currentPage, totalPages]);
-
-  /* ================================
-     STATS
-  ================================ */
-
-  const stats = useMemo(
-    () => [
-      {
-        title: "Total Job Descriptions",
-        value: allJobs.length,
-        note: "All time",
-        icon: BriefcaseBusiness,
-        from: "#6366f1",
-        to: "#8b5cf6",
-        color: "#6366f1",
-        color2: "#8b5cf6",
-      },
-      {
-        title: "Total Vacancies",
-        value: allJobs.reduce((sum, job) => sum + Number(job.vacancies || 0), 0),
-        note: "Across all jobs",
-        icon: UserPlus,
-        from: "#f59e0b",
-        to: "#ef4444",
-        color: "#f59e0b",
-        color2: "#fb923c",
-      },
-      {
-        title: "Total Applicants",
-        value: allJobs.reduce((sum, job) => sum + Number(job.applicants || 0), 0),
-        note: "Interested across all jobs",
-        icon: Users,
-        from: "#0ea5e9",
-        to: "#2563eb",
-        color: "#0ea5e9",
-        color2: "#38bdf8",
-      },
-    ],
-    [allJobs]
-  );
 
   /* ================================
      STYLES
@@ -470,8 +333,6 @@ const JobDescriptionList = () => {
 
   return (
     <div className="w-full min-w-0">
-      {/* <StatCardGrid items={stats} /> */}
-
       <div className="mx-auto w-full min-w-0 max-w-[1400px] rounded-[14px] border border-[#e2e8ee] bg-white p-2.5 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:p-4 lg:px-5">
         {/* HEADER */}
 
@@ -491,11 +352,8 @@ const JobDescriptionList = () => {
                 type="search"
                 aria-label="Search job descriptions"
                 placeholder="Search by job ID, organization, role or category"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
               />
             </div>
@@ -538,7 +396,7 @@ const JobDescriptionList = () => {
 
             <button
               type="button"
-              onClick={load}
+              onClick={fetchJobs}
               className="shrink-0 font-semibold underline"
             >
               Retry
@@ -596,8 +454,6 @@ const JobDescriptionList = () => {
               </colgroup>
 
               <tbody>
-                {/* LOADING */}
-
                 {loading ? (
                   <tr>
                     <td
@@ -614,8 +470,6 @@ const JobDescriptionList = () => {
                     </td>
                   </tr>
                 ) : pageRows.length === 0 ? (
-                  /* EMPTY */
-
                   <tr>
                     <td
                       colSpan={COL_SPAN_ALL}
@@ -626,38 +480,29 @@ const JobDescriptionList = () => {
                       </div>
 
                       <p className="mt-3 text-sm text-[#1e2b36]">
-                        {allJobs.length === 0
-                          ? "No job descriptions yet"
-                          : "No job descriptions match your search"}
+                        {search
+                          ? "No job descriptions match your search"
+                          : "No job descriptions yet"}
                       </p>
                     </td>
                   </tr>
                 ) : (
-                  /* JOB RECORDS */
-
-                  pageRows.map((row, index) => {
+                  pageRows.map((row) => {
                     const isUpdating = updatingStatusId === row.id;
-
                     const isActive = row.isActive === true;
 
                     return (
                       <tr
-                        key={row.jobId || row.id || index}
+                        key={row.id ?? row.jobId}
                         className="group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                       >
-                        {/* SR NO */}
-
                         <td className={`${td} tabular-nums`}>{row.srNo}</td>
-
-                        {/* JOB ID */}
 
                         <td className={`${td} whitespace-nowrap`}>
                           <span className="block truncate font-semibold text-[#2c6b8a]">
                             {row.jobId || "-"}
                           </span>
                         </td>
-
-                        {/* STATUS */}
 
                         <td className={td}>
                           {row.isActive === null ? (
@@ -683,15 +528,11 @@ const JobDescriptionList = () => {
                           )}
                         </td>
 
-                        {/* INSTITUTE TYPE */}
-
                         <td className={td}>
                           <span className="block truncate font-medium">
                             {row.organizationName || "-"}
                           </span>
                         </td>
-
-                        {/* POSITION */}
 
                         <td className={td}>
                           <span className="block truncate font-semibold text-slate-800">
@@ -699,20 +540,14 @@ const JobDescriptionList = () => {
                           </span>
                         </td>
 
-                        {/* CATEGORY */}
-
                         <td className={td}>
                           <span className="block truncate text-[12px] sm:text-[14px]">
                             {row.jobCategory || "-"}
                           </span>
                         </td>
 
-                        {/* ACTIONS */}
-
                         <td className={stickyActionsCell}>
                           <div className="flex items-center justify-center gap-2">
-                            {/* VIEW */}
-
                             <button
                               type="button"
                               title={
@@ -730,8 +565,6 @@ const JobDescriptionList = () => {
                               <ChevronsRight size={14} strokeWidth={2.2} />
                             </button>
 
-                            {/* ACTIVE / INACTIVE SWITCH */}
-
                             <button
                               type="button"
                               role="switch"
@@ -747,7 +580,7 @@ const JobDescriptionList = () => {
                                   : "Inactive. Click to activate"
                               }
                               disabled={!row.id || updatingStatusId !== null}
-                              onClick={() => handleToggleStatus(row)}
+                              onClick={() => requestToggleStatus(row)}
                               className={`relative h-6 w-[38px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-[42px] ${
                                 isActive
                                   ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
@@ -800,14 +633,16 @@ const JobDescriptionList = () => {
             <span>
               Showing{" "}
               <strong className="font-semibold text-[#53677f]">
-                {count ? start + 1 : 0}
+                {totalRecords ? start + 1 : 0}
               </strong>{" "}
               to{" "}
               <strong className="font-semibold text-[#53677f]">
-                {Math.min(start + pageSize, count)}
+                {Math.min(start + pageSize, totalRecords)}
               </strong>{" "}
               of{" "}
-              <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
+              <strong className="font-semibold text-[#53677f]">
+                {totalRecords}
+              </strong>{" "}
               entries
             </span>
 
@@ -838,7 +673,7 @@ const JobDescriptionList = () => {
             <button
               type="button"
               onClick={() => setPage(currentPage - 1)}
-              disabled={currentPage === 1}
+              disabled={currentPage === 1 || loading}
               className={`${navBtn} disabled:opacity-50`}
             >
               Previous
@@ -849,8 +684,9 @@ const JobDescriptionList = () => {
                 key={number}
                 type="button"
                 onClick={() => setPage(number)}
+                disabled={loading}
                 aria-current={number === currentPage ? "page" : undefined}
-                className={`${pageBtn} ${
+                className={`${pageBtn} disabled:opacity-60 ${
                   number === currentPage
                     ? "bg-gradient-to-br from-[#2c6b8a] to-[#3b86a6] font-semibold text-white shadow-md"
                     : "border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a]"
@@ -863,7 +699,7 @@ const JobDescriptionList = () => {
             <button
               type="button"
               onClick={() => setPage(currentPage + 1)}
-              disabled={currentPage === totalPages}
+              disabled={currentPage === totalPages || loading}
               className={`${navBtn} disabled:opacity-50`}
             >
               Next
@@ -871,6 +707,27 @@ const JobDescriptionList = () => {
           </nav>
         </div>
       </div>
+      {/* STATUS CONFIRMATION */}
+      <ConfirmDialog
+        open={Boolean(statusTarget)}
+        title={
+          statusTarget?.isActive === true
+            ? "Deactivate job description?"
+            : "Activate job description?"
+        }
+        message={
+          statusTarget?.isActive === true
+            ? `${statusTarget?.jobId || "This job description"} will be marked as inactive. Do you want to continue?`
+            : `${statusTarget?.jobId || "This job description"} will be marked as active. Do you want to continue?`
+        }
+        confirmLabel={
+          statusTarget?.isActive === true ? "Yes, deactivate" : "Yes, activate"
+        }
+        tone={statusTarget?.isActive === true ? "danger" : "primary"}
+        loading={updatingStatusId !== null}
+        onConfirm={confirmToggleStatus}
+        onCancel={closeStatusDialog}
+      />
     </div>
   );
 };

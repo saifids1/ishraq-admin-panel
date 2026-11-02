@@ -11,6 +11,26 @@ export const getAllJDByAdmin = async () => {
 };
 
 // =====================================
+// GET JD BY ADMIN (PAGINATED + SEARCH)
+// GET: api/JDByAdmin/pagination
+// =====================================
+export const getJDByAdminPagination = async ({
+  pageNo = 1,
+  pageSize = 10,
+  search = "",
+} = {}) => {
+  const response = await axiosInstance.get("/JDByAdmin/pagination", {
+    params: {
+      PageNo: pageNo,
+      PageSize: pageSize,
+      ...(search && { Search: search }),
+    },
+  });
+
+  return response.data;
+};
+
+// =====================================
 // GET JD BY ID
 // GET: api/JDByAdmin/{id}
 // =====================================
