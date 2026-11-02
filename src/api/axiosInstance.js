@@ -1,21 +1,19 @@
-
 import axios from "axios";
 
 const axiosInstance = axios.create({
-   baseURL:
-    process.env.REACT_APP_API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
-  //  baseURL: "/api",
+  //  baseURL:
+  //   process.env.REACT_APP_API_BASE_URL,
   // headers: {
   //   "Content-Type": "application/json",
   // },
-  
+  baseURL: "/api",
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
 axiosInstance.interceptors.response.use(
-  (response) => response, 
+  (response) => response,
   (error) => {
     const apiError = error.response?.data;
 
@@ -28,7 +26,7 @@ axiosInstance.interceptors.response.use(
       errors: apiError?.errors,
       data: apiError,
     });
-  }
+  },
 );
 
 export default axiosInstance;
