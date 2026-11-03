@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   ChevronsLeft,
@@ -25,8 +25,10 @@ import {
   AlertTriangle,
   BadgeCheck,
   X as CloseIcon,
-  UserStar
+  UserStar,
 } from "lucide-react";
+
+import { getCurrentUserRoles } from "../../utils/authUtils";
 
 /* ------------------------------ STYLES ------------------------------ */
 
@@ -173,7 +175,11 @@ const MENU_ITEMS = [
         link: "/admin/settings/master/complaintCategory",
         icon: AlertTriangle,
       },
-      { text: "Country", link: "/admin/settings/master/countryMaster", icon: Globe },
+      {
+        text: "Country",
+        link: "/admin/settings/master/countryMaster",
+        icon: Globe,
+      },
       {
         text: "Employment Preference",
         link: "/admin/settings/master/employmentType",
@@ -215,11 +221,75 @@ const MENU_ITEMS = [
 
 const BOTTOM_ITEMS = [];
 
+/* ------------------------------ ROLE ACCESS ------------------------------ */
+
+// Normalizes role names such as "JobseekerAdmin", "JD by Admin" or
+// "Complaints / Grievance Admin" into comparable keys.
+const normalizeRoleKey = (role) =>
+  String(role ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+// Every role that can open the admin portal. Used for the Dashboard link.
+const ALL_ADMIN_ROLES = [
+  "usermanagementadmin",
+  "jobseekeradmin",
+  "employeradmin",
+  "jobrequirementadmin",
+  "jdbyadmin",
+  "careerenquiriesadmin",
+  "complaintsgrievanceadmin",
+  "contactusenquiryadmin",
+  "feedbackadmin",
+  "masterdataadmin",
+  "manageblogadmin",
+];
+
+// Maps each sidebar link to the roles that can see it.
+// A user with the "admin" role sees every link regardless of this map.
+const MENU_ROLE_ACCESS = {
+  "/admin/dashboard": ALL_ADMIN_ROLES,
+  "/admin/users": ["usermanagementadmin"],
+  "/admin/jobseekers": ["jobseekeradmin"],
+  "/admin/employer": ["employeradmin"],
+  "/admin/reset-password": [
+    "usermanagementadmin",
+    "jobseekeradmin",
+    "employeradmin",
+  ],
+  "/admin/job-requirement-list": ["jobrequirementadmin"],
+  "/admin/jdbyadmin": ["jdbyadmin"],
+  "/admin/career": ["careerenquiriesadmin"],
+  "/admin/complaints": ["complaintsgrievanceadmin"],
+  "/admin/contact": ["contactusenquiryadmin"],
+  "/admin/feedback": ["feedbackadmin"],
+  "/admin/master-data": ["masterdataadmin"],
+  "/admin/blogs": ["manageblogadmin"],
+};
+
 /* ------------------------------ COMPONENT ------------------------------ */
 
 export const AdminSidebar = ({ open = false, onClose }) => {
   const { pathname } = useLocation();
   const isMobile = useIsMobile();
+  const userRoleKeys = useMemo(() => {
+    const roles = getCurrentUserRoles();
+    return new Set((Array.isArray(roles) ? roles : []).map(normalizeRoleKey));
+  }, []);
+
+  const isSuperAdmin = userRoleKeys.has("admin");
+
+  // Only links the current user is allowed to see. Links missing from
+  // MENU_ROLE_ACCESS are hidden from everyone except "admin".
+  const visibleMenuItems = useMemo(
+    () =>
+      MENU_ITEMS.filter((item) => {
+        if (isSuperAdmin) return true;
+        const allowed = MENU_ROLE_ACCESS[item.link] ?? [];
+        return allowed.some((role) => userRoleKeys.has(role));
+      }),
+    [isSuperAdmin, userRoleKeys],
+  );
 
   const [expanded, setExpanded] = useState(true);
 
@@ -460,7 +530,7 @@ export const AdminSidebar = ({ open = false, onClose }) => {
             </div>
 
             <div className="common-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-2 pt-2 pb-3">
-              <ul className="space-y-1">{MENU_ITEMS.map(renderItem)}</ul>
+              <ul className="space-y-1">{visibleMenuItems.map(renderItem)}</ul>
             </div>
 
             {BOTTOM_ITEMS.length > 0 && (
@@ -517,7 +587,7 @@ export const AdminSidebar = ({ open = false, onClose }) => {
         </div>
 
         <div className="common-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-2 pt-2 pb-3">
-          <ul className="space-y-1">{MENU_ITEMS.map(renderItem)}</ul>
+        <ul className="space-y-1">{visibleMenuItems.map(renderItem)}</ul>
         </div>
 
         {BOTTOM_ITEMS.length > 0 && (

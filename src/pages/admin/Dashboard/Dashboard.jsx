@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BriefcaseBusiness,
@@ -28,20 +28,80 @@ import {
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
 import { adminDashboardApi } from "../../../api/Services/adminDashboardApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
+import {
+  canAccess,
+  getUserRoleKeys,
+  ALL_ADMIN_ROLES,
+} from "../../../utils/roleAccess";
 
 const ENDPOINTS = [
   ["summary", "Dashboard summary", adminDashboardApi.getSummary],
-  ["registrations", "Registration statistics", adminDashboardApi.getRegistrations],
+  [
+    "registrations",
+    "Registration statistics",
+    adminDashboardApi.getRegistrations,
+  ],
   ["jobs", "Job statistics", adminDashboardApi.getJobs],
   ["enquiries", "Enquiry statistics", adminDashboardApi.getEnquiries],
   ["feedback", "Feedback statistics", adminDashboardApi.getFeedback],
   ["activity", "Recent activity", adminDashboardApi.getRecentActivity],
 ];
 
+/* ------------------------------ ROLE ACCESS ------------------------------ */
+
+// Which roles can call each data endpoint.
+const ENDPOINT_ROLES = {
+  summary: ALL_ADMIN_ROLES,
+  registrations: ["usermanagementadmin", "jobseekeradmin", "employeradmin"],
+  jobs: ["jobrequirementadmin", "jdbyadmin"],
+  enquiries: [
+    "careerenquiriesadmin",
+    "complaintsgrievanceadmin",
+    "contactusenquiryadmin",
+  ],
+  feedback: ["feedbackadmin"],
+  activity: ALL_ADMIN_ROLES,
+};
+
+// Which roles can see each dashboard panel.
+const PANEL_ROLES = {
+  registrations: ["usermanagementadmin", "jobseekeradmin", "employeradmin"],
+  jobs: ["jobrequirementadmin", "jdbyadmin"],
+  accountStatus: ["usermanagementadmin", "jobseekeradmin", "employeradmin"],
+  jobRequirements: ["jobrequirementadmin"],
+  applications: ["jobrequirementadmin", "jobseekeradmin", "employeradmin"],
+  feedback: ["feedbackadmin"],
+  activity: ALL_ADMIN_ROLES,
+};
+
+// Which roles can see each stat card.
+const CARD_ROLES = {
+  jobseekers: ["usermanagementadmin", "jobseekeradmin"],
+  employers: ["usermanagementadmin", "employeradmin"],
+  jobRequirements: ["jobrequirementadmin"],
+  applications: ["jobrequirementadmin", "jobseekeradmin", "employeradmin"],
+  complaints: ["complaintsgrievanceadmin"],
+  careerEnquiries: ["careerenquiriesadmin"],
+  contactEnquiries: ["contactusenquiryadmin"],
+  feedback: ["feedbackadmin"],
+};
+
+// Which roles can see each enquiry row in the enquiry chart.
+const ENQUIRY_ROLES = {
+  complaints: ["complaintsgrievanceadmin"],
+  careerEnquiries: ["careerenquiriesadmin"],
+  contactEnquiries: ["contactusenquiryadmin"],
+};
+
 // Supports raw API data, Axios responses, and { success, message, data } responses.
 const unwrapResponse = (response) => {
   let result = response?.data ?? response;
-  if (result && typeof result === "object" && !Array.isArray(result) && "data" in result) {
+  if (
+    result &&
+    typeof result === "object" &&
+    !Array.isArray(result) &&
+    "data" in result
+  ) {
     result = result.data;
   }
   return result ?? {};
@@ -85,7 +145,9 @@ const Panel = ({ title, subtitle, icon: Icon, children, className = "" }) => (
         <Icon size={16} />
       </span>
       <div className="min-w-0">
-        <h2 className="truncate text-sm font-semibold text-slate-800">{title}</h2>
+        <h2 className="truncate text-sm font-semibold text-slate-800">
+          {title}
+        </h2>
         {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
       </div>
     </div>
@@ -138,7 +200,11 @@ const AnalyticsChart = ({ title, subtitle, icon, data, bars }) => (
               fontSize: 12,
             }}
           />
-          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="circle" iconSize={8} />
+          <Legend
+            wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+            iconType="circle"
+            iconSize={8}
+          />
           {bars.map((bar) => (
             <Bar
               key={bar.dataKey}
@@ -182,13 +248,24 @@ const JobStatusChart = ({ data, total }) => {
             </Pie>
             <Tooltip
               formatter={(value, name) => [formatNumber(value), name]}
-              contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 12 }}
+              contentStyle={{
+                border: "1px solid #e2e8f0",
+                borderRadius: 10,
+                fontSize: 12,
+              }}
             />
-            <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
+            <Legend
+              verticalAlign="bottom"
+              wrapperStyle={{ fontSize: 11 }}
+              iconType="circle"
+              iconSize={8}
+            />
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pb-5">
-          <span className="text-xl font-bold tabular-nums text-slate-800">{formatNumber(total)}</span>
+          <span className="text-xl font-bold tabular-nums text-slate-800">
+            {formatNumber(total)}
+          </span>
           <span className="text-[11px] text-slate-500">Total jobs</span>
         </div>
         {!hasValues && (
@@ -206,16 +283,33 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState([]);
 
+  const roleKeys = useMemo(() => getUserRoleKeys(), []);
+  const canView = useCallback(
+    (allowed) => canAccess(roleKeys, allowed),
+    [roleKeys],
+  );
+
+  // Only call endpoints the user's roles can use.
+  const visibleEndpoints = useMemo(
+    () => ENDPOINTS.filter(([key]) => canAccess(roleKeys, ENDPOINT_ROLES[key])),
+    [roleKeys],
+  );
+
   const loadDashboard = useCallback(async () => {
     setLoading(true);
-    const results = await Promise.allSettled(ENDPOINTS.map(([, , request]) => request()));
+    const results = await Promise.allSettled(
+      visibleEndpoints.map(([, , request]) => request()),
+    );
     const updates = {};
     const failures = [];
 
     results.forEach((result, index) => {
-      const [key, label] = ENDPOINTS[index];
+      const [key, label] = visibleEndpoints[index];
       if (result.status === "fulfilled") {
-        updates[key] = key === "activity" ? readItems(result.value) : unwrapResponse(result.value);
+        updates[key] =
+          key === "activity"
+            ? readItems(result.value)
+            : unwrapResponse(result.value);
       } else {
         failures.push(`${label}: ${getApiErrorMessage(result.reason)}`);
       }
@@ -224,7 +318,7 @@ const AdminDashboard = () => {
     setDashboard((current) => ({ ...current, ...updates }));
     setErrors(failures);
     setLoading(false);
-  }, []);
+  }, [visibleEndpoints]);
 
   useEffect(() => {
     loadDashboard();
@@ -272,15 +366,40 @@ const AdminDashboard = () => {
 
   const jobStatusChartData = [
     { name: "Active", value: readValue(jobs, "activeJobs"), color: "#10b981" },
-    { name: "Inactive", value: readValue(jobs, "inactiveJobs"), color: "#94a3b8" },
-    { name: "Expired", value: readValue(jobs, "expiredJobs"), color: "#f59e0b" },
+    {
+      name: "Inactive",
+      value: readValue(jobs, "inactiveJobs"),
+      color: "#94a3b8",
+    },
+    {
+      name: "Expired",
+      value: readValue(jobs, "expiredJobs"),
+      color: "#f59e0b",
+    },
   ];
 
   const enquiryChartData = [
-    { label: "Complaints", total: readValue(enquiries, "totalComplaints"), open: readValue(enquiries, "openComplaints") },
-    { label: "Career enquiries", total: readValue(enquiries, "totalCareerEnquiries"), open: readValue(enquiries, "openCareerEnquiries") },
-    { label: "Contact enquiries", total: readValue(enquiries, "totalContactEnquiries"), open: readValue(enquiries, "openContactEnquiries") },
-  ];
+    {
+      label: "Complaints",
+      roles: ENQUIRY_ROLES.complaints,
+      total: readValue(enquiries, "totalComplaints"),
+      open: readValue(enquiries, "openComplaints"),
+    },
+    {
+      label: "Career enquiries",
+      roles: ENQUIRY_ROLES.careerEnquiries,
+      total: readValue(enquiries, "totalCareerEnquiries"),
+      open: readValue(enquiries, "openCareerEnquiries"),
+    },
+    {
+      label: "Contact enquiries",
+      roles: ENQUIRY_ROLES.contactEnquiries,
+      total: readValue(enquiries, "totalContactEnquiries"),
+      open: readValue(enquiries, "openContactEnquiries"),
+    },
+  ]
+    .filter((row) => canView(row.roles))
+    .map(({ roles, ...row }) => row);
 
   const jobRequirementChartData = [
     {
@@ -295,27 +414,36 @@ const AdminDashboard = () => {
     {
       label: "Applications",
       total: readValue(summary, "totalApplications"),
-      active: readValue(summary, "activeApplications") || readValue(jobs, "activeApplications"),
+      active:
+        readValue(summary, "activeApplications") ||
+        readValue(jobs, "activeApplications"),
     },
   ];
 
-  const cards = [
-    { title: "Jobseekers", value: totalJobseekers, icon: UserRound, color: "#0ea5e9", color2: "#38bdf8" },
-    { title: "Employers", value: totalEmployers, icon: Building2, color: "#7c3aed", color2: "#818cf8" },
-    { title: "Job requirements", value: readValue(summary, "totalJobRequirements"), icon: BriefcaseBusiness, color: "#f59e0b", color2: "#fb923c" },
-    { title: "Applications", value: readValue(summary, "totalApplications"), icon: FileText, color: "#2f6b8a", color2: "#75c5c4" },
-    { title: "Complaints", value: readValue(summary, "totalComplaints"), icon: MessageSquareWarning, color: "#e11d48", color2: "#fb7185" },
-    { title: "Career enquiries", value: readValue(summary, "totalCareerEnquiries"), icon: UserPlus, color: "#10b981", color2: "#2dd4bf" },
-    { title: "Contact enquiries", value: readValue(summary, "totalContactEnquiries"), icon: Users, color: "#6366f1", color2: "#a78bfa" },
-    { title: "Feedback", value: readValue(summary, "totalFeedback"), icon: Star, color: "#d97706", color2: "#fbbf24" },
+    const cards = [
+    { title: "Jobseekers", value: totalJobseekers, icon: UserRound, color: "#0ea5e9", color2: "#38bdf8", roles: CARD_ROLES.jobseekers },
+    { title: "Employers", value: totalEmployers, icon: Building2, color: "#7c3aed", color2: "#818cf8", roles: CARD_ROLES.employers },
+    { title: "Job requirements", value: readValue(summary, "totalJobRequirements"), icon: BriefcaseBusiness, color: "#f59e0b", color2: "#fb923c", roles: CARD_ROLES.jobRequirements },
+    { title: "Applications", value: readValue(summary, "totalApplications"), icon: FileText, color: "#2f6b8a", color2: "#75c5c4", roles: CARD_ROLES.applications },
+    { title: "Complaints", value: readValue(summary, "totalComplaints"), icon: MessageSquareWarning, color: "#e11d48", color2: "#fb7185", roles: CARD_ROLES.complaints },
+    { title: "Career enquiries", value: readValue(summary, "totalCareerEnquiries"), icon: UserPlus, color: "#10b981", color2: "#2dd4bf", roles: CARD_ROLES.careerEnquiries },
+    { title: "Contact enquiries", value: readValue(summary, "totalContactEnquiries"), icon: Users, color: "#6366f1", color2: "#a78bfa", roles: CARD_ROLES.contactEnquiries },
+    { title: "Feedback", value: readValue(summary, "totalFeedback"), icon: Star, color: "#d97706", color2: "#fbbf24", roles: CARD_ROLES.feedback },
   ];
+
+  // Strip the internal "roles" key before passing cards to StatCardGrid.
+  const visibleCards = cards
+    .filter((card) => canView(card.roles))
+    .map(({ roles, ...card }) => card);
 
   return (
     <div className="min-h-full space-y-3 pb-4">
       <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-[#17405a] via-[#2f6b8a] to-[#4a9bb3] px-4 py-4 text-white shadow-sm">
         <div>
           <h1 className="text-lg font-bold">Ishraq Admin</h1>
-          <p className="mt-1 text-xs text-white/75">Platform overview and analytics</p>
+          <p className="mt-1 text-xs text-white/75">
+            Platform overview and analytics
+          </p>
         </div>
         <button
           type="button"
@@ -329,118 +457,152 @@ const AdminDashboard = () => {
       </header>
 
       {errors.length > 0 && (
-        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          <p className="font-semibold">Some dashboard data could not be loaded.</p>
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+        >
+          <p className="font-semibold">
+            Some dashboard data could not be loaded.
+          </p>
           <ul className="mt-1 list-inside list-disc">
-            {errors.map((error) => <li key={error}>{error}</li>)}
+            {errors.map((error) => (
+              <li key={error}>{error}</li>
+            ))}
           </ul>
-          <button type="button" onClick={loadDashboard} className="mt-2 font-semibold underline">Try again</button>
+          <button
+            type="button"
+            onClick={loadDashboard}
+            className="mt-2 font-semibold underline"
+          >
+            Try again
+          </button>
         </div>
       )}
 
-      <div aria-busy={loading}>
-        <StatCardGrid items={cards} />
+           <div aria-busy={loading}>
+        <StatCardGrid items={visibleCards} />
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <AnalyticsChart
-          title="Registration overview"
-          subtitle="Compare total, today, and this-month registrations"
-          icon={UserPlus}
-          data={registrationChartData}
-          bars={[
-            { dataKey: "jobSeekers", name: "Jobseekers", color: "#0ea5e9" },
-            { dataKey: "employers", name: "Employers", color: "#8b5cf6" },
-          ]}
-        />
-        <JobStatusChart data={jobStatusChartData} total={readValue(jobs, "totalJobs")} />
-        <AnalyticsChart
-          title="Enquiry and complaint status"
-          subtitle="Total items compared with open items"
-          icon={MessageSquareWarning}
-          data={enquiryChartData}
-          bars={[
-            { dataKey: "total", name: "Total", color: "#6366f1" },
-            { dataKey: "open", name: "Open", color: "#f97316" },
-          ]}
-        />
-        <AnalyticsChart
-          title="Account status overview"
-          subtitle="Active accounts compared with inactive jobseekers or pending employers"
-          icon={ShieldCheck}
-          data={accountStatusChartData}
-          bars={[
-            { dataKey: "active", name: "Active", color: "#10b981" },
-            { dataKey: "inactiveOrPending", name: "Inactive / Pending", color: "#f59e0b" },
-          ]}
-        />
-        <AnalyticsChart
-          title="Job requirement overview"
-          subtitle="Total, active, and pending job requirements"
-          icon={BriefcaseBusiness}
-          data={jobRequirementChartData}
-          bars={[
-            { dataKey: "total", name: "Total", color: "#64748b" },
-            { dataKey: "active", name: "Active", color: "#10b981" },
-            { dataKey: "pending", name: "Pending", color: "#f59e0b" },
-          ]}
-        />
-        <AnalyticsChart
-          title="Application overview"
-          subtitle="Total applications compared with active applications"
-          icon={FileText}
-          data={applicationChartData}
-          bars={[
-            { dataKey: "total", name: "Total applications", color: "#2f6b8a" },
-            { dataKey: "active", name: "Active applications", color: "#10b981" },
-          ]}
-        />
+        {canView(PANEL_ROLES.registrations) && (
+          <AnalyticsChart
+            title="Registration overview"
+            subtitle="Compare total, today, and this-month registrations"
+            icon={UserPlus}
+            data={registrationChartData}
+            bars={[
+              { dataKey: "jobSeekers", name: "Jobseekers", color: "#0ea5e9" },
+              { dataKey: "employers", name: "Employers", color: "#8b5cf6" },
+            ]}
+          />
+        )}
+
+        {canView(PANEL_ROLES.jobs) && (
+          <JobStatusChart data={jobStatusChartData} total={readValue(jobs, "totalJobs")} />
+        )}
+
+        {enquiryChartData.length > 0 && (
+          <AnalyticsChart
+            title="Enquiry and complaint status"
+            subtitle="Total items compared with open items"
+            icon={MessageSquareWarning}
+            data={enquiryChartData}
+            bars={[
+              { dataKey: "total", name: "Total", color: "#6366f1" },
+              { dataKey: "open", name: "Open", color: "#f97316" },
+            ]}
+          />
+        )}
+
+        {canView(PANEL_ROLES.accountStatus) && (
+          <AnalyticsChart
+            title="Account status overview"
+            subtitle="Active accounts compared with inactive jobseekers or pending employers"
+            icon={ShieldCheck}
+            data={accountStatusChartData}
+            bars={[
+              { dataKey: "active", name: "Active", color: "#10b981" },
+              { dataKey: "inactiveOrPending", name: "Inactive / Pending", color: "#f59e0b" },
+            ]}
+          />
+        )}
+
+        {canView(PANEL_ROLES.jobRequirements) && (
+          <AnalyticsChart
+            title="Job requirement overview"
+            subtitle="Total, active, and pending job requirements"
+            icon={BriefcaseBusiness}
+            data={jobRequirementChartData}
+            bars={[
+              { dataKey: "total", name: "Total", color: "#64748b" },
+              { dataKey: "active", name: "Active", color: "#10b981" },
+              { dataKey: "pending", name: "Pending", color: "#f59e0b" },
+            ]}
+          />
+        )}
+
+        {canView(PANEL_ROLES.applications) && (
+          <AnalyticsChart
+            title="Application overview"
+            subtitle="Total applications compared with active applications"
+            icon={FileText}
+            data={applicationChartData}
+            bars={[
+              { dataKey: "total", name: "Total applications", color: "#2f6b8a" },
+              { dataKey: "active", name: "Active applications", color: "#10b981" },
+            ]}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <Panel title="Feedback summary" subtitle="Feedback volume and average user rating" icon={Star}>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Metric label="Total feedback" value={readValue(feedback, "totalFeedback")} />
-            <Metric label="Active feedback" value={readValue(feedback, "activeFeedback")} />
-            <Metric
-              label="Average rating"
-              value={Number(feedback?.averageRating ?? feedback?.AverageRating ?? 0).toFixed(1)}
-              detail="out of 5"
-            />
-          </div>
-        </Panel>
+        {canView(PANEL_ROLES.feedback) && (
+          <Panel title="Feedback summary" subtitle="Feedback volume and average user rating" icon={Star}>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Metric label="Total feedback" value={readValue(feedback, "totalFeedback")} />
+              <Metric label="Active feedback" value={readValue(feedback, "activeFeedback")} />
+              <Metric
+                label="Average rating"
+                value={Number(feedback?.averageRating ?? feedback?.AverageRating ?? 0).toFixed(1)}
+                detail="out of 5"
+              />
+            </div>
+          </Panel>
+        )}
 
-        <Panel title="Recent activity" subtitle={`${dashboard.activity?.length ?? 0} latest records`} icon={Activity}>
-          {!dashboard.activity?.length ? (
-            <p className="rounded-xl bg-slate-50 px-3 py-5 text-center text-sm text-slate-500">
-              {loading ? "Loading recent activity..." : "No recent activity found."}
-            </p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {dashboard.activity.map((item, index) => {
-                const type = item?.type ?? item?.Type ?? "Activity";
-                const title = item?.title ?? item?.Title ?? "Untitled activity";
-                const id = item?.id ?? item?.Id ?? index;
-                const createdAt = item?.createdAt ?? item?.CreatedAt;
-                const isActive = item?.isActive ?? item?.IsActive;
+        {canView(PANEL_ROLES.activity) && (
+          <Panel title="Recent activity" subtitle={`${dashboard.activity?.length ?? 0} latest records`} icon={Activity}>
+            {!dashboard.activity?.length ? (
+              <p className="rounded-xl bg-slate-50 px-3 py-5 text-center text-sm text-slate-500">
+                {loading ? "Loading recent activity..." : "No recent activity found."}
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {dashboard.activity.map((item, index) => {
+                  const type = item?.type ?? item?.Type ?? "Activity";
+                  const title = item?.title ?? item?.Title ?? "Untitled activity";
+                  const id = item?.id ?? item?.Id ?? index;
+                  const createdAt = item?.createdAt ?? item?.CreatedAt;
+                  const isActive = item?.isActive ?? item?.IsActive;
 
-                return (
-                  <li key={`${type}-${id}`} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-800">{title}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">{type} · {formatActivityDate(createdAt)}</p>
-                    </div>
-                    {typeof isActive === "boolean" && (
-                      <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
-                        {isActive ? "Active" : "Inactive"}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Panel>
+                  return (
+                    <li key={`${type}-${id}`} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-800">{title}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{type} · {formatActivityDate(createdAt)}</p>
+                      </div>
+                      {typeof isActive === "boolean" && (
+                        <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                          {isActive ? "Active" : "Inactive"}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Panel>
+        )}
       </div>
     </div>
   );

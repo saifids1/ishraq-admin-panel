@@ -28,6 +28,13 @@ import {
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
 import { adminDashboardApi } from "../../../api/Services/adminDashboardApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
+import {
+  ALL_ADMIN_ROLES,
+  canAccess,
+  getUserRoleKeys,
+} from "../../../utils/roleAccess";
+
+/* ------------------------------ DATA SOURCES ------------------------------ */
 
 const ENDPOINTS = [
   ["summary", "Dashboard summary", adminDashboardApi.getSummary],
@@ -37,6 +44,82 @@ const ENDPOINTS = [
   ["feedback", "Feedback statistics", adminDashboardApi.getFeedback],
   ["activity", "Recent activity", adminDashboardApi.getRecentActivity],
 ];
+
+/* ------------------------------ ROLE RULES ------------------------------ */
+
+// Roles that can call each endpoint.
+const ENDPOINT_ROLES = {
+  summary: ALL_ADMIN_ROLES,
+  registrations: ["usermanagementadmin", "jobseekeradmin", "employeradmin"],
+  jobs: ["jobrequirementadmin", "jdbyadmin"],
+  enquiries: [
+    "careerenquiriesadmin",
+    "complaintsgrievanceadmin",
+    "contactusenquiryadmin",
+  ],
+  feedback: ["feedbackadmin"],
+  activity: ALL_ADMIN_ROLES,
+};
+
+// Stat cards.
+const CARD_ROLES = {
+  jobseekers: ["usermanagementadmin", "jobseekeradmin"],
+  employers: ["usermanagementadmin", "employeradmin"],
+  jobRequirements: ["jobrequirementadmin"],
+  applications: ["jobrequirementadmin", "jobseekeradmin", "employeradmin"],
+  complaints: ["complaintsgrievanceadmin"],
+  careerEnquiries: ["careerenquiriesadmin"],
+  contactEnquiries: ["contactusenquiryadmin"],
+  feedback: ["feedbackadmin"],
+};
+
+// Chart and panel sections.
+const PANEL_ROLES = {
+  registrations: ["usermanagementadmin", "jobseekeradmin", "employeradmin"],
+  jobStatus: ["jobrequirementadmin", "jdbyadmin"],
+  enquiries: ["complaintsgrievanceadmin", "careerenquiriesadmin", "contactusenquiryadmin"],
+  jobseekerStatus: ["usermanagementadmin", "jobseekeradmin"],
+  employerStatus: ["usermanagementadmin", "employeradmin"],
+  jobRequirements: ["jobrequirementadmin"],
+  applications: ["jobrequirementadmin", "jobseekeradmin", "employeradmin"],
+  feedback: ["feedbackadmin"],
+  activity: ALL_ADMIN_ROLES,
+};
+
+// Each enquiry category in the stacked chart. Shown only to its own role.
+const ENQUIRY_CATEGORIES = [
+  {
+    key: "complaints",
+    label: "Complaints",
+    roles: ["complaintsgrievanceadmin"],
+    totalField: "totalComplaints",
+    openField: "openComplaints",
+    resolvedColor: "#fda4af",
+    openColor: "#e11d48",
+  },
+  {
+    key: "career",
+    label: "Career",
+    roles: ["careerenquiriesadmin"],
+    totalField: "totalCareerEnquiries",
+    openField: "openCareerEnquiries",
+    resolvedColor: "#6ee7b7",
+    openColor: "#10b981",
+  },
+  {
+    key: "contact",
+    label: "Contact",
+    roles: ["contactusenquiryadmin"],
+    totalField: "totalContactEnquiries",
+    openField: "openContactEnquiries",
+    resolvedColor: "#a5b4fc",
+    openColor: "#6366f1",
+  },
+];
+
+const RECENT_ACTIVITY_LIMIT = 10;
+
+/* ------------------------------ HELPERS ------------------------------ */
 
 // Supports raw API data, Axios responses, and { success, message, data } responses.
 const unwrapResponse = (response) => {
@@ -76,7 +159,7 @@ const formatActivityDate = (value) => {
   return formatter.format(Math.round(hours / 24), "day");
 };
 
-const RECENT_ACTIVITY_LIMIT = 10;
+/* ------------------------------ UI PARTS ------------------------------ */
 
 const Panel = ({ title, subtitle, icon: Icon, children, className = "" }) => (
   <section
@@ -218,19 +301,33 @@ const JobStatusChart = ({ data, total }) => {
   );
 };
 
+/* ------------------------------ PAGE ------------------------------ */
+
 const AdminDashboard = () => {
   const [dashboard, setDashboard] = useState({});
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState([]);
 
+  // Role keys are read once per mount. Sign-in changes the route, so this is stable.
+  const roleKeys = useMemo(() => getUserRoleKeys(), []);
+  const canView = useCallback((allowed) => canAccess(roleKeys, allowed), [roleKeys]);
+
+  // Only call the endpoints this user's roles can use.
+  const visibleEndpoints = useMemo(
+    () => ENDPOINTS.filter(([key]) => canView(ENDPOINT_ROLES[key])),
+    [canView],
+  );
+
   const loadDashboard = useCallback(async () => {
     setLoading(true);
-    const results = await Promise.allSettled(ENDPOINTS.map(([, , request]) => request()));
+    const results = await Promise.allSettled(
+      visibleEndpoints.map(([, , request]) => request()),
+    );
     const updates = {};
     const failures = [];
 
     results.forEach((result, index) => {
-      const [key, label] = ENDPOINTS[index];
+      const [key, label] = visibleEndpoints[index];
       if (result.status === "fulfilled") {
         updates[key] = key === "activity" ? readItems(result.value) : unwrapResponse(result.value);
       } else {
@@ -241,7 +338,7 @@ const AdminDashboard = () => {
     setDashboard((current) => ({ ...current, ...updates }));
     setErrors(failures);
     setLoading(false);
-  }, []);
+  }, [visibleEndpoints]);
 
   useEffect(() => {
     loadDashboard();
@@ -253,7 +350,7 @@ const AdminDashboard = () => {
   const enquiries = dashboard.enquiries;
   const feedback = dashboard.feedback;
 
-  // Latest 10 activity records, sorted newest-first (defensive client-side guard).
+  // Latest activity records, newest first (client-side guard).
   const recentActivity = useMemo(() => {
     const items = Array.isArray(dashboard.activity) ? dashboard.activity : [];
     return [...items]
@@ -267,8 +364,7 @@ const AdminDashboard = () => {
       .slice(0, RECENT_ACTIVITY_LIMIT);
   }, [dashboard.activity]);
 
-  const totalJobseekers = readValue(summary, "totalJobseekers");
-  const totalEmployers = readValue(summary, "totalEmployers");
+  /* ---------------------------- CHART DATA ---------------------------- */
 
   const registrationChartData = [
     {
@@ -288,12 +384,11 @@ const AdminDashboard = () => {
     },
   ];
 
-  // Split account status into two separate charts.
   const jobseekerStatusChartData = [
     {
       label: "Jobseekers",
       active: readValue(summary, "activeJobseekers"),
-      inactiveOrPending: readValue(summary, "inactiveJobseekers"),
+      inactive: readValue(summary, "inactiveJobseekers"),
     },
   ];
 
@@ -301,11 +396,10 @@ const AdminDashboard = () => {
     {
       label: "Employers",
       active: readValue(summary, "activeEmployers"),
-      inactiveOrPending: readValue(summary, "pendingEmployers"),
+      pending: readValue(summary, "pendingEmployers"),
     },
   ];
 
-  // Job status pie: show only Open jobs (totalJobs − expiredJobs) and Expired jobs.
   const totalJobs = readValue(jobs, "totalJobs");
   const expiredJobs = readValue(jobs, "expiredJobs");
   const openJobs = Math.max(totalJobs - expiredJobs, 0);
@@ -315,26 +409,43 @@ const AdminDashboard = () => {
     { name: "Expired jobs", value: expiredJobs, color: "#f59e0b" },
   ];
 
-  // Single stacked bar: each category contributes an "open" and a "resolved"
-  // segment, stacked one above the other with its own color family.
-  const complaintsTotal = readValue(enquiries, "totalComplaints");
-  const complaintsOpen = readValue(enquiries, "openComplaints");
-  const careerTotal = readValue(enquiries, "totalCareerEnquiries");
-  const careerOpen = readValue(enquiries, "openCareerEnquiries");
-  const contactTotal = readValue(enquiries, "totalContactEnquiries");
-  const contactOpen = readValue(enquiries, "openContactEnquiries");
+  // Only the enquiry categories this user can access appear in the stack.
+  const visibleEnquiryCategories = ENQUIRY_CATEGORIES.filter((category) =>
+    canView(category.roles),
+  );
 
-  const enquiryChartData = [
-    {
-      label: "Enquiries & complaints",
-      complaintsResolved: Math.max(complaintsTotal - complaintsOpen, 0),
-      complaintsOpen,
-      careerResolved: Math.max(careerTotal - careerOpen, 0),
-      careerOpen,
-      contactResolved: Math.max(contactTotal - contactOpen, 0),
-      contactOpen,
-    },
-  ];
+  const enquiryChartRow = {
+    label: "Enquiries & complaints",
+  };
+  const enquiryBars = [];
+
+  visibleEnquiryCategories.forEach((category) => {
+    const total = readValue(enquiries, category.totalField);
+    const open = readValue(enquiries, category.openField);
+
+    enquiryChartRow[`${category.key}Resolved`] = Math.max(total - open, 0);
+    enquiryChartRow[`${category.key}Open`] = open;
+
+    enquiryBars.push(
+      {
+        dataKey: `${category.key}Resolved`,
+        name: `${category.label} · Resolved`,
+        color: category.resolvedColor,
+      },
+      {
+        dataKey: `${category.key}Open`,
+        name: `${category.label} · Open`,
+        color: category.openColor,
+      },
+    );
+  });
+
+  // The last segment of the stack gets rounded corners.
+  if (enquiryBars.length > 0) {
+    enquiryBars[enquiryBars.length - 1].topOfStack = true;
+  }
+
+  const enquiryChartData = [enquiryChartRow];
 
   const jobRequirementChartData = [
     {
@@ -353,16 +464,25 @@ const AdminDashboard = () => {
     },
   ];
 
+  /* ------------------------------ CARDS ------------------------------ */
+
   const cards = [
-    { title: "Jobseekers", value: totalJobseekers, icon: UserRound, color: "#0ea5e9", color2: "#38bdf8" },
-    { title: "Employers", value: totalEmployers, icon: Building2, color: "#7c3aed", color2: "#818cf8" },
-    { title: "Job requirements", value: readValue(summary, "totalJobRequirements"), icon: BriefcaseBusiness, color: "#f59e0b", color2: "#fb923c" },
-    { title: "Applications", value: readValue(summary, "totalApplications"), icon: FileText, color: "#2f6b8a", color2: "#75c5c4" },
-    { title: "Complaints", value: readValue(summary, "totalComplaints"), icon: MessageSquareWarning, color: "#e11d48", color2: "#fb7185" },
-    { title: "Career enquiries", value: readValue(summary, "totalCareerEnquiries"), icon: UserPlus, color: "#10b981", color2: "#2dd4bf" },
-    { title: "Contact enquiries", value: readValue(summary, "totalContactEnquiries"), icon: Users, color: "#6366f1", color2: "#a78bfa" },
-    { title: "Feedback", value: readValue(summary, "totalFeedback"), icon: Star, color: "#d97706", color2: "#fbbf24" },
+    { title: "Jobseekers", value: readValue(summary, "totalJobseekers"), icon: UserRound, color: "#0ea5e9", color2: "#38bdf8", roles: CARD_ROLES.jobseekers },
+    { title: "Employers", value: readValue(summary, "totalEmployers"), icon: Building2, color: "#7c3aed", color2: "#818cf8", roles: CARD_ROLES.employers },
+    { title: "Job requirements", value: readValue(summary, "totalJobRequirements"), icon: BriefcaseBusiness, color: "#f59e0b", color2: "#fb923c", roles: CARD_ROLES.jobRequirements },
+    { title: "Applications", value: readValue(summary, "totalApplications"), icon: FileText, color: "#2f6b8a", color2: "#75c5c4", roles: CARD_ROLES.applications },
+    { title: "Complaints", value: readValue(summary, "totalComplaints"), icon: MessageSquareWarning, color: "#e11d48", color2: "#fb7185", roles: CARD_ROLES.complaints },
+    { title: "Career enquiries", value: readValue(summary, "totalCareerEnquiries"), icon: UserPlus, color: "#10b981", color2: "#2dd4bf", roles: CARD_ROLES.careerEnquiries },
+    { title: "Contact enquiries", value: readValue(summary, "totalContactEnquiries"), icon: Users, color: "#6366f1", color2: "#a78bfa", roles: CARD_ROLES.contactEnquiries },
+    { title: "Feedback", value: readValue(summary, "totalFeedback"), icon: Star, color: "#d97706", color2: "#fbbf24", roles: CARD_ROLES.feedback },
   ];
+
+  // Strip the internal "roles" key before passing to StatCardGrid.
+  const visibleCards = cards
+    .filter((card) => canView(card.roles))
+    .map(({ roles, ...card }) => card);
+
+  /* ------------------------------ RENDER ------------------------------ */
 
   return (
     <div className="min-h-full space-y-3 pb-4">
@@ -392,132 +512,148 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      <div aria-busy={loading}>
-        <StatCardGrid items={cards} />
+      {visibleCards.length > 0 && (
+        <div aria-busy={loading}>
+          <StatCardGrid items={visibleCards} />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        {canView(PANEL_ROLES.registrations) && (
+          <AnalyticsChart
+            title="Registration overview"
+            subtitle="Compare total, today, and this-month registrations"
+            icon={UserPlus}
+            data={registrationChartData}
+            bars={[
+              { dataKey: "jobSeekers", name: "Jobseekers", color: "#0ea5e9" },
+              { dataKey: "employers", name: "Employers", color: "#8b5cf6" },
+            ]}
+          />
+        )}
+
+        {canView(PANEL_ROLES.jobStatus) && (
+          <JobStatusChart data={jobStatusChartData} total={totalJobs} />
+        )}
+
+        {enquiryBars.length > 0 && (
+          <AnalyticsChart
+            title="Enquiry and complaint status"
+            subtitle="Resolved and open items, stacked by category"
+            icon={MessageSquareWarning}
+            data={enquiryChartData}
+            stacked
+            maxBarSize={140}
+            bars={enquiryBars}
+          />
+        )}
+
+        {canView(PANEL_ROLES.jobseekerStatus) && (
+          <AnalyticsChart
+            title="Jobseeker account status"
+            subtitle="Active jobseekers compared with inactive jobseekers"
+            icon={UserRound}
+            data={jobseekerStatusChartData}
+            bars={[
+              { dataKey: "active", name: "Active", color: "#10b981" },
+              { dataKey: "inactive", name: "Inactive", color: "#f59e0b" },
+            ]}
+          />
+        )}
+
+        {canView(PANEL_ROLES.employerStatus) && (
+          <AnalyticsChart
+            title="Employer account status"
+            subtitle="Active employers compared with pending employers"
+            icon={Building2}
+            data={employerStatusChartData}
+            bars={[
+              { dataKey: "active", name: "Active", color: "#8b5cf6" },
+              { dataKey: "pending", name: "Pending", color: "#f59e0b" },
+            ]}
+          />
+        )}
+
+        {canView(PANEL_ROLES.jobRequirements) && (
+          <AnalyticsChart
+            title="Job requirement overview"
+            subtitle="Total, active, and pending job requirements"
+            icon={BriefcaseBusiness}
+            data={jobRequirementChartData}
+            bars={[
+              { dataKey: "total", name: "Total", color: "#64748b" },
+              { dataKey: "active", name: "Active", color: "#10b981" },
+              { dataKey: "pending", name: "Pending", color: "#f59e0b" },
+            ]}
+          />
+        )}
+
+        {canView(PANEL_ROLES.applications) && (
+          <AnalyticsChart
+            title="Application overview"
+            subtitle="Total applications compared with active applications"
+            icon={FileText}
+            data={applicationChartData}
+            bars={[
+              { dataKey: "total", name: "Total applications", color: "#2f6b8a" },
+              { dataKey: "active", name: "Active applications", color: "#10b981" },
+            ]}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <AnalyticsChart
-          title="Registration overview"
-          subtitle="Compare total, today, and this-month registrations"
-          icon={UserPlus}
-          data={registrationChartData}
-          bars={[
-            { dataKey: "jobSeekers", name: "Jobseekers", color: "#0ea5e9" },
-            { dataKey: "employers", name: "Employers", color: "#8b5cf6" },
-          ]}
-        />
-        <JobStatusChart data={jobStatusChartData} total={totalJobs} />
-        <AnalyticsChart
-          title="Enquiry and complaint status"
-          subtitle="Single stacked bar — each category shown one above the other (resolved + open)"
-          icon={MessageSquareWarning}
-          data={enquiryChartData}
-          stacked
-          maxBarSize={140}
-          bars={[
-            // Complaints (rose)
-            { dataKey: "complaintsResolved", name: "Complaints · Resolved", color: "#fda4af" },
-            { dataKey: "complaintsOpen", name: "Complaints · Open", color: "#e11d48" },
-            // Career enquiries (emerald)
-            { dataKey: "careerResolved", name: "Career · Resolved", color: "#6ee7b7" },
-            { dataKey: "careerOpen", name: "Career · Open", color: "#10b981" },
-            // Contact enquiries (indigo)
-            { dataKey: "contactResolved", name: "Contact · Resolved", color: "#a5b4fc" },
-            { dataKey: "contactOpen", name: "Contact · Open", color: "#6366f1", topOfStack: true },
-          ]}
-        />
-        <AnalyticsChart
-          title="Jobseeker account status"
-          subtitle="Active jobseekers compared with inactive jobseekers"
-          icon={UserRound}
-          data={jobseekerStatusChartData}
-          bars={[
-            { dataKey: "active", name: "Active", color: "#10b981" },
-            { dataKey: "inactiveOrPending", name: "Inactive", color: "#f59e0b" },
-          ]}
-        />
-        <AnalyticsChart
-          title="Employer account status"
-          subtitle="Active employers compared with pending employers"
-          icon={Building2}
-          data={employerStatusChartData}
-          bars={[
-            { dataKey: "active", name: "Active", color: "#8b5cf6" },
-            { dataKey: "inactiveOrPending", name: "Pending", color: "#f59e0b" },
-          ]}
-        />
-        <AnalyticsChart
-          title="Job requirement overview"
-          subtitle="Total, active, and pending job requirements"
-          icon={BriefcaseBusiness}
-          data={jobRequirementChartData}
-          bars={[
-            { dataKey: "total", name: "Total", color: "#64748b" },
-            { dataKey: "active", name: "Active", color: "#10b981" },
-            { dataKey: "pending", name: "Pending", color: "#f59e0b" },
-          ]}
-        />
-        <AnalyticsChart
-          title="Application overview"
-          subtitle="Total applications compared with active applications"
-          icon={FileText}
-          data={applicationChartData}
-          bars={[
-            { dataKey: "total", name: "Total applications", color: "#2f6b8a" },
-            { dataKey: "active", name: "Active applications", color: "#10b981" },
-          ]}
-        />
-      </div>
+        {canView(PANEL_ROLES.feedback) && (
+          <Panel title="Feedback summary" subtitle="Feedback volume and average user rating" icon={Star}>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Metric label="Total feedback" value={readValue(feedback, "totalFeedback")} />
+              <Metric label="Active feedback" value={readValue(feedback, "activeFeedback")} />
+              <Metric
+                label="Average rating"
+                value={Number(feedback?.averageRating ?? feedback?.AverageRating ?? 0).toFixed(1)}
+                detail="out of 5"
+              />
+            </div>
+          </Panel>
+        )}
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <Panel title="Feedback summary" subtitle="Feedback volume and average user rating" icon={Star}>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Metric label="Total feedback" value={readValue(feedback, "totalFeedback")} />
-            <Metric label="Active feedback" value={readValue(feedback, "activeFeedback")} />
-            <Metric
-              label="Average rating"
-              value={Number(feedback?.averageRating ?? feedback?.AverageRating ?? 0).toFixed(1)}
-              detail="out of 5"
-            />
-          </div>
-        </Panel>
+        {canView(PANEL_ROLES.activity) && (
+          <Panel
+            title="Recent activity"
+            subtitle={`Latest ${Math.min(recentActivity.length, RECENT_ACTIVITY_LIMIT)} records`}
+            icon={Activity}
+          >
+            {!recentActivity.length ? (
+              <p className="rounded-xl bg-slate-50 px-3 py-5 text-center text-sm text-slate-500">
+                {loading ? "Loading recent activity..." : "No recent activity found."}
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {recentActivity.map((item, index) => {
+                  const type = item?.type ?? item?.Type ?? "Activity";
+                  const title = item?.title ?? item?.Title ?? "Untitled activity";
+                  const id = item?.id ?? item?.Id ?? index;
+                  const createdAt = item?.createdAt ?? item?.CreatedAt;
+                  const isActive = item?.isActive ?? item?.IsActive;
 
-        <Panel
-          title="Recent activity"
-          subtitle={`Latest ${Math.min(recentActivity.length, RECENT_ACTIVITY_LIMIT)} records`}
-          icon={Activity}
-        >
-          {!recentActivity.length ? (
-            <p className="rounded-xl bg-slate-50 px-3 py-5 text-center text-sm text-slate-500">
-              {loading ? "Loading recent activity..." : "No recent activity found."}
-            </p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {recentActivity.map((item, index) => {
-                const type = item?.type ?? item?.Type ?? "Activity";
-                const title = item?.title ?? item?.Title ?? "Untitled activity";
-                const id = item?.id ?? item?.Id ?? index;
-                const createdAt = item?.createdAt ?? item?.CreatedAt;
-                const isActive = item?.isActive ?? item?.IsActive;
-
-                return (
-                  <li key={`${type}-${id}`} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-800">{title}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">{type} · {formatActivityDate(createdAt)}</p>
-                    </div>
-                    {typeof isActive === "boolean" && (
-                      <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
-                        {isActive ? "Active" : "Inactive"}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Panel>
+                  return (
+                    <li key={`${type}-${id}`} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-800">{title}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{type} · {formatActivityDate(createdAt)}</p>
+                      </div>
+                      {typeof isActive === "boolean" && (
+                        <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                          {isActive ? "Active" : "Inactive"}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Panel>
+        )}
       </div>
     </div>
   );
