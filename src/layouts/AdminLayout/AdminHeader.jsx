@@ -1,14 +1,9 @@
 import React, { useEffect, useState } from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  LogOut,
-  UserRound,
-  Menu,
-} from "lucide-react";
+import { ChevronDown, ChevronUp, LogOut, UserRound, Menu } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { getCurrentUserRoles, formatRoleLabel } from "../../utils/authUtils";
 
 /* ---- live clock helper (12-hour with AM/PM) ---- */
 const formatNow = () => {
@@ -32,6 +27,10 @@ const AdminHeader = ({ onOpenMenu }) => {
   const { logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
   const [now, setNow] = useState(formatNow());
+
+  // Primary role shown in the header (roles[0])
+const roles = getCurrentUserRoles() ?? [];
+const primaryRole = formatRoleLabel(roles[0]) || "User";
 
   /* tick every second */
   useEffect(() => {
@@ -100,8 +99,10 @@ const AdminHeader = ({ onOpenMenu }) => {
 
             {/* USER DETAILS */}
             <div className="hidden sm:block text-left leading-tight">
-              <p className="text-xs font-semibold text-gray-800">Admin</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Super Admin</p>
+              <p className="text-xs font-semibold text-gray-800">
+                {primaryRole}
+              </p>
+              <p className="text-[10px] text-gray-500 mt-0.5">Ishraq HR</p>
             </div>
 
             {/* DROPDOWN ARROW */}
@@ -138,7 +139,7 @@ const AdminHeader = ({ onOpenMenu }) => {
 
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-gray-800">
-                      Admin
+                      {primaryRole}
                     </h3>
                     <p className="text-xs text-gray-500 truncate">Ishraq HR</p>
                   </div>

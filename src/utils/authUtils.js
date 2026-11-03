@@ -72,3 +72,13 @@ export const getCurrentUserRole = () => {
 export const getCurrentUserRoles = () => {
   return getCurrentUser()?.roles ?? [];
 };
+
+// "MasterDataAdmin" -> "Master Data Admin", "JDByAdmin" -> "JD By Admin",
+// "HRAdmin" -> "HR Admin", "Job_Seeker-Admin" -> "Job Seeker Admin"
+export const formatRoleLabel = (role) =>
+  String(role ?? "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")    // camelCase boundaries
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2") // acronym before a word (HRAdmin)
+    .replace(/[_-]+/g, " ")                    // underscores and hyphens
+    .replace(/\s+/g, " ")                      // collapse extra spaces
+    .trim();
