@@ -4,7 +4,6 @@ import ProtectedRoute from "../components/common/ProtectedRoute";
 import AdminLayout from "../layouts/AdminLayout/AdminLayout";
 
 import AdminDashboard from "../pages/admin/Dashboard/AdminDashboard";
-import AdminUsers from "../pages/admin/Users/Users";
 
 import JobSeekers from "../pages/admin/JobSeekers/JobSeekers";
 import AddJobSeeker from "../pages/admin/JobSeekers/AddJobSeeker";
@@ -61,7 +60,6 @@ const AdminRoutes = (
     <Route path="/admin" element={<AdminLayout />}>
       <Route index element={<Navigate to="/admin/dashboard" replace />} />
       <Route path="dashboard" element={<AdminDashboard />} />
-      <Route path="users" element={<AdminUsers />} />
       {/* Employer */}
       <Route path="employer" element={<EmployerList />} />
       <Route path="employers/:id" element={<EmployerProfile />} />
