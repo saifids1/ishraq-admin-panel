@@ -55,13 +55,36 @@ const DASHBOARD_ROUTES = {
 /* Normalize API role names                                            */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Roles that grant access to the Admin dashboard                      */
+/* ------------------------------------------------------------------ */
+
+const ADMIN_ROLE_KEYS = new Set([
+  "admin",
+  "usermanagementadmin",
+  "jobseekeradmin",
+  "employeradmin",
+  "jobrequirementadmin",
+  "jdbyadmin",
+  "careerenquiriesadmin",
+  "complaintsgrievanceadmin",
+  "contactusenquiryadmin",
+  "feedbackadmin",
+  "masterdataadmin",
+  "manageblogadmin",
+]);
+
+/* ------------------------------------------------------------------ */
+/* Normalize API role names                                            */
+/* ------------------------------------------------------------------ */
+
 const normalizeRole = (role) => {
   const normalized = String(role ?? "")
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]/g, "");
+    .replace(/[\s_/-]/g, "");
 
-  if (normalized === "admin") {
+  if (ADMIN_ROLE_KEYS.has(normalized)) {
     return "admin";
   }
 
@@ -179,7 +202,9 @@ const Login = () => {
   const { login } = useAuth();
 
   // Admin login must remain separate.
-  const isAdminLogin = location.pathname === "/admin/login" || location.pathname === "/admin/login/" ;
+  const isAdminLogin =
+    location.pathname === "/admin/login" ||
+    location.pathname === "/admin/login/";
 
   // Only Admin appears on /admin/login.
   // Employer and Job Seeker appear on /login.
@@ -253,7 +278,10 @@ const Login = () => {
 
       const normalizedRoles = data.roles.map(normalizeRole).filter(Boolean);
 
-      const actualRole = normalizedRoles.find((item) => DASHBOARD_ROUTES[item]);
+      // Admin-level roles take priority over employer/jobseeker roles.
+      const actualRole = normalizedRoles.includes("admin")
+        ? "admin"
+        : normalizedRoles.find((item) => DASHBOARD_ROUTES[item]);
 
       if (!actualRole) {
         throw new Error(
@@ -269,8 +297,9 @@ const Login = () => {
         return;
       }
 
-      // On the public login page, enforce the selected tab.
-      if (!isAdminLogin && actualRole !== roleKey) {
+      // On the public login page, enforce the selected tab (admins are exempt
+      // and are sent to the admin dashboard).
+      if (!isAdminLogin && actualRole !== "admin" && actualRole !== roleKey) {
         const actualLabel =
           ROLES.find((r) => r.key === actualRole)?.label ?? actualRole;
 
@@ -531,15 +560,15 @@ const Login = () => {
         }
       />
       <footer className="ish-login-footer">
-  Designed & Developed by{" "}
-  <a
-    href="https://i-diligence.com/"
-    target="_blank"
-    rel="noopener noreferrer"
-  >
-    I-Diligence Solutions Pvt. Ltd.
-  </a>
-</footer>
+        Designed & Developed by{" "}
+        <a
+          href="https://i-diligence.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          I-Diligence Solutions Pvt. Ltd.
+        </a>
+      </footer>
     </div>
   );
 };

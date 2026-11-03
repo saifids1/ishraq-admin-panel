@@ -55,6 +55,10 @@ import CreateJobDescription from "../pages/admin/JobDescripction/CreateJobDescri
 import JobDescriptionList from "../pages/admin/JobDescripction/JobDescription.jsx";
 // import CreateJobDescription from "../pages/admin/JobDescripction/CreateJobDescription.jsx";
 
+// user management imports
+import AdminUserList from "../pages/admin/UserManagement/AdminUserList.jsx";
+import UserManagementForm from "../pages/admin/UserManagement/UserManagementFrom";
+
 const AdminRoutes = (
   <Route element={<ProtectedRoute allowedRole="admin" />}>
     <Route path="/admin" element={<AdminLayout />}>
@@ -68,7 +72,6 @@ const AdminRoutes = (
         element={<EmployerProfile mode="edit" />}
       />
       {/* Settings */}
-      <Route path="userList" element={<Navigate to="/admin/users" replace />} />
       <Route path="reset-password" element={<ResetPassword />} />
       {/* Job Seeker Management */}
       <Route path="jobseekers" element={<JobSeekers />} />
@@ -79,19 +82,16 @@ const AdminRoutes = (
         element={<JobSeekerDetails mode="edit" />}
       />
       <Route path="job-requirement-list" element={<JobRequirementList />} />
-      <Route path="jdbyadmin" element={<JobDescriptionList/>} />
-      <Route path="jdbyadmin/add" element={<CreateJobDescription/>} />
-      <Route path="jdbyadmin/:id" element={<CreateJobDescription/>} />
-      <Route path="jdbyadmin/:id/edit" element={<CreateJobDescription/>} />
+      <Route path="jdbyadmin" element={<JobDescriptionList />} />
+      <Route path="jdbyadmin/add" element={<CreateJobDescription />} />
+      <Route path="jdbyadmin/:id" element={<CreateJobDescription />} />
+      <Route path="jdbyadmin/:id/edit" element={<CreateJobDescription />} />
       {/* <Route path="/admin/job-requirements" element={<JobRequirementList />} /> */}
       <Route
         path="job-requirements/:id"
         element={<JobRequirementCreate mode="view" />}
       />
-      <Route
-        path="job-applicant/:jobdescId"
-        element={<JobApplicantList />}
-      />
+      <Route path="job-applicant/:jobdescId" element={<JobApplicantList />} />
       <Route
         path="job-requirements/:id/edit"
         element={<JobRequirementCreate mode="edit" />}
@@ -175,10 +175,7 @@ const AdminRoutes = (
         path="settings/master/jobRole/:id/view"
         element={<CreateJobRole mode="view" />}
       />
-      <Route
-        path="settings/master/jobCategory"
-        element={<JobCategoryList />}
-      />
+      <Route path="settings/master/jobCategory" element={<JobCategoryList />} />
       <Route
         path="settings/master/jobCategory/add"
         element={<CreateJobCategory mode="create" />}
@@ -247,26 +244,17 @@ const AdminRoutes = (
         path="settings/master/employer/add"
         element={<CreateEmployer mode="create" />}
       />
-     
+
       {/* Admin Enquiry routes  */}
 
-      <Route
-        path="complaints"
-        element={<ComplaintList />}
-      />
-      <Route
-        path="complaints/:id"
-        element={<ComplaintDetails />}
-      />
+      <Route path="complaints" element={<ComplaintList />} />
+      <Route path="complaints/:id" element={<ComplaintDetails />} />
       <Route
         path="complaints/:id/logs"
         element={<StatusLogsList formType="complaint" />}
       />
       <Route path="career" element={<CareerEnquiryList />} />
-      <Route
-        path="contact/:id"
-        element={<ContactEnquiryDetails />}
-      />
+      <Route path="contact/:id" element={<ContactEnquiryDetails />} />
       <Route
         path="contact/:id/logs"
         element={<StatusLogsList formType="contact" />}
@@ -283,6 +271,18 @@ const AdminRoutes = (
         element={<StatusLogsList formType="feedback" />}
       />
       <Route path="feedback/:id" element={<FeedbackDetails />} />
+
+      {/* user management routes */}
+      <Route path="users" element={<AdminUserList />} />
+      <Route path="user/add" element={<UserManagementForm mode="create" />} />
+      <Route
+        path="user/edit/:id"
+        element={<UserManagementForm mode="edit" />}
+      />
+      <Route
+        path="user/view/:id"
+        element={<UserManagementForm mode="view" />}
+      />
     </Route>
   </Route>
 );

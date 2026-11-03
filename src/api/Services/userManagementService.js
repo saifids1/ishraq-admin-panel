@@ -55,3 +55,11 @@ export async function updateUserStatus(id, isActive) {
   const { data } = await api.patch(`${BASE}/users/${id}/status`, { isActive });
   return data;
 }
+
+// src/api/Services/userManagementService.js  (add this function)
+
+/** GET /api/UserManagement/users/{id} */
+export async function getUserById(id) {
+  const { data } = await api.get(`${BASE}/users/${id}`);
+  return data;
+}

@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   BadgeCheck,
   X as CloseIcon,
+  UserStar
 } from "lucide-react";
 
 /* ------------------------------ STYLES ------------------------------ */
@@ -92,6 +93,12 @@ const MENU_ITEMS = [
     icon: LayoutDashboard,
     link: "/admin/dashboard",
     tile: "from-sky-400 to-blue-500",
+  },
+  {
+    text: "Admin User List",
+    icon: UserStar,
+    link: "/admin/users",
+    tile: "from-emerald-400 to-teal-500",
   },
   {
     text: "JobSeeker List",
