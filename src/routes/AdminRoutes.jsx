@@ -88,6 +88,7 @@ const AdminRoutes = (
       <Route path="jdbyadmin" element={<JobDescriptionList/>} />
       <Route path="jdbyadmin/add" element={<CreateJobDescription/>} />
       <Route path="jdbyadmin/:id" element={<CreateJobDescription/>} />
+      <Route path="jdbyadmin/:id/edit" element={<CreateJobDescription/>} />
       {/* <Route path="/admin/job-requirements" element={<JobRequirementList />} /> */}
       <Route
         path="job-requirements/:id"

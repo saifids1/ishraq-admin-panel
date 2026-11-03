@@ -11,6 +11,7 @@ import {
 import * as jobRequirementApi from "../../../api/jobRequirementApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 
+
 /* ------------------------------ HELPERS ------------------------------ */
 
 const formatDate = (value) => {
