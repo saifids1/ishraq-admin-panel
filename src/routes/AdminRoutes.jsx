@@ -54,6 +54,9 @@ import CreateEmployer from "../pages/admin/Employer/CreateEmployer.jsx";
 
 import CreateJobDescription from "../pages/admin/JobDescripction/CreateJobDescription.jsx";
 import JobDescriptionList from "../pages/admin/JobDescripction/JobDescription.jsx";
+import BlogsList from "../pages/admin/Blogs/BlogList.jsx";
+import BlogTypeList from "../pages/admin/MasterData/BlogType/BlogTypeList.jsx";
+import CreateBlogType from "../pages/admin/MasterData/BlogType/CreateBlogType.jsx";
 // import CreateJobDescription from "../pages/admin/JobDescripction/CreateJobDescription.jsx";
 
 const AdminRoutes = (
@@ -76,6 +79,7 @@ const AdminRoutes = (
       <Route path="jobseekers" element={<JobSeekers />} />
       <Route path="jobseekers/add" element={<AddJobSeeker mode="create" />} />
       <Route path="jobseekers/:id" element={<JobSeekerDetails />} />
+      <Route path="blogs" element={<BlogsList />} />
       <Route
         path="jobseekers/:id/edit"
         element={<JobSeekerDetails mode="edit" />}
@@ -105,6 +109,22 @@ const AdminRoutes = (
       <Route
         path="settings/master/complaintCategory"
         element={<ComplaintCategoryList />}
+      />
+      <Route
+        path="settings/master/blogType"
+        element={<BlogTypeList />}
+      />
+      <Route
+        path="settings/master/blogType/add"
+        element={<CreateBlogType mode="create" />}
+      />
+      <Route
+        path="settings/master/blogType/:id/edit"
+        element={<CreateBlogType mode="edit" />}
+      />
+      <Route
+        path="settings/master/blogType/:id/view"
+        element={<CreateBlogType mode="view" />}
       />
       <Route
         path="settings/master/complaintCategory/add"

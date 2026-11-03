@@ -29,7 +29,7 @@ export const createMasterApi = (
 
     create: (payload) => axiosInstance.post(baseUrl, payload),
 
-    update: (payload) => axiosInstance.put(baseUrl, payload),
+    update: (id, payload) => axiosInstance.put(`${baseUrl}/${id}`, payload),
 
     toggleActive: (id, updatedBy) =>
       axiosInstance.patch(`${baseUrl}/${id}/toggle-active`, null, {
