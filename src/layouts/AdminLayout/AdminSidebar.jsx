@@ -125,6 +125,12 @@ const MENU_ITEMS = [
     tile: "from-violet-400 to-indigo-500",
   },
   {
+    text: "Blogs",
+    icon: NotebookDot,
+    link: "/admin/blogs",
+    tile: "from-violet-400 to-indigo-500",
+  },
+  {
     text: "Reset Password",
     icon: KeyRound,
     link: "/admin/reset-password",
@@ -160,6 +166,7 @@ const MENU_ITEMS = [
     link: "/admin/master-data",
     tile: "from-teal-400 to-cyan-600",
     children: [
+      { text: "Blog Type", link: "/admin/settings/master/blogType", icon: Map },
       { text: "City", link: "/admin/settings/master/cityMaster", icon: Map },
       {
         text: "Complaint Category",
