@@ -142,34 +142,53 @@ const toDateInputValue = (value) => {
   return d.toISOString().slice(0, 10);
 };
 
-const maskDisplayDate = (raw) => {
-  const digits = String(raw || "")
-    .replace(/\D/g, "")
-    .slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
-};
-
-const parseDisplayDate = (display) => {
-  if (!display) return "";
-  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(display);
-  if (!m) return "";
-  const [, dd, mm, yyyy] = m;
-  const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
-  if (
-    isNaN(d.getTime()) ||
-    d.getDate() !== Number(dd) ||
-    d.getMonth() + 1 !== Number(mm)
-  )
-    return "";
-  return `${yyyy}-${mm}-${dd}`;
-};
-
 const nowIsoLocal = () => {
   const d = new Date();
   const pad = (n, len = 2) => String(n).padStart(len, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}0000`;
+};
+
+// Normalize an empty Quill value so the placeholder shows correctly.
+const normalizeQuillValue = (html) => {
+  const s = String(html ?? "").trim();
+  if (!s || s === "<p><br></p>" || s === "<p></p>") return "";
+  return s;
+};
+
+/* --------------------------- EDITOR STYLES (injected once) --------------------------- */
+
+const EDITOR_STYLE_ID = "blog-editor-scroll-styles";
+
+const injectEditorStyles = () => {
+  if (document.getElementById(EDITOR_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = EDITOR_STYLE_ID;
+  style.textContent = `
+    .blog-editor {
+      display: flex;
+      flex-direction: column;
+    }
+    .blog-editor .ql-container {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
+      overflow: hidden;
+      font-size: 14px;
+    }
+    .blog-editor .ql-editor {
+      height: 100%;
+      min-height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .blog-editor .ql-editor.ql-blank::before {
+      color: #94a3b8;
+      font-style: normal;
+      left: 12px;
+      right: 12px;
+    }
+  `;
+  document.head.appendChild(style);
 };
 
 /* ------------------------------ COMPONENT ------------------------------ */
@@ -194,9 +213,17 @@ const CreateBlog = ({ mode }) => {
   const [blogTypes, setBlogTypes] = useState([]);
   const [blogTypesLoading, setBlogTypesLoading] = useState(true);
   const [blogTypesError, setBlogTypesError] = useState("");
-  const [blogDateDisplay, setBlogDateDisplay] = useState("");
 
   const disabled = isView || loading || saving;
+
+  /* --------------------------- EDITOR HEIGHT --------------------------- */
+
+  // Taller on create, medium on edit, smaller on view.
+  const editorHeightClass = isView
+    ? "h-[220px]"
+    : isCreate
+      ? "h-[320px]"
+      : "h-[280px]";
 
   /* --------------------------- MODAL HELPERS --------------------------- */
 
@@ -234,6 +261,10 @@ const CreateBlog = ({ mode }) => {
     });
 
   /* --------------------------- EFFECTS --------------------------- */
+
+  useEffect(() => {
+    injectEditorStyles();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -283,7 +314,7 @@ const CreateBlog = ({ mode }) => {
         setFormData({
           BlogTypeMaster_Id: blog.blogTypeMaster_Id ?? "",
           Blog_Title: blog.blog_Title ?? "",
-          Blog_Description: blog.blog_Description ?? "",
+          Blog_Description: normalizeQuillValue(blog.blog_Description),
           Blog_Brief_Description: blog.blog_Brief_Description ?? "",
           Blog_Author: blog.blog_Author ?? "",
           Blog_Image: null,
@@ -317,10 +348,6 @@ const CreateBlog = ({ mode }) => {
     };
   }, [id, isCreate]);
 
-  useEffect(() => {
-    setBlogDateDisplay(formatDate(formData.Blog_Date));
-  }, [formData.Blog_Date]);
-
   /* --------------------------- HANDLERS --------------------------- */
 
   const setField = (key, value) =>
@@ -347,11 +374,6 @@ const CreateBlog = ({ mode }) => {
       return openStatus("warning", "Blog type is required.");
     if (!plainText(formData.Blog_Description))
       return openStatus("warning", "Blog description is required.");
-    if (blogDateDisplay && !formData.Blog_Date)
-      return openStatus(
-        "warning",
-        "Please enter a valid date in dd-mm-yyyy format.",
-      );
 
     if (isCreate) runSave();
     else
@@ -525,26 +547,18 @@ const CreateBlog = ({ mode }) => {
                 />
               </FieldRow>
 
+              {/* DATE — native calendar picker */}
               <FieldRow label="Date">
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  value={blogDateDisplay}
-                  onChange={(e) => {
-                    const masked = maskDisplayDate(e.target.value);
-                    setBlogDateDisplay(masked);
-                    setField("Blog_Date", parseDisplayDate(masked) || "");
-                  }}
-                  onBlur={() =>
-                    setBlogDateDisplay(formatDate(formData.Blog_Date))
-                  }
+                  type="date"
+                  value={formData.Blog_Date || ""}
+                  onChange={(e) => setField("Blog_Date", e.target.value)}
                   disabled={disabled}
-                  placeholder="dd-mm-yyyy"
-                  maxLength={10}
-                  className={inputClass}
+                  className={`${inputClass} cursor-pointer [color-scheme:light]`}
                 />
               </FieldRow>
 
+              {/* Preview | Image — side by side */}
               <FieldRow label="Preview">
                 <textarea
                   value={formData.Blog_Brief_Description}
@@ -558,66 +572,79 @@ const CreateBlog = ({ mode }) => {
                 />
               </FieldRow>
 
+              {/* Image cell: "Choose image" and "Uploaded image" side by side */}
               <FieldRow label="Image">
-                <div className="space-y-2">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                   {!isView && (
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      disabled={disabled}
-                      className="w-full text-[14px] text-slate-500 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-[14px] file:font-medium file:text-slate-700 hover:file:bg-slate-200"
-                    />
+                    <div className="w-full sm:w-1/2">
+                      <label className="mb-1 block text-[13px] font-medium text-slate-600">
+                        Choose image
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        disabled={disabled}
+                        className="w-full text-[14px] text-slate-500 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-[14px] file:font-medium file:text-slate-700 hover:file:bg-slate-200 disabled:opacity-60"
+                      />
+                    </div>
                   )}
 
-                  {imagePreview ? (
-                    <div className="p-2 border border-slate-200 rounded-md flex items-start gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setLightbox(true)}
-                        className="shrink-0 overflow-hidden rounded border border-slate-200"
-                      >
-                        <img
-                          src={imagePreview}
-                          alt="Blog"
-                          className="h-14 w-14 object-cover transition hover:opacity-90"
-                        />
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[14px] font-medium text-slate-800">
-                          {formData.Blog_Image instanceof File
-                            ? formData.Blog_Image.name
-                            : existingImage?.name || "Blog Image"}
-                        </p>
-                        <p className="text-[13px] text-slate-500">
-                          {formData.Blog_Image instanceof File
-                            ? "New image"
-                            : "Uploaded image"}
-                        </p>
+                  <div className={`w-full ${isView ? "" : "sm:w-1/2"}`}>
+                    <label className="mb-1 block text-[13px] font-medium text-slate-600">
+                      {formData.Blog_Image instanceof File
+                        ? "Selected image"
+                        : "Uploaded image"}
+                    </label>
 
-                        {existingImage?.url && (
-                          <div className="mt-1.5">
-                            <a
-                              href={existingImage.url}
-                              download={existingImage.name}
-                              className="inline-flex h-7 items-center gap-1 rounded border border-slate-300 bg-white px-2 text-[13px] font-medium text-slate-600 hover:bg-slate-50"
-                            >
-                              <Download size={12} /> Download
-                            </a>
-                          </div>
-                        )}
+                    {imagePreview ? (
+                      <div className="flex items-start gap-3 rounded-md border border-slate-200 p-2">
+                        <button
+                          type="button"
+                          onClick={() => setLightbox(true)}
+                          className="shrink-0 overflow-hidden rounded border border-slate-200"
+                        >
+                          <img
+                            src={imagePreview}
+                            alt="Blog"
+                            className="h-14 w-14 object-cover transition hover:opacity-90"
+                          />
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[14px] font-medium text-slate-800">
+                            {formData.Blog_Image instanceof File
+                              ? formData.Blog_Image.name
+                              : existingImage?.name || "Blog Image"}
+                          </p>
+                          <p className="text-[13px] text-slate-500">
+                            {formData.Blog_Image instanceof File
+                              ? "New image"
+                              : "Uploaded image"}
+                          </p>
+
+                          {existingImage?.url && (
+                            <div className="mt-1.5">
+                              <a
+                                href={existingImage.url}
+                                download={existingImage.name}
+                                className="inline-flex h-7 items-center gap-1 rounded border border-slate-300 bg-white px-2 text-[13px] font-medium text-slate-600 hover:bg-slate-50"
+                              >
+                                <Download size={12} /> Download
+                              </a>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    !isView && (
+                    ) : (
                       <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-[14px] text-slate-500">
                         No image uploaded
                       </div>
-                    )
-                  )}
+                    )}
+                  </div>
                 </div>
               </FieldRow>
 
+              {/* Description — full width */}
               <FieldRow label="Description" fullWidth>
                 {isView ? (
                   <div className="min-h-[38px] rounded-md border border-slate-200 bg-slate-50 p-3 text-[14px] text-slate-800 break-words">
@@ -641,7 +668,7 @@ const CreateBlog = ({ mode }) => {
                       formats={QUILL_FORMATS}
                       readOnly={disabled}
                       placeholder="Full blog content"
-                      className="h-[180px]"
+                      className={`blog-editor ${editorHeightClass}`}
                     />
                   </div>
                 )}
@@ -707,7 +734,7 @@ const CreateBlog = ({ mode }) => {
                   }
                   className="inline-flex items-center gap-1.5 rounded-md bg-[#2f6b8a] px-4 py-2 text-[14px] font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
                 >
-                   Edit
+                  Edit
                 </button>
               ) : (
                 <button
