@@ -63,10 +63,12 @@ import AdminUserList from "../pages/admin/UserManagement/AdminUserList.jsx";
 import UserManagementForm from "../pages/admin/UserManagement/UserManagementFrom";
 import CreateBlog from "../pages/admin/Blogs/CreateBlog.jsx";
 
+import RoleHomeRedirect from "../components/common/RoleHomeRedirect.jsx";
+
 const AdminRoutes = (
   <Route element={<ProtectedRoute allowedRole="admin" />}>
     <Route path="/admin" element={<AdminLayout />}>
-      <Route index element={<Navigate to="/admin/dashboard" replace />} />
+     <Route index element={<RoleHomeRedirect />} />
       <Route path="dashboard" element={<AdminDashboard />} />
       {/* Employer */}
       <Route path="employer" element={<EmployerList />} />

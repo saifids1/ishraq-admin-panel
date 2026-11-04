@@ -17,7 +17,7 @@ const ROLES = [
     title: "Admin sign in",
     blurb: "Review listings, approve employers and keep the portal healthy.",
     placeholder: "admin@ishraqhr.com",
-    redirect: "/admin/dashboard",
+    redirect: "/admin",
     registerUrl: null,
   },
   {
@@ -46,7 +46,7 @@ const ROLES = [
 /* ------------------------------------------------------------------ */
 
 const DASHBOARD_ROUTES = {
-  admin: "/admin/dashboard",
+  admin: "/admin",
   employer: "/employer/dashboard",
   jobseeker: "/jobseeker/dashboard",
 };

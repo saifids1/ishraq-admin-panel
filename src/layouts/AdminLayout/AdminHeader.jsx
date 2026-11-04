@@ -39,8 +39,9 @@ const primaryRole = formatRoleLabel(roles[0]) || "User";
   }, []);
 
   const handleLogout = () => {
-    logout();
-    navigate("/admin/login");
+    // logout();
+    navigate("/admin/login/");
+    localStorage.removeItem("user");
   };
 
   return (
