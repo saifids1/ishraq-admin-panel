@@ -17,29 +17,22 @@ import {
 } from "lucide-react";
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
 import { getAdminStatusRecordLabel } from "../../../utils/adminStatusConfirmation";
+import blogApi from "../../../api/Services/blogApi";
+import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
-const TOPIC_STYLE = {
-  Technology: "bg-sky-600 text-white ring-sky-700",
-  Health: "bg-indigo-600 text-white ring-indigo-700",
-  Finance: "bg-violet-600 text-white ring-violet-700",
-  Education: "bg-teal-600 text-white ring-teal-700",
-  Lifestyle: "bg-amber-500 text-white ring-amber-600",
-  Business: "bg-cyan-600 text-white ring-cyan-700",
-  Other: "bg-gray-600 text-white ring-gray-700",
-};
-
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
-const TABLE_MIN_WIDTH = 1180;
 
+// Only the Action column is sticky. Title is now the widest.
 const COLUMNS = [
-  { key: "srNo", width: "55px", minWidth: "50px" },
-  { key: "title", width: "260px", minWidth: "200px" },
-  { key: "topic", width: "150px", minWidth: "110px" },
-  { key: "author", width: "170px", minWidth: "130px" },
-  { key: "date", width: "130px", minWidth: "110px" },
-  { key: "status", width: "105px", minWidth: "90px" },
+  { key: "srNo", width: "60px", minWidth: "55px" },
+  { key: "title", width: "400px", minWidth: "320px" },
+  { key: "topic", width: "170px", minWidth: "120px" },
+  { key: "author", width: "170px", minWidth: "120px" },
+  { key: "date", width: "90px", minWidth: "100px" },
+  { key: "status", width: "115px", minWidth: "90px" },
   { key: "actions", width: "90px", minWidth: "90px", sticky: true },
 ];
 
@@ -59,119 +52,50 @@ const BADGE_BASE =
 
 const toneOf = (value) => TONES[STATUS_TONES[value]] ?? TONES.neutral;
 
-/* ------------------------------ STATIC DATA ------------------------------ */
+/* ------------------------------ HELPERS ------------------------------ */
 
-const STATIC_BLOGS = [
-  {
-    id: 1,
-    title: "Getting Started with React Hooks",
-    topic: "Technology",
-    author: "Aarav Mehta",
-    date: "12 Jan 2025",
-    status: "Published",
-  },
-  {
-    id: 2,
-    title: "10 Tips for a Healthier Lifestyle",
-    topic: "Health",
-    author: "Priya Sharma",
-    date: "08 Jan 2025",
-    status: "Published",
-  },
-  {
-    id: 3,
-    title: "Understanding Personal Finance in 2025",
-    topic: "Finance",
-    author: "Rohan Verma",
-    date: "03 Jan 2025",
-    status: "Draft",
-  },
-  {
-    id: 4,
-    title: "The Future of Online Education",
-    topic: "Education",
-    author: "Ananya Iyer",
-    date: "28 Dec 2024",
-    status: "Published",
-  },
-  {
-    id: 5,
-    title: "How Small Businesses Can Scale Up",
-    topic: "Business",
-    author: "Vikram Singh",
-    date: "22 Dec 2024",
-    status: "Archived",
-  },
-  {
-    id: 6,
-    title: "Mindfulness and Daily Productivity",
-    topic: "Lifestyle",
-    author: "Neha Kapoor",
-    date: "18 Dec 2024",
-    status: "Draft",
-  },
-  {
-    id: 7,
-    title: "A Beginner's Guide to Cloud Computing",
-    topic: "Technology",
-    author: "Karan Malhotra",
-    date: "15 Dec 2024",
-    status: "Published",
-  },
-  {
-    id: 8,
-    title: "Investing Basics: Where to Start",
-    topic: "Finance",
-    author: "Sanya Gupta",
-    date: "10 Dec 2024",
-    status: "Published",
-  },
-  {
-    id: 9,
-    title: "Mental Health Awareness at Work",
-    topic: "Health",
-    author: "Rahul Joshi",
-    date: "05 Dec 2024",
-    status: "Archived",
-  },
-  {
-    id: 10,
-    title: "The Rise of AI in Everyday Life",
-    topic: "Technology",
-    author: "Ishita Nair",
-    date: "01 Dec 2024",
-    status: "Published",
-  },
-  {
-    id: 11,
-    title: "Building Better Study Habits",
-    topic: "Education",
-    author: "Aditya Rao",
-    date: "26 Nov 2024",
-    status: "Draft",
-  },
-  {
-    id: 12,
-    title: "Startup Marketing on a Budget",
-    topic: "Business",
-    author: "Meera Desai",
-    date: "20 Nov 2024",
-    status: "Published",
-  },
-];
+// Format any date-ish value to "dd-mm-yyyy, hh:mm".
+const formatDateTime = (value) => {
+  if (!value) return "-";
+
+  // Native Date parse works for ISO strings, ms timestamps, and Date objects.
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const dd = pad(d.getDate());
+  const mm = pad(d.getMonth() + 1);
+  const yyyy = d.getFullYear();
+  const hh = pad(d.getHours());
+  const min = pad(d.getMinutes());
+
+  return `${dd}-${mm}-${yyyy}`;
+};
+
+// Single source of truth for mapping an API record to a table row.
+const mapBlogRow = (item, index, pageNo, pageSize) => ({
+  ...item,
+  id: item.blog_Id,
+  title: item.blog_Title,
+  topic: item.blogTypeName,
+  author: item.blog_Author,
+  date: item.blog_Date,
+  status: item.isActive ? "Published" : "Archived",
+  srNo: (pageNo - 1) * pageSize + index + 1,
+});
 
 /* ------------------------------ COMPONENT ------------------------------ */
 
 const BlogsList = () => {
   const navigate = useNavigate();
 
-  const [rows, setRows] = useState(() =>
-    STATIC_BLOGS.map((item, index) => ({ ...item, srNo: index + 1 })),
-  );
-  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [totalRecords, setTotalRecords] = useState(0);
 
   const [query, setQuery] = useState({ search: "", status: "All" });
 
@@ -180,18 +104,57 @@ const BlogsList = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useStatusToast();
 
-  /* --------------------------- REFRESH --------------------------- */
+  /* --------------------------- FETCH --------------------------- */
 
-  const handleRefresh = useCallback(() => {
+  const fetchBlogs = useCallback(
+    async (opts = {}) => {
+      const pageNo = opts.pageNo ?? page;
+      const ps = opts.pageSize ?? pageSize;
+      const search = opts.search ?? query.search;
+      const status = opts.status ?? query.status;
+
+      try {
+        const response = await blogApi.getAll({
+          PageNo: pageNo,
+          PageSize: ps,
+          Search: search.trim(),
+          ...(status !== "All" && { IsActive: status === "Published" }),
+        });
+        const list = response?.data?.data ?? [];
+        const total = response?.data?.totalRecords ?? list.length;
+
+        setRows(list.map((item, i) => mapBlogRow(item, i, pageNo, ps)));
+        setTotalRecords(total);
+        setError("");
+      } catch (err) {
+        setRows([]);
+        setTotalRecords(0);
+        setError(getApiErrorMessage(err) || "Unable to load blog records.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [page, pageSize, query.search, query.status],
+  );
+
+  useEffect(() => {
+    fetchBlogs();
+  }, [fetchBlogs]);
+
+  const handleRefresh = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
     setQuery({ search: "", status: "All" });
     setPage(1);
-    setRows(
-      STATIC_BLOGS.map((item, index) => ({ ...item, srNo: index + 1 })),
-    );
-    setTimeout(() => setRefreshing(false), 400);
-  }, [refreshing]);
+    await fetchBlogs({ pageNo: 1, search: "", status: "All" });
+    setRefreshing(false);
+  }, [fetchBlogs, refreshing]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast, setToast]);
 
   /* --------------------------- STATS --------------------------- */
 
@@ -199,7 +162,7 @@ const BlogsList = () => {
     () => [
       {
         title: "Total Blogs",
-        value: rows.length,
+        value: totalRecords,
         note: "All time",
         icon: FileText,
         color: "#0ea5e9",
@@ -210,7 +173,7 @@ const BlogsList = () => {
       {
         title: "Published",
         value: rows.filter((u) => u.status === "Published").length,
-        note: "Live on site",
+        note: "On this page",
         icon: BookOpen,
         color: "#6366f1",
         color2: "#8b5cf6",
@@ -220,7 +183,7 @@ const BlogsList = () => {
       {
         title: "Drafts",
         value: rows.filter((u) => u.status === "Draft").length,
-        note: "Not published",
+        note: "On this page",
         icon: User,
         color: "#10b981",
         color2: "#34d399",
@@ -230,7 +193,7 @@ const BlogsList = () => {
       {
         title: "Archived",
         value: rows.filter((u) => u.status === "Archived").length,
-        note: "Hidden",
+        note: "On this page",
         icon: ShieldAlert,
         color: "#f59e0b",
         color2: "#fb923c",
@@ -238,73 +201,61 @@ const BlogsList = () => {
         to: "#ef4444",
       },
     ],
-    [rows],
+    [rows, totalRecords],
   );
 
-  /* ------------------------- TOGGLE STATUS (local only) ------------------------- */
+  /* ------------------------- TOGGLE STATUS ------------------------- */
 
-  const handleToggle = (row, isActive) => {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === row.id
-          ? { ...r, status: isActive ? "Published" : "Archived" }
-          : r,
-      ),
-    );
+  const handleToggle = async (row) => {
+    if (row.id == null) throw new Error("Blog ID is missing.");
+    const currentUserId = Number(getCurrentUserId2());
+    await blogApi.toggleActiveStatus(row.id, currentUserId, !row.isActive);
+    await fetchBlogs();
   };
 
-  /* ---------------------------- FILTERED ROWS ---------------------------- */
+  /* ---------------------------- PAGINATION ---------------------------- */
 
-  const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((u) => {
-      if (
-        q &&
-        !["title", "topic", "author", "date"].some((k) =>
-          String(u[k] ?? "")
-            .toLowerCase()
-            .includes(q),
-        )
-      )
-        return false;
-      if (query.status !== "All" && u.status !== query.status) return false;
-      return true;
-    });
-  }, [rows, query]);
-
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
-  const currentPage = Math.min(page, totalPagesLocal);
+  const pageRows = rows;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const currentPage = Math.min(page, totalPages);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
 
   const pageNumbers = useMemo(() => {
     const win = 5;
     let from = Math.max(1, currentPage - Math.floor(win / 2));
-    const to = Math.min(totalPagesLocal, from + win - 1);
+    const to = Math.min(totalPages, from + win - 1);
     from = Math.max(1, to - win + 1);
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
-  }, [currentPage, totalPagesLocal]);
+  }, [currentPage, totalPages]);
 
   /* ---------------------------- STATUS TOGGLE ---------------------------- */
 
   const askToggle = (row) => {
-    const next = row.status === "Published" ? "Archived" : "Published";
+    const next = row.isActive ? "Archived" : "Published";
     setConfirm({ row, next });
   };
 
-  const confirmToggle = () => {
+  const confirmToggle = async () => {
     if (!confirm) return;
     const { row, next } = confirm;
     setBusy(true);
-    handleToggle(row, next === "Published");
-    setToast({
-      id: Date.now(),
-      tone: next === "Published" ? "ok" : "warn",
-      msg: `${row.title || "Blog"} is now ${next.toLowerCase()}`,
-    });
-    setBusy(false);
-    setConfirm(null);
+    try {
+      await handleToggle(row);
+      setToast({
+        id: Date.now(),
+        tone: next === "Published" ? "ok" : "warn",
+        msg: `${row.title || "Blog"} is now ${next.toLowerCase()}`,
+      });
+    } catch (err) {
+      setToast({
+        id: Date.now(),
+        tone: "err",
+        msg: err?.message || "Could not update blog status",
+      });
+    } finally {
+      setBusy(false);
+      setConfirm(null);
+    }
   };
 
   /* ---------------------------- STYLES ---------------------------- */
@@ -322,11 +273,13 @@ const BlogsList = () => {
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-2 py-2 text-left text-[12px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)] sm:px-4 sm:py-1.5 sm:text-[15px]";
 
+  // Sticky Action header — right-aligned, no shadow overlap on the left edge only.
   const stickyActionsHead =
-    "sticky right-0 z-30 w-[90px] min-w-[90px] whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-1 py-2 text-center text-[12px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.35)] sm:px-2 sm:py-1.5 sm:text-[15px]";
+    "sticky right-0 z-20 w-[90px] min-w-[90px] whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-1 py-2 text-center text-[12px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.35)] sm:px-2 sm:py-1.5 sm:text-[15px]";
 
+  // Sticky Action body cell — must paint over the scrolling rows.
   const stickyActionsCell =
-    "sticky right-0 z-20 w-[90px] min-w-[90px] border-t border-[#e2e8ee] bg-white px-1 py-2 text-center text-[13px] text-slate-900 shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.18)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6] sm:px-2 sm:py-2.5 sm:text-[15px]";
+    "sticky right-0 z-10 w-[90px] min-w-[90px] border-t border-[#e2e8ee] bg-white px-1 py-2 text-center text-[13px] text-slate-900 shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.18)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6] sm:px-2 sm:py-2.5 sm:text-[15px]";
 
   /* ---------------------------- RENDER ---------------------------- */
 
@@ -422,20 +375,34 @@ const BlogsList = () => {
           className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent"
         />
 
-        {/* TABLE */}
+        {/* ERROR */}
+        {error && (
+          <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <span className="min-w-0 break-words">{error}</span>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="shrink-0 font-semibold underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* TABLE — single scroll container so header + body share one scrollbar */}
         <div className="mt-4 w-full min-w-0">
-          {/* HEADER (fixed) */}
-          <div className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]">
+          <div className="common-scrollbar h-[360px] w-full min-w-0 overflow-auto rounded-lg border border-[#cbe1f4]">
             <table
               className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
-              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+              style={{ minWidth: `${COLUMNS.reduce((s, c) => s + parseInt(c.minWidth), 0)}px` }}
             >
               <colgroup>
                 {COLUMNS.map((c) => (
                   <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
                 ))}
               </colgroup>
-              <thead>
+
+              <thead className="sticky top-0 z-30">
                 <tr>
                   <th scope="col" className={thClass}>Sr.No</th>
                   <th scope="col" className={thClass}>Title</th>
@@ -446,20 +413,7 @@ const BlogsList = () => {
                   <th scope="col" className={stickyActionsHead}>Action</th>
                 </tr>
               </thead>
-            </table>
-          </div>
 
-          {/* BODY (scrollable) */}
-          <div className="common-scrollbar h-[330px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0">
-            <table
-              className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
-              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-            >
-              <colgroup>
-                {COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
-                ))}
-              </colgroup>
               <tbody>
                 {loading ? (
                   <tr>
@@ -496,30 +450,23 @@ const BlogsList = () => {
                       style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
                       className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
-                      <td className={`${td} tabular-nums`}>{start + index + 1}</td>
+                      <td className={`${td} tabular-nums`}>{row.srNo}</td>
 
-                      <td className={`${td} whitespace-nowrap`}>
-                        <span className="flex min-w-0 flex-col">
-                          <span className="truncate font-medium text-slate-900">
-                            {row.title || "-"}
-                          </span>
+                      {/* Title — full width, wraps freely */}
+                      <td className={td}>
+                        <span className="block break-words font-medium text-slate-900">
+                          {row.title || "-"}
                         </span>
                       </td>
 
-                      <td className={`${td} whitespace-nowrap`}>
-                        <span
-                          title={row.topic}
-                          className={`inline-flex h-7 max-w-[140px] items-center justify-center truncate rounded-md px-2 text-[12px] ring-1 ring-inset shadow-sm sm:text-[14px] ${
-                            TOPIC_STYLE[row.topic] || TOPIC_STYLE.Other
-                          }`}
-                        >
-                          <span className="truncate">{row.topic || "-"}</span>
-                        </span>
+                      {/* Topic — plain text, no badge / button styling */}
+                      <td className={`${td} break-words`}>
+                        {row.topic || "-"}
                       </td>
 
                       <td className={`${td} whitespace-nowrap`}>
                         <span className="flex min-w-0 items-center gap-1.5">
-                          <User size={13} className="text-[#6b7a88]" />
+                        
                           <span className="truncate text-slate-900">
                             {row.author || "-"}
                           </span>
@@ -528,8 +475,8 @@ const BlogsList = () => {
 
                       <td className={`${td} whitespace-nowrap`}>
                         <span className="flex items-center gap-1.5 text-[12px] tabular-nums sm:text-[14px]">
-                          <Calendar size={13} className="text-[#6b7a88]" />
-                          {row.date || "-"}
+                         
+                          {formatDateTime(row.date)}
                         </span>
                       </td>
 
@@ -549,7 +496,7 @@ const BlogsList = () => {
                             type="button"
                             title={`View ${row.title || "Blog"}`}
                             aria-label={`View ${row.title || "Blog"}`}
-                            onClick={() => navigate(`/admin/blogs/${row.id}`)}
+                            onClick={() => navigate(`/admin/blogs/${row.id}/view`)}
                             className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                           >
                             <ChevronsRight size={14} strokeWidth={2.2} />
@@ -605,14 +552,14 @@ const BlogsList = () => {
             <span>
               Showing{" "}
               <strong className="font-semibold text-[#53677f]">
-                {count ? start + 1 : 0}
+                {totalRecords ? start + 1 : 0}
               </strong>{" "}
               to{" "}
               <strong className="font-semibold text-[#53677f]">
-                {Math.min(start + pageSize, count)}
+                {Math.min(start + pageSize, totalRecords)}
               </strong>{" "}
               of{" "}
-              <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
+              <strong className="font-semibold text-[#53677f]">{totalRecords}</strong>{" "}
               entries
             </span>
             <label className="flex items-center gap-1.5">
@@ -661,7 +608,7 @@ const BlogsList = () => {
             <button
               type="button"
               onClick={() => setPage(currentPage + 1)}
-              disabled={currentPage === totalPagesLocal}
+              disabled={currentPage === totalPages}
               className={navBtn}
             >
               Next

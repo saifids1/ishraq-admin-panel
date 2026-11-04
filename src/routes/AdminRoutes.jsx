@@ -61,6 +61,7 @@ import CreateBlogType from "../pages/admin/MasterData/BlogType/CreateBlogType.js
 // user management imports
 import AdminUserList from "../pages/admin/UserManagement/AdminUserList.jsx";
 import UserManagementForm from "../pages/admin/UserManagement/UserManagementFrom";
+import CreateBlog from "../pages/admin/Blogs/CreateBlog.jsx";
 
 const AdminRoutes = (
   <Route element={<ProtectedRoute allowedRole="admin" />}>
@@ -81,6 +82,9 @@ const AdminRoutes = (
       <Route path="jobseekers/add" element={<AddJobSeeker mode="create" />} />
       <Route path="jobseekers/:id" element={<JobSeekerDetails />} />
       <Route path="blogs" element={<BlogsList />} />
+      <Route path="blogs/add" element={<CreateBlog mode="create" />} />
+      <Route path="blogs/:id/edit" element={<CreateBlog mode="edit" />} />
+      <Route path="blogs/:id/view" element={<CreateBlog mode="view" />} />
       <Route
         path="jobseekers/:id/edit"
         element={<JobSeekerDetails mode="edit" />}
