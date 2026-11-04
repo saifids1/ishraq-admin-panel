@@ -25,7 +25,7 @@ import {
   AlertTriangle,
   BadgeCheck,
   X as CloseIcon,
-  UserStar,
+  UserStar,Newspaper,FilePlus2
 } from "lucide-react";
 
 import { getCurrentUserRoles } from "../../utils/authUtils";
@@ -120,18 +120,18 @@ const MENU_ITEMS = [
     link: "/admin/job-requirement-list",
     tile: "from-violet-400 to-indigo-500",
   },
-  {
-    text: "JD BY Admin",
-    icon: NotebookDot,
-    link: "/admin/jdbyadmin",
-    tile: "from-violet-400 to-indigo-500",
-  },
-  {
-    text: "Blogs",
-    icon: NotebookDot,
-    link: "/admin/blogs",
-    tile: "from-violet-400 to-indigo-500",
-  },
+ {
+  text: "JD BY Admin",
+  icon: FilePlus2,
+  link: "/admin/jdbyadmin",
+  tile: "from-blue-400 to-indigo-600",
+},
+{
+  text: "Blogs",
+  icon: Newspaper,
+  link: "/admin/blogs",
+  tile: "from-orange-400 to-amber-500",
+},
   {
     text: "Reset Password",
     icon: KeyRound,
