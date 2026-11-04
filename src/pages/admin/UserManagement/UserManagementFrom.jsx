@@ -216,6 +216,7 @@ const UserManagementForm = ({ mode = "create" }) => {
   const [loadingUser, setLoadingUser] = useState(!isCreate);
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [adminId, setAdminId] = useState("");
 
   const [, setToast] = useStatusToast();
 
@@ -263,6 +264,7 @@ const UserManagementForm = ({ mode = "create" }) => {
         };
         setForm(mapped);
         setSavedForm(mapped);
+        setAdminId(u.adminId ?? "");
       })
       .catch((err) => {
         if (active) setServerError(getApiErrorMessage(err));
@@ -426,11 +428,12 @@ const UserManagementForm = ({ mode = "create" }) => {
       <div className="mx-auto max-w-[1300px]">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* HEADER */}
-          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div className="flex justify-between items-center gap-3 border-b border-slate-200 px-4 py-3">
+            {/* LEFT: back button + title */}
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => navigate(-1)}
+                onClick={() => navigate("/admin/users")}
                 title="Back"
                 aria-label="Back"
                 className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
@@ -439,7 +442,61 @@ const UserManagementForm = ({ mode = "create" }) => {
               </button>
               <h2 className="font-semibold text-slate-800">{TITLES[mode]}</h2>
             </div>
+
+            {/* CENTER: admin id (shown in view and edit modes) */}
+            <div className="text-center">
+              {adminId && (
+                <span className="inline-flex items-center rounded-md bg-[#e8f1f6] px-3 py-1 text-sm font-semibold tracking-wide text-[#2f6b8a] ring-1 ring-inset ring-[#cbe1f4]">
+                  {adminId}
+                </span>
+              )}
+            </div>
+
+            {/* RIGHT: sp */}
+          <div className=" flex items-center gap-3">
+            <div
+              className={` ${
+                isView ? "justify-end" : "justify-between"
+              }`}
+            >
+              {isView ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(EDIT_ROUTE(id))}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
+                >
+                  <Pencil size={16} />
+                  Edit
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    disabled={saving}
+                    className="rounded-lg mr-3 border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isBusy}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {saving && <Loader2 size={16} className="animate-spin" />}
+                    {saving
+                      ? "Saving..."
+                      : isCreate
+                        ? "Create"
+                        : "Save Changes"}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
+            {/* <div /> */}
+          </div>
+
 
           {serverError && (
             <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
@@ -599,47 +656,6 @@ const UserManagementForm = ({ mode = "create" }) => {
                   </Field>
                 </div>
               </fieldset>
-
-              {/* FOOTER */}
-              <div
-                className={`mt-6 flex gap-3 border-t border-slate-100 pt-4 ${
-                  isView ? "justify-end" : "justify-between"
-                }`}
-              >
-                {isView ? (
-                  <button
-                    type="button"
-                    onClick={() => navigate(EDIT_ROUTE(id))}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
-                  >
-                    <Pencil size={16} />
-                    Edit
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleCancel}
-                      disabled={saving}
-                      className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isBusy}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {saving && <Loader2 size={16} className="animate-spin" />}
-                      {saving
-                        ? "Saving..."
-                        : isCreate
-                          ? "Create"
-                          : "Save Changes"}
-                    </button>
-                  </>
-                )}
-              </div>
             </form>
           )}
         </div>

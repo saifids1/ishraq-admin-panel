@@ -30,12 +30,13 @@ const EDIT_USER_ROUTE = (id) => `/admin/settings/master/user/edit/${id}`;
 
 const COLUMNS = [
   { key: "srNo", width: "60px", minWidth: "50px" },
+  { key: "adminId", width: "180px", minWidth: "120px" },
   { key: "fullName", width: "180px", minWidth: "140px" },
   { key: "email", width: "220px", minWidth: "170px" },
   { key: "mobile", width: "130px", minWidth: "110px" },
   { key: "designation", width: "160px", minWidth: "120px" },
   { key: "roles", width: "240px", minWidth: "180px" },
-  { key: "status", width: "105px", minWidth: "90px" },
+  { key: "status", width: "105px", minWidth: "120px" },
   { key: "actions", width: "110px", minWidth: "100px", sticky: true },
 ];
 
@@ -73,6 +74,7 @@ const ROLE_LABELS = {
 const toListRow = (item, srNo) => ({
   ...item,
   id: item.id,
+  adminId: item.adminId ?? "",
   fullName: item.fullName ?? "",
   email: item.email ?? "",
   mobile: item.phoneNumber ?? "",
@@ -385,6 +387,7 @@ const AdminUserList = () => {
               <thead>
                 <tr>
                   <th scope="col" className={thClass}>Sr.No</th>
+                  <th scope="col" className={thClass}>Admin ID  </th>
                   <th scope="col" className={thClass}>Full Name</th>
                   <th scope="col" className={thClass}>Email</th>
                   <th scope="col" className={thClass}>Mobile</th>
@@ -446,6 +449,12 @@ const AdminUserList = () => {
                       className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
                       <td className={`${td} tabular-nums`}>{row.srNo}</td>
+
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="block truncate font-medium text-slate-900">
+                          {row.adminId || "-"}
+                        </span>
+                      </td>
 
                       <td className={`${td} whitespace-nowrap`}>
                         <span className="block truncate font-medium text-slate-900">
