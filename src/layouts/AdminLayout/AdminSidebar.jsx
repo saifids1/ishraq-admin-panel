@@ -248,7 +248,7 @@ const ALL_ADMIN_ROLES = [
 // Maps each sidebar link to the roles that can see it.
 // A user with the "admin" role sees every link regardless of this map.
 const MENU_ROLE_ACCESS = {
-  "/admin/dashboard": ALL_ADMIN_ROLES,
+  "/admin/dashboard": ["admin"],
   "/admin/users": ["usermanagementadmin"],
   "/admin/jobseekers": ["jobseekeradmin"],
   "/admin/employer": ["employeradmin"],

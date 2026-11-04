@@ -1,5 +1,5 @@
 // src/pages/admin/users/AdminUserList.jsx
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -102,6 +102,17 @@ const AdminUserList = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useStatusToast();
 
+  /* --------------------------- SCROLL SYNC REFS --------------------------- */
+
+  const headerRef = useRef(null);
+  const bodyRef = useRef(null);
+
+  const handleBodyScroll = useCallback((e) => {
+    if (headerRef.current) {
+      headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  }, []);
+
   /* --------------------------- FETCH --------------------------- */
 
   const fetchPage = useCallback(async (pageNo, size) => {
@@ -176,8 +187,6 @@ const AdminUserList = () => {
       return true;
     });
   }, [rows, query]);
-
-
 
   /* --------------------------- PAGINATION --------------------------- */
 
@@ -362,8 +371,12 @@ const AdminUserList = () => {
 
         {/* TABLE */}
         <div className="mt-4 w-full min-w-0">
-          {/* HEADER (fixed) */}
-          <div className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]">
+          {/* HEADER (no vertical scrollbar; synced horizontally with body) */}
+          <div
+            ref={headerRef}
+            className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]"
+            style={{ scrollbarGutter: "stable" }}
+          >
             <table
               className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
@@ -384,8 +397,13 @@ const AdminUserList = () => {
             </table>
           </div>
 
-          {/* BODY (scrollable) */}
-          <div className="common-scrollbar h-[470px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0">
+          {/* BODY (vertical + horizontal scroll) */}
+          <div
+            ref={bodyRef}
+            onScroll={handleBodyScroll}
+            className="common-scrollbar h-[470px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0"
+            style={{ scrollbarGutter: "stable" }}
+          >
             <table
               className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
