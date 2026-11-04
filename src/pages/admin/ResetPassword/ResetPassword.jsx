@@ -14,12 +14,15 @@ import {
   ShieldCheck,
   Loader2,
   AlertCircle,
+  Users,
 } from "lucide-react";
 
 import StatusModal from "../../../components/common/StatusModal";
 import { updatePasswordByEmailApi } from "../../../api/authApi";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import { getAllEmployers } from "../../../api/employerApi";
+import { getUsers } from "../../../api/Services/userManagementService";
+import { getCurrentUserRoles } from "../../../utils/authUtils";
 
 /* ------------------------------------------------------------------ */
 /*  role metadata                                                     */
@@ -38,11 +41,34 @@ const ROLE = {
     badge: "bg-violet-50 text-violet-700 ring-violet-200",
     avatar: "from-violet-500 to-indigo-400",
   },
+  admin: {
+    label: "Admin User",
+    icon: ShieldCheck,
+    badge: "bg-amber-50 text-amber-700 ring-amber-200",
+    avatar: "from-amber-500 to-orange-400",
+  },
 };
 
 const ROLE_FILTERS = [
   { value: "jobseeker", label: "Job Seekers", icon: User },
   { value: "employer", label: "Employers", icon: Building2 },
+  { value: "admin", label: "Admin Users", icon: ShieldCheck },
+];
+
+const ALL_FILTER = { value: "all", label: "All users", icon: Users };
+
+/* which lists each role can see */
+const ACCESS_RULES = {
+  Admin: ["jobseeker", "employer", "admin"],
+  UserManagementAdmin: ["admin"],
+  JobseekerAdmin: ["jobseeker"],
+  EmployerAdmin: ["employer"],
+};
+
+const toRoleArray = (raw) => (Array.isArray(raw) ? raw : raw ? [raw] : []);
+
+const resolveAllowedRoles = (roles) => [
+  ...new Set(roles.flatMap((r) => ACCESS_RULES[r] ?? [])),
 ];
 
 /* the password rules — still gate submission */
@@ -75,16 +101,15 @@ const digits = (s = "") => s.replace(/\D/g, "");
 const firstValue = (item, ...keys) =>
   keys
     .map((key) => item?.[key])
-    .find(
-      (value) => value !== undefined && value !== null && value !== "",
-    ) ?? "";
+    .find((value) => value !== undefined && value !== null && value !== "") ??
+  "";
 
 const extractList = (response) => {
   const body = response?.data ?? response;
   const payload = body?.data ?? body?.Data ?? body;
   const list = Array.isArray(payload)
     ? payload
-    : payload?.items ?? payload?.Items ?? payload?.data ?? payload?.Data;
+    : (payload?.items ?? payload?.Items ?? payload?.data ?? payload?.Data);
   return Array.isArray(list) ? list : [];
 };
 
@@ -129,6 +154,30 @@ const normalizeEmployer = (user) => ({
   phone: String(firstValue(user, "phone", "phoneNumber", "mobile")),
   role: "employer",
 });
+
+const normalizeAdminUser = (user) => ({
+  id: firstValue(user, "id"),
+  name: firstValue(user, "fullName", "userName", "email"),
+  email: String(firstValue(user, "email")),
+  phone: String(firstValue(user, "phoneNumber")),
+  role: "admin",
+});
+
+// Pulls every page, since the users endpoint caps pageSize at 100.
+const fetchAllAdminUsers = async () => {
+  const all = [];
+  let pageNo = 1;
+  let totalPages = 1;
+
+  do {
+    const res = await getUsers({ pageNo, pageSize: 100 });
+    all.push(...(Array.isArray(res?.data) ? res.data : []));
+    totalPages = res?.totalPages ?? 1;
+    pageNo += 1;
+  } while (pageNo <= totalPages);
+
+  return all;
+};
 
 const Avatar = ({ user, size = "h-9 w-9", text = "text-[12px]" }) => (
   <span
@@ -239,50 +288,95 @@ const ResetPassword = () => {
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
 
+  const [allowedRoles, setAllowedRoles] = useState([]);
+  const [permissionsReady, setPermissionsReady] = useState(false);
+
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
   const [changedName, setChangedName] = useState("");
   /* popup shown when the password fails one or more rules on submit */
   const [passwordInfo, setPasswordInfo] = useState("");
 
-  /* ---- fetch users whenever the role tab changes ---- */
+  const boxRef = useRef(null);
+  const inputRef = useRef(null);
+
+  /* ---- work out which lists this user can see ---- */
   useEffect(() => {
     let cancelled = false;
+
+    Promise.resolve()
+      .then(() => getCurrentUserRoles())
+      .then((raw) => {
+        if (!cancelled) setAllowedRoles(resolveAllowedRoles(toRoleArray(raw)));
+      })
+      .catch(() => {
+        if (!cancelled) setAllowedRoles([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPermissionsReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* ---- fetch only the lists this user is allowed to see ---- */
+  useEffect(() => {
+    if (!permissionsReady) return undefined;
+
+    if (allowedRoles.length === 0) {
+      setUsers([]);
+      setLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
     const loadUsers = async () => {
       setLoading(true);
       setApiError("");
+
       try {
-        const jobseekerPromise =
-          roleFilter === "all" || roleFilter === "jobseeker"
-            ? jobseekerApi.getList().then(extractList)
-            : Promise.resolve([]);
+        const want = {
+          jobseeker: allowedRoles.includes("jobseeker"),
+          employer: allowedRoles.includes("employer"),
+          admin: allowedRoles.includes("admin"),
+        };
 
-        const employerPromise =
-          roleFilter === "all" || roleFilter === "employer"
-            ? getAllEmployers().then(extractList)
-            : Promise.resolve([]);
+        const [jobSeekersResult, employersResult, adminsResult] =
+          await Promise.allSettled([
+            want.jobseeker
+              ? jobseekerApi.getList().then(extractList)
+              : Promise.resolve([]),
+            want.employer
+              ? getAllEmployers().then(extractList)
+              : Promise.resolve([]),
+            want.admin ? fetchAllAdminUsers() : Promise.resolve([]),
+          ]);
 
-        const [jobSeekersResult, employersResult] = await Promise.allSettled([
-          jobseekerPromise,
-          employerPromise,
-        ]);
-
-        const jobSeekers =
-          jobSeekersResult.status === "fulfilled" ? jobSeekersResult.value : [];
-        const employers =
-          employersResult.status === "fulfilled" ? employersResult.value : [];
+        const requested = [
+          [want.jobseeker, jobSeekersResult],
+          [want.employer, employersResult],
+          [want.admin, adminsResult],
+        ]
+          .filter(([wanted]) => wanted)
+          .map(([, result]) => result);
 
         if (
-          jobSeekersResult.status === "rejected" &&
-          employersResult.status === "rejected"
+          requested.length > 0 &&
+          requested.every((r) => r.status === "rejected")
         ) {
-          throw jobSeekersResult.reason;
+          throw requested[0].reason;
         }
 
+        const valueOf = (r) => (r.status === "fulfilled" ? r.value : []);
+
         const combined = [
-          ...jobSeekers.map(normalizeJobSeeker),
-          ...employers.map(normalizeEmployer),
-        ];
+          ...valueOf(jobSeekersResult).map(normalizeJobSeeker),
+          ...valueOf(employersResult).map(normalizeEmployer),
+          ...valueOf(adminsResult).map(normalizeAdminUser),
+        ].map((u) => ({ ...u, id: `${u.role}-${u.id}` })); // avoid ID clashes across lists
 
         if (!cancelled) setUsers(combined);
       } catch (err) {
@@ -299,10 +393,7 @@ const ResetPassword = () => {
     return () => {
       cancelled = true;
     };
-  }, [roleFilter]);
-
-  const boxRef = useRef(null);
-  const inputRef = useRef(null);
+  }, [permissionsReady, allowedRoles]);
 
   /* ---- filtered results for the combobox ---- */
   const results = useMemo(() => {
@@ -321,6 +412,12 @@ const ResetPassword = () => {
       })
       .slice(0, 8);
   }, [query, roleFilter, users]);
+
+  /* ---- tabs only for lists this user can see ---- */
+  const visibleFilters = useMemo(() => {
+    const own = ROLE_FILTERS.filter((f) => allowedRoles.includes(f.value));
+    return own.length > 1 ? [ALL_FILTER, ...own] : own;
+  }, [allowedRoles]);
 
   useEffect(() => setHighlight(0), [query, roleFilter]);
 
@@ -371,8 +468,7 @@ const ResetPassword = () => {
   const mismatch =
     confirmPassword.length > 0 && newPassword !== confirmPassword;
   const matches = confirmPassword.length > 0 && newPassword === confirmPassword;
-  const canSubmit =
-    !!selected && allRules && matches && !submitting;
+  const canSubmit = !!selected && allRules && matches && !submitting;
 
   const onSubmit = (e) => {
     e.preventDefault();
@@ -467,10 +563,18 @@ const ResetPassword = () => {
               </h2>
             </div>
 
-            {loading ? (
+            {loading || !permissionsReady ? (
               <div className="flex items-center gap-2 py-4 text-[13px] text-[#6b7a88]">
                 <Loader2 size={16} className="animate-spin" />
                 Loading users…
+              </div>
+            ) : permissionsReady && allowedRoles.length === 0 ? (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-800">
+                <ShieldCheck size={16} className="mt-0.5 shrink-0" />
+                <span className="min-w-0 break-words">
+                  You don't have access to reset passwords. Ask an administrator
+                  to assign you the right role.
+                </span>
               </div>
             ) : apiError ? (
               <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
@@ -510,36 +614,38 @@ const ResetPassword = () => {
               </div>
             ) : (
               <>
-                {/* role filter tabs — scrolls horizontally if needed */}
-                <div
-                  className="mb-3 inline-flex max-w-full overflow-x-auto rounded-lg bg-[#f1f5f8] p-1"
-                  role="group"
-                  aria-label="Filter by account type"
-                >
-                  {ROLE_FILTERS.map((f) => {
-                    const Icon = f.icon;
-                    const on = roleFilter === f.value;
-                    return (
-                      <button
-                        key={f.value}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => {
-                          setRoleFilter(f.value);
-                          inputRef.current?.focus();
-                        }}
-                        className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] ${
-                          on
-                            ? "bg-white text-[#2c6b8a] shadow-sm"
-                            : "text-[#6b7a88] hover:text-[#34445a]"
-                        }`}
-                      >
-                        <Icon size={14} />
-                        {f.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* role filter tabs: only lists this user can see */}
+                {visibleFilters.length > 1 && (
+                  <div
+                    className="mb-3 inline-flex max-w-full overflow-x-auto rounded-lg bg-[#f1f5f8] p-1"
+                    role="group"
+                    aria-label="Filter by account type"
+                  >
+                    {visibleFilters.map((f) => {
+                      const Icon = f.icon;
+                      const on = roleFilter === f.value;
+                      return (
+                        <button
+                          key={f.value}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => {
+                            setRoleFilter(f.value);
+                            inputRef.current?.focus();
+                          }}
+                          className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] ${
+                            on
+                              ? "bg-white text-[#2c6b8a] shadow-sm"
+                              : "text-[#6b7a88] hover:text-[#34445a]"
+                          }`}
+                        >
+                          <Icon size={14} />
+                          {f.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* search combobox */}
                 <div ref={boxRef} className="relative">
@@ -599,8 +705,8 @@ const ResetPassword = () => {
                             Nothing matched that
                           </p>
                           <p className="text-[12.5px] text-[#6b7a88]">
-                            Try a different spelling, or paste in their email
-                            or phone number.
+                            Try a different spelling, or paste in their email or
+                            phone number.
                           </p>
                         </li>
                       ) : (
@@ -738,7 +844,7 @@ const ResetPassword = () => {
             </p>
             <button
               type="submit"
-              disabled={!selected || submitting}
+              disabled={!canSubmit}
               className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-5 text-[13.5px] font-semibold text-white shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100 sm:w-auto"
             >
               {submitting ? (

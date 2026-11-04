@@ -43,10 +43,21 @@ const TITLES = {
 
 const PASSWORD_MIN_LENGTH = 8;
 
+const PASSWORD_ERROR =
+  "Password must be at least 8 characters long and include at least one uppercase letter (A–Z), one lowercase letter (a–z), one number (0–9), and one special character (e.g., @, #, $, %, &).";
+
 const passwordChecks = (password) => ({
   length: password.length >= PASSWORD_MIN_LENGTH,
   uppercase: /[A-Z]/.test(password),
+  lowercase: /[a-z]/.test(password),
+  number: /[0-9]/.test(password),
+  special: /[^A-Za-z0-9\s]/.test(password),
 });
+
+const isPasswordValid = (password) =>
+  Object.values(passwordChecks(password)).every(Boolean);
+
+
 
 const inputClass = (hasError) =>
   `w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:cursor-default disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-800 ${
@@ -102,11 +113,18 @@ const PasswordInput = ({ show, onToggle, hasError, ...props }) => (
 );
 
 // Live checklist shown under the password field in create mode.
+// Live checklist shown under the password field in create mode.
 const PasswordRules = ({ password }) => {
   const checks = passwordChecks(password);
   const items = [
     { ok: checks.length, text: `At least ${PASSWORD_MIN_LENGTH} characters` },
-    { ok: checks.uppercase, text: "At least one uppercase letter (A-Z)" },
+    { ok: checks.uppercase, text: "At least one uppercase letter (A–Z)" },
+    { ok: checks.lowercase, text: "At least one lowercase letter (a–z)" },
+    { ok: checks.number, text: "At least one number (0–9)" },
+    {
+      ok: checks.special,
+      text: "At least one special character (e.g., @, #, $, %, &)",
+    },
   ];
 
   return (
@@ -325,11 +343,10 @@ const UserManagementForm = ({ mode = "create" }) => {
 
     if (isCreate) {
       const checks = passwordChecks(form.password);
-      if (!form.password) {
+     if (!form.password) {
         e.password = "Password is required.";
-      } else if (!checks.length || !checks.uppercase) {
-        e.password =
-          "Password must be at least 8 characters and include at least one uppercase letter.";
+      } else if (!isPasswordValid(form.password)) {
+        e.password = PASSWORD_ERROR;
       }
 
       if (!form.confirmPassword) {

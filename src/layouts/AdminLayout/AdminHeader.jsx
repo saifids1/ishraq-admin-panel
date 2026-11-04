@@ -40,7 +40,7 @@ const primaryRole = formatRoleLabel(roles[0]) || "User";
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    navigate("/admin/login");
   };
 
   return (
