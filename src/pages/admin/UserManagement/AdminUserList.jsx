@@ -7,8 +7,8 @@ import {
   Inbox,
   Plus,
   RefreshCw,
-  Pencil,
   ChevronsRight,
+  MoreHorizontal,
 } from "lucide-react";
 import StatusModal from "../../../components/common/StatusModal";
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
@@ -22,24 +22,23 @@ import { getAdminStatusRecordLabel } from "../../../utils/adminStatusConfirmatio
 /* ------------------------------ CONSTANTS ------------------------------ */
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
-const TABLE_MIN_WIDTH = 1100;
 
-// Adjust these to match your routes.
-const ADD_USER_ROUTE = "/admin/settings/master/user/add";
-const EDIT_USER_ROUTE = (id) => `/admin/settings/master/user/edit/${id}`;
+const ADD_USER_ROUTE = "/admin/user/add";
+const VIEW_USER_ROUTE = (id) => `/admin/user/view/${id}`;
 
 const COLUMNS = [
-  { key: "srNo", width: "60px", minWidth: "50px" },
-  { key: "adminId", width: "180px", minWidth: "120px" },
-  { key: "fullName", width: "180px", minWidth: "140px" },
-  { key: "email", width: "220px", minWidth: "170px" },
-  { key: "mobile", width: "130px", minWidth: "110px" },
-  { key: "designation", width: "160px", minWidth: "120px" },
-  { key: "roles", width: "240px", minWidth: "180px" },
-  { key: "status", width: "105px", minWidth: "120px" },
-  { key: "actions", width: "110px", minWidth: "100px", sticky: true },
+  { key: "srNo", label: "Sr.No", width: 60 },
+  { key: "adminId", label: "Admin ID", width: 150 },
+  { key: "fullName", label: "Full Name", width: 180 },
+  { key: "email", label: "Email", width: 220 },
+  { key: "roles", label: "Roles", width: 240 },
+  { key: "status", label: "Status", width: 120 },
+  { key: "mobile", label: "Mobile", width: 130 },
+  { key: "designation", label: "Designation", width: 160 },
+  { key: "actions", label: "Actions", width: 110, sticky: true },
 ];
 
+const TABLE_MIN_WIDTH = COLUMNS.reduce((sum, c) => sum + c.width, 0);
 const COL_SPAN_ALL = COLUMNS.length;
 
 const TONES = {
@@ -55,7 +54,6 @@ const BADGE_BASE =
 
 const toneOf = (value) => TONES[STATUS_TONES[value]] ?? TONES.neutral;
 
-// Friendly labels for the role codes returned by the API.
 const ROLE_LABELS = {
   JobseekerAdmin: "Jobseeker Admin",
   EmployerAdmin: "Employer Admin",
@@ -68,6 +66,8 @@ const ROLE_LABELS = {
   MasterDataAdmin: "Master Data Admin",
   ManageBlogAdmin: "Manage Blog Admin",
 };
+
+const roleLabel = (r) => ROLE_LABELS[r] ?? r;
 
 /* ------------------------------ NORMALIZE ------------------------------ */
 
@@ -96,6 +96,7 @@ const AdminUserList = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   const [query, setQuery] = useState({ search: "", status: "All" });
 
@@ -103,6 +104,18 @@ const AdminUserList = () => {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useStatusToast();
+
+  // Track which row's roles are expanded (by row id).
+  const [expandedRoles, setExpandedRoles] = useState(() => new Set());
+
+  const toggleRoles = (id) => {
+    setExpandedRoles((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   /* --------------------------- SCROLL SYNC REFS --------------------------- */
 
@@ -120,11 +133,13 @@ const AdminUserList = () => {
   const fetchPage = useCallback(async (pageNo, size) => {
     const res = await getUsers({ pageNo, pageSize: size });
     const list = Array.isArray(res?.data) ? res.data : [];
+    const total = res?.totalRecords ?? list.length;
     return {
       rows: list.map((item, index) =>
         toListRow(item, (pageNo - 1) * size + index + 1),
       ),
-      total: res?.totalRecords ?? list.length,
+      total,
+      pages: res?.totalPages ?? Math.max(1, Math.ceil(total / size)),
     };
   }, []);
 
@@ -132,12 +147,14 @@ const AdminUserList = () => {
     setLoading(true);
     setError("");
     try {
-      const { rows: nextRows, total } = await fetchPage(page, pageSize);
+      const { rows: nextRows, total, pages } = await fetchPage(page, pageSize);
       setRows(nextRows);
       setTotalRecords(total);
+      setTotalPages(pages);
     } catch (err) {
       setRows([]);
       setTotalRecords(0);
+      setTotalPages(0);
       setError(getApiErrorMessage(err) || "Unable to load users.");
     } finally {
       setLoading(false);
@@ -156,13 +173,16 @@ const AdminUserList = () => {
     setError("");
     setQuery({ search: "", status: "All" });
     setPage(1);
+    setExpandedRoles(new Set());
     try {
-      const { rows: nextRows, total } = await fetchPage(1, pageSize);
+      const { rows: nextRows, total, pages } = await fetchPage(1, pageSize);
       setRows(nextRows);
       setTotalRecords(total);
+      setTotalPages(pages);
     } catch (err) {
       setRows([]);
       setTotalRecords(0);
+      setTotalPages(0);
       setError(getApiErrorMessage(err) || "Unable to load users.");
     } finally {
       setRefreshing(false);
@@ -171,14 +191,12 @@ const AdminUserList = () => {
 
   /* --------------------------- FILTER (current page) --------------------------- */
 
-  // The API doesn't support search or status filters yet, so these apply
-  // to the rows on the current page only.
   const filteredRows = useMemo(() => {
     const q = query.search.trim().toLowerCase();
     return rows.filter((u) => {
       if (
         q &&
-        !["fullName", "email", "mobile", "designation"].some((k) =>
+        !["adminId", "fullName", "email", "mobile", "designation"].some((k) =>
           String(u[k] ?? "")
             .toLowerCase()
             .includes(q),
@@ -192,8 +210,7 @@ const AdminUserList = () => {
 
   /* --------------------------- PAGINATION --------------------------- */
 
-  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
-  const currentPage = Math.min(page, totalPages);
+  const currentPage = Math.min(page, Math.max(1, totalPages));
   const start = (currentPage - 1) * pageSize;
 
   const pageNumbers = useMemo(() => {
@@ -217,9 +234,10 @@ const AdminUserList = () => {
     setBusy(true);
     try {
       await updateUserStatus(row.id, next === "Active");
-      const { rows: nextRows, total } = await fetchPage(page, pageSize);
+      const { rows: nextRows, total, pages } = await fetchPage(page, pageSize);
       setRows(nextRows);
       setTotalRecords(total);
+      setTotalPages(pages);
       setToast({
         id: Date.now(),
         tone: next === "Active" ? "ok" : "warn",
@@ -253,25 +271,102 @@ const AdminUserList = () => {
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-2 py-2 text-left text-[12px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)] sm:px-4 sm:py-1.5 sm:text-[15px]";
 
   const stickyActionsHead =
-    "sticky right-0 z-30 w-[110px] min-w-[110px] whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-1 py-2 text-center text-[12px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.35)] sm:px-2 sm:py-1.5 sm:text-[15px]";
+    "sticky right-0 z-30 whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-1 py-2 text-center text-[12px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.35)] sm:px-2 sm:py-1.5 sm:text-[15px]";
 
   const stickyActionsCell =
-    "sticky right-0 z-20 w-[110px] min-w-[110px] border-t border-[#e2e8ee] bg-white px-1 py-2 text-center text-[13px] text-slate-900 shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.18)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6] sm:px-2 sm:py-2.5 sm:text-[15px]";
+    "sticky right-0 z-20 border-t border-[#e2e8ee] bg-white px-1 py-2 text-center text-[13px] text-slate-900 shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.18)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6] sm:px-2 sm:py-2.5 sm:text-[15px]";
 
-  const headerCols = (
+  const colgroup = (
     <colgroup>
       {COLUMNS.map((c) => (
-        <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+        <col key={c.key} style={{ width: `${c.width}px` }} />
       ))}
     </colgroup>
   );
+
+  /* --------------------------- ROLES CELL --------------------------- */
+
+  // Renders the Roles cell. For 0 roles -> "-", 1 role -> plain text,
+  // 2+ roles -> first role + "⋯" button that expands all roles in the same row.
+  const RolesCell = ({ row }) => {
+    const labels = row.roles.map(roleLabel);
+    const expanded = expandedRoles.has(row.id);
+
+    if (labels.length === 0) {
+      return <span className="text-[#9aa5b1]">-</span>;
+    }
+
+    if (labels.length === 1) {
+      return (
+        <span className="block truncate text-[12px] sm:text-[14px]" title={labels[0]}>
+          {labels[0]}
+        </span>
+      );
+    }
+
+    const [firstRole, ...rest] = labels;
+    const total = labels.length;
+
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-1.5">
+          {!expanded && (
+            <span
+              className="block min-w-0 truncate text-[12px] sm:text-[14px]"
+              title={labels.join(", ")}
+            >
+              {firstRole}
+            </span>
+          )}
+          {expanded && (
+            <span className="text-[12px] font-medium text-[#2c6b8a] sm:text-[14px]">
+              All roles ({total})
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => toggleRoles(row.id)}
+            aria-expanded={expanded}
+            aria-label={
+              expanded
+                ? `Hide ${total} roles for ${row.fullName || "user"}`
+                : `Show all ${total} roles for ${row.fullName || "user"}`
+            }
+            title={expanded ? "Hide roles" : `Show all ${total} roles`}
+            className="ml-auto inline-flex shrink-0 items-center gap-0.5 rounded-md border border-[#cbe1f4] bg-white px-1.5 py-0.5 text-[11px] font-semibold text-[#2c6b8a] shadow-sm transition hover:border-[#2c6b8a] hover:bg-[#e8f1f6] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+          >
+            {!expanded && (
+              <>
+                <MoreHorizontal size={12} strokeWidth={2.5} />
+                <span>+{rest.length}</span>
+              </>
+            )}
+            {expanded && <ChevronDown size={12} strokeWidth={2.5} />}
+          </button>
+        </div>
+
+        {expanded && (
+          <ul className="flex flex-col gap-0.5 border-t border-dashed border-[#cbe1f4] pt-1">
+            {rest.map((role) => (
+              <li
+                key={role}
+                className="truncate text-[11px] text-slate-700 sm:text-[13px]"
+                title={role}
+              >
+                • {role}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  };
 
   /* --------------------------- RENDER --------------------------- */
 
   return (
     <div className="w-full min-w-0">
-      {/* <StatCardGrid items={stats} /> */}
-
       <div className="mx-auto w-full min-w-0 max-w-[1400px] rounded-[14px] border border-[#e2e8ee] bg-white p-2.5 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:p-4 lg:px-5">
         {/* HEADER */}
         <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-center">
@@ -338,7 +433,7 @@ const AdminUserList = () => {
               <button
                 type="button"
                 title="Add user"
-                onClick={() => navigate("/admin/user/add")}
+                onClick={() => navigate(ADD_USER_ROUTE)}
                 className={`${btnPrimary} flex-1 sm:flex-none`}
               >
                 <Plus
@@ -373,45 +468,41 @@ const AdminUserList = () => {
 
         {/* TABLE */}
         <div className="mt-4 w-full min-w-0">
-          {/* HEADER (no vertical scrollbar; synced horizontally with body) */}
           <div
             ref={headerRef}
             className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]"
-            style={{ scrollbarGutter: "stable" }}
           >
             <table
               className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
             >
-              {headerCols}
+              {colgroup}
               <thead>
                 <tr>
-                  <th scope="col" className={thClass}>Sr.No</th>
-                  <th scope="col" className={thClass}>Admin ID  </th>
-                  <th scope="col" className={thClass}>Full Name</th>
-                  <th scope="col" className={thClass}>Email</th>
-                  <th scope="col" className={thClass}>Mobile</th>
-                  <th scope="col" className={thClass}>Designation</th>
-                  <th scope="col" className={thClass}>Roles</th>
-                  <th scope="col" className={thClass}>Status</th>
-                  <th scope="col" className={stickyActionsHead}>Actions</th>
+                  {COLUMNS.map((c) => (
+                    <th
+                      key={c.key}
+                      scope="col"
+                      className={c.sticky ? stickyActionsHead : thClass}
+                    >
+                      {c.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
             </table>
           </div>
 
-          {/* BODY (vertical + horizontal scroll) */}
           <div
             ref={bodyRef}
             onScroll={handleBodyScroll}
             className="common-scrollbar h-[470px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0"
-            style={{ scrollbarGutter: "stable" }}
           >
             <table
               className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
             >
-              {headerCols}
+              {colgroup}
               <tbody>
                 {loading ? (
                   <tr>
@@ -448,21 +539,21 @@ const AdminUserList = () => {
                       style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
                       className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
-                      <td className={`${td} tabular-nums`}>{row.srNo}</td>
+                      <td className={`${td} tabular-nums align-top`}>{row.srNo}</td>
 
-                      <td className={`${td} whitespace-nowrap`}>
+                      <td className={`${td} whitespace-nowrap align-top`}>
                         <span className="block truncate font-medium text-slate-900">
                           {row.adminId || "-"}
                         </span>
                       </td>
 
-                      <td className={`${td} whitespace-nowrap`}>
+                      <td className={`${td} whitespace-nowrap align-top`}>
                         <span className="block truncate font-medium text-slate-900">
                           {row.fullName || "-"}
                         </span>
                       </td>
 
-                      <td className={`${td} whitespace-nowrap`}>
+                      <td className={`${td} whitespace-nowrap align-top`}>
                         {row.email ? (
                           <span
                             className="block truncate text-[12px] sm:text-[14px]"
@@ -475,46 +566,12 @@ const AdminUserList = () => {
                         )}
                       </td>
 
-                      <td className={`${td} whitespace-nowrap`}>
-                        {row.mobile ? (
-                          <span className="text-[12px] tabular-nums sm:text-[14px]">
-                            {row.mobile}
-                          </span>
-                        ) : (
-                          <span className="text-[#9aa5b1]">-</span>
-                        )}
+                      {/* ROLES — expandable */}
+                      <td className={`${td} align-top`}>
+                        <RolesCell row={row} />
                       </td>
 
-                      <td className={`${td} whitespace-nowrap`}>
-                        <span
-                          className="block truncate text-[12px] sm:text-[14px]"
-                          title={row.designation}
-                        >
-                          {row.designation || "-"}
-                        </span>
-                      </td>
-
-                      <td className={td}>
-                        <div className="flex flex-wrap gap-1">
-                          {row.roles.length ? (
-                            row.roles.map((role) => (
-                              <span
-                                key={role}
-                                title={ROLE_LABELS[role] ?? role}
-                                className="inline-flex max-w-[160px] items-center truncate rounded-md bg-[#e8f1f6] px-1.5 py-0.5 text-[11px] font-medium text-[#2c6b8a] ring-1 ring-inset ring-[#cbe1f4] sm:text-[12px]"
-                              >
-                                <span className="truncate">
-                                  {ROLE_LABELS[role] ?? role}
-                                </span>
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-[#9aa5b1]">-</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className={`${td} whitespace-nowrap`}>
+                      <td className={`${td} whitespace-nowrap align-top`}>
                         <span
                           className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${
                             toneOf(row.status).badge
@@ -524,22 +581,32 @@ const AdminUserList = () => {
                         </span>
                       </td>
 
-                      <td className={stickyActionsCell}>
+                      <td className={`${td} whitespace-nowrap align-top`}>
+                        {row.mobile ? (
+                          <span className="text-[12px] tabular-nums sm:text-[14px]">
+                            {row.mobile}
+                          </span>
+                        ) : (
+                          <span className="text-[#9aa5b1]">-</span>
+                        )}
+                      </td>
+
+                      <td className={`${td} whitespace-nowrap align-top`}>
+                        <span
+                          className="block truncate text-[12px] sm:text-[14px]"
+                          title={row.designation}
+                        >
+                          {row.designation || "-"}
+                        </span>
+                      </td>
+
+                      <td className={`${stickyActionsCell} align-top`}>
                         <div className="flex items-center justify-center gap-1">
-                          {/* <button
-                            type="button"
-                            title={`Edit ${row.fullName || "user"}`}
-                            aria-label={`Edit ${row.fullName || "user"}`}
-                            onClick={() => navigate(EDIT_USER_ROUTE(row.id))}
-                            className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                          >
-                            <Pencil size={13} strokeWidth={2.2} />
-                          </button> */}
                           <button
                             type="button"
                             title={`View ${row.fullName || "user"}`}
                             aria-label={`View ${row.fullName || "user"}`}
-                            onClick={() => navigate(`/admin/user/view/${row.id}`)}
+                            onClick={() => navigate(VIEW_USER_ROUTE(row.id))}
                             className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                           >
                             <ChevronsRight size={13} strokeWidth={2.2} />
@@ -619,6 +686,7 @@ const AdminUserList = () => {
                 onChange={(e) => {
                   setPageSize(Number(e.target.value));
                   setPage(1);
+                  setExpandedRoles(new Set());
                 }}
                 className="h-8 cursor-pointer rounded-lg border border-[#dce3eb] bg-white px-2 text-[13px] text-[#34445a] hover:border-[#2c6b8a] focus:border-[#2c6b8a] focus:outline-none focus:ring-2 focus:ring-[#2c6b8a]/30"
               >
@@ -637,7 +705,10 @@ const AdminUserList = () => {
           >
             <button
               type="button"
-              onClick={() => setPage(currentPage - 1)}
+              onClick={() => {
+                setPage(currentPage - 1);
+                setExpandedRoles(new Set());
+              }}
               disabled={currentPage === 1}
               className={navBtn}
             >
@@ -647,7 +718,10 @@ const AdminUserList = () => {
               <button
                 key={n}
                 type="button"
-                onClick={() => setPage(n)}
+                onClick={() => {
+                  setPage(n);
+                  setExpandedRoles(new Set());
+                }}
                 aria-current={n === currentPage ? "page" : undefined}
                 className={`${pageBtn} ${
                   n === currentPage
@@ -660,7 +734,10 @@ const AdminUserList = () => {
             ))}
             <button
               type="button"
-              onClick={() => setPage(currentPage + 1)}
+              onClick={() => {
+                setPage(currentPage + 1);
+                setExpandedRoles(new Set());
+              }}
               disabled={currentPage === totalPages}
               className={navBtn}
             >

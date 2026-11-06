@@ -13,7 +13,7 @@ import {
   Plus,
   BriefcaseBusiness,
   BadgeCheck,
-  UserPlus,
+  CalendarPlus,
   Users,
   Flag,
   RefreshCw,
@@ -228,6 +228,26 @@ const toListRow = (item, srNo) => {
   };
 };
 
+/* ------------------------------ DASHBOARD PARSE ------------------------------ */
+
+const EMPTY_DASHBOARD = {
+  totalJobRequirements: 0,
+  activeJobRequirements: 0,
+  inactiveJobRequirements: 0,
+  newRequirementsThisMonth: 0,
+};
+
+const parseDashboardResponse = (response) => {
+  const d = response?.data?.data;
+  if (!d || typeof d !== "object") return { ...EMPTY_DASHBOARD };
+  return {
+    totalJobRequirements: Number(d.totalJobRequirements) || 0,
+    activeJobRequirements: Number(d.activeJobRequirements) || 0,
+    inactiveJobRequirements: Number(d.inactiveJobRequirements) || 0,
+    newRequirementsThisMonth: Number(d.newRequirementsThisMonth) || 0,
+  };
+};
+
 /* ------------------------------ COMPONENT ------------------------------ */
 
 const JobRequirementList = () => {
@@ -238,6 +258,8 @@ const JobRequirementList = () => {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+
+  const [dashboard, setDashboard] = useState({ ...EMPTY_DASHBOARD });
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -307,13 +329,29 @@ const JobRequirementList = () => {
     };
   }, []);
 
+  /* --------------------------- DASHBOARD LOADER --------------------------- */
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const res = await jobRequirementApi.getDashboard();
+      setDashboard(parseDashboardResponse(res));
+    } catch (err) {
+      console.warn("[JobRequirementList] dashboard fetch failed", err);
+    }
+  }, []);
+
+  // Fetch dashboard once on mount
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
   /* --------------------------- FETCH --------------------------- */
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const params = { pageNo: page, pageSize, JQ_is_CreatedByAdmin : false };
+      const params = { pageNo: page, pageSize, JQ_is_CreatedByAdmin: false };
       if (query.search.trim()) params.search = query.search.trim();
       if (query.isActive !== "All")
         params.isActive = query.isActive === "Active";
@@ -359,18 +397,26 @@ const JobRequirementList = () => {
     setRefreshing(true);
     try {
       await load();
+      await loadDashboard();
     } finally {
       setRefreshing(false);
     }
-  }, [load, refreshing]);
+  }, [load, refreshing, loadDashboard]);
 
   /* --------------------------- STATS --------------------------- */
 
-  const stats = useMemo(
-    () => [
+  const stats = useMemo(() => {
+    const {
+      totalJobRequirements,
+      activeJobRequirements,
+      inactiveJobRequirements,
+      newRequirementsThisMonth,
+    } = dashboard;
+
+    return [
       {
-        title: "Job requirements posted",
-        value: totalRecords,
+        title: "Total job requirements",
+        value: totalJobRequirements,
         note: "All time",
         icon: BriefcaseBusiness,
         from: "#6366f1",
@@ -379,9 +425,9 @@ const JobRequirementList = () => {
         color2: "#8b5cf6",
       },
       {
-        title: "Open jobs",
-        value: jobs.filter((j) => j.isActive).length,
-        note: "Active requirements",
+        title: "Active requirements",
+        value: activeJobRequirements,
+        note: "Currently open",
         icon: BadgeCheck,
         from: "#10b981",
         to: "#059669",
@@ -389,34 +435,35 @@ const JobRequirementList = () => {
         color2: "#34d399",
       },
       {
-        title: "Total vacancies",
-        value: jobs.reduce((s, j) => s + Number(j.vacancies || 0), 0),
-        note: "Across all jobs",
-        icon: UserPlus,
+        title: "Inactive requirements",
+        value: inactiveJobRequirements,
+        note: "Paused / closed",
+        icon: UserRoundX,
         from: "#f59e0b",
         to: "#ef4444",
         color: "#f59e0b",
         color2: "#fb923c",
       },
       {
-        title: "Total applicants",
-        value: jobs.reduce((s, j) => s + Number(j.applicants || 0), 0),
-        note: "Interested across all jobs",
-        icon: Users,
+        title: "Jobs Posted This Month",
+        value: newRequirementsThisMonth,
+        note: "Posted in current month",
+        icon: CalendarPlus,
         from: "#0ea5e9",
         to: "#2563eb",
         color: "#0ea5e9",
         color2: "#38bdf8",
       },
-    ],
-    [jobs, totalRecords],
-  );
+    ];
+  }, [dashboard]);
 
   /* --------------------------- TOGGLE --------------------------- */
 
   const handleToggle = async (row) => {
     await jobRequirementApi.toggleActive(row.id, !row.isActive);
     await load();
+    // refresh stat cards (active/inactive counts changed)
+    loadDashboard();
   };
 
   const patchFilter = (patch) => {
@@ -521,6 +568,8 @@ const JobRequirementList = () => {
         msg: "Requirement status and deadline updated successfully.",
       });
       await load();
+      // deadline/status changes may affect active counts
+      loadDashboard();
     } catch (err) {
       setStatusError(
         getApiErrorMessage(err) ||
@@ -857,11 +906,7 @@ const JobRequirementList = () => {
                           <span className="truncate font-medium text-slate-900">
                             {row.organizationName || "-"}
                           </span>
-                          {row.mobile && (
-                            <span className="truncate text-[11px] text-[#6b7a88] sm:text-[12px]">
-                              {row.mobile}
-                            </span>
-                          )}
+                          
                         </span>
                       </td>
 
@@ -870,11 +915,7 @@ const JobRequirementList = () => {
                           <span className="truncate font-medium text-slate-900">
                             {row.position || "-"}
                           </span>
-                          {row.department && (
-                            <span className="truncate text-[11px] text-[#6b7a88] sm:text-[12px]">
-                              {row.department}
-                            </span>
-                          )}
+                         
                         </span>
                       </td>
 

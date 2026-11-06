@@ -118,10 +118,20 @@ const getErrorMessage = (error, fallback) =>
   error?.message ||
   fallback;
 
-const formatDate = (value) => {
+// Truncate fractional seconds to 3 digits (ms) so new Date() parses
+// reliably across browsers (7-digit microseconds break Safari).
+const normalizeDateString = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/(\.\d{3})\d+/, "$1");
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+// "05-11-2026 12:43 PM"
+const formatDateTime = (value) => {
   if (!value) return "";
-  const s = String(value).trim();
-  if (s.startsWith("0001-01-01")) return "";
+  const s = normalizeDateString(value);
+  if (!s || s.startsWith("0001-01-01")) return "";
 
   let d;
   const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
@@ -130,12 +140,28 @@ const formatDate = (value) => {
   else d = value instanceof Date ? value : new Date(s);
 
   if (Number.isNaN(d.getTime())) return "";
-  return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+
+  const day = pad2(d.getDate());
+  const month = pad2(d.getMonth() + 1);
+  const year = d.getFullYear();
+
+  let hours = d.getHours();
+  const minutes = pad2(d.getMinutes());
+  const period = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+
+  return `${day}-${month}-${year} ${pad2(hours)}:${minutes} ${period}`;
+};
+
+// Date-only (DD-MM-YYYY) — used elsewhere if needed
+const formatDate = (value) => {
+  const full = formatDateTime(value);
+  return full ? full.split(" ")[0] : "";
 };
 
 const toDateInputValue = (value) => {
   if (!value) return "";
-  const s = String(value).trim();
+  const s = normalizeDateString(value);
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   const d = value instanceof Date ? value : new Date(s);
   if (Number.isNaN(d.getTime())) return "";
@@ -144,8 +170,7 @@ const toDateInputValue = (value) => {
 
 const nowIsoLocal = () => {
   const d = new Date();
-  const pad = (n, len = 2) => String(n).padStart(len, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}0000`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, "0")}0000`;
 };
 
 // Normalize an empty Quill value so the placeholder shows correctly.
@@ -329,11 +354,15 @@ const CreateBlog = ({ mode }) => {
           rawImg ? { name: getFileName(rawImg), url: imgUrl } : null,
         );
 
+        // API returns camelCase audit fields (createdAt / updatedAt /
+        // createdByName / updatedByName). Keep fallbacks for safety.
         setAudit({
-          createdAt: formatDate(blog.blog_CreatedAt),
-          createdBy: blog.createdByName ?? blog.blog_CreatedBy ?? "",
-          updatedAt: formatDate(blog.blog_UpdatedAt),
-          updatedBy: blog.updatedByName ?? blog.blog_UpdatedBy ?? "",
+          createdAt: formatDateTime(blog.createdAt ?? blog.blog_CreatedAt),
+          createdBy:
+            blog.createdByName ?? blog.createdBy ?? blog.blog_CreatedBy ?? "",
+          updatedAt: formatDateTime(blog.updatedAt ?? blog.blog_UpdatedAt),
+          updatedBy:
+            blog.updatedByName ?? blog.updatedBy ?? blog.blog_UpdatedBy ?? "",
         });
       })
       .catch(

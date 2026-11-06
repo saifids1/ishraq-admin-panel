@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   FileText as FileIcon,
@@ -21,8 +21,10 @@ import countryMasterApi from "../../../api/Services/countryMasterApi";
 import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import { getCurrentUserId2 } from "../../../utils/authUtils";
+import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
+import StatusModal from "../../../components/common/StatusModal";
 
-/* ---------------- Design tokens (match EmployerProfile) ---------------- */
+/* ---------------- Design tokens ---------------- */
 const T = {
   radius: "rounded-lg",
   border: "border-[#e3e8ee]",
@@ -38,7 +40,6 @@ const T = {
 
 const val = (v) => (v && String(v).trim() ? v : "—");
 
-/** Tolerant Yes/No/— mapper for boolean-ish API fields */
 const toYesNo = (v) => {
   if (v === true || v === 1 || v === "1" || v === "true") return "Yes";
   if (v === false || v === 0 || v === "0" || v === "false") return "No";
@@ -47,7 +48,6 @@ const toYesNo = (v) => {
 const toBoolean = (value) =>
   value === true || value === 1 || ["true", "1", "yes"].includes(String(value).toLowerCase());
 
-/** Tolerant boolean check (true/1/"true"/"yes" → true) */
 const truthy = (v) => {
   if (v === true) return true;
   if (v === false || v === null || v === undefined) return false;
@@ -75,7 +75,6 @@ const NAV = [
   { id: "jobs", label: "Applied Jobs", icon: Briefcase },
 ];
 
-/* ---------------- Reusable row: label : input ---------------- */
 const FieldRow = ({ label, value, mono = false, children }) => (
   <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-center sm:gap-3">
     <label className={`${FIELD_LABEL} text-left`}>{label}</label>
@@ -91,29 +90,21 @@ const FieldRow = ({ label, value, mono = false, children }) => (
   </div>
 );
 
-/* ---------------- API URL Configuration ---------------- */
 const DOCUMENT_BASE_URL = (
   process.env.REACT_APP_DOCUMENT_BASE_URL || ""
 ).trim();
 
 const toAbsoluteUrl = (url) => {
   if (!url) return url;
-
   const raw = String(url).trim();
-
   if (/^https?:\/\//i.test(raw)) return raw;
-
   let clean = raw.replace(/\\/g, "/").replace(/^\/+/, "");
   clean = clean.replace(/^wwwroot\//i, "");
   clean = clean.replace(/^api\//i, "");
   clean = clean.replace(/^\/+/, "");
-
   if (!DOCUMENT_BASE_URL) return `/${clean}`;
-
   return `${DOCUMENT_BASE_URL.replace(/\/+$/, "")}/${clean}`;
 };
-
-/* ---------------- Date parsing helpers ---------------- */
 
 const parseDate = (value) => {
   if (value === null || value === undefined || String(value).trim() === "")
@@ -157,9 +148,6 @@ const formatDateTime = (value) => {
 const formatUser = (v) =>
   v === null || v === undefined || String(v).trim() === "" ? "—" : String(v);
 
-/* ---------------- Data helpers ---------------- */
-const STORAGE_KEY = "ishraq_jobseekers";
-
 const EMPTY_FORM = {
   fullName: "",
   mobile: "",
@@ -171,6 +159,9 @@ const EMPTY_FORM = {
   countryId: "",
   stateId: "",
   cityId: "",
+  preferredCountryId: "",
+  preferredStateId: "",
+  preferredCityId: "",
   preferredLocationId: "",
   jobType: "",
   jobCategory: "",
@@ -234,8 +225,30 @@ const normalizeLookup = (list, idKeys, nameKeys) =>
     }))
     .filter((item) => item.id != null && item.name != null);
 
+/* ---------------- Preferred-location mapping ----------------
+   API returns:
+     jB_preferred_location     -> preferred CITY id
+     jB_preferred_locationName -> preferred CITY name
+   State and Country are NOT returned; we derive them from the
+   city id using the existing city/state/country lookups.
+------------------------------------------------------------- */
+const readPreferredFromApi = (item) => ({
+  preferredCityId: String(
+    item?.jB_preferred_location ?? item?.jB_preferredLocation ?? ""
+  ),
+  preferredCityName:
+    item?.jB_preferred_locationName ??
+    item?.jB_preferredLocationName ??
+    "",
+});
+
+const writePreferredToApi = (draft) => ({
+  JB_preferred_location: Number(draft.preferredCityId) || 0,
+});
+
 const toJobseekerView = (item, id) => {
   const active = truthy(item?.jB_is_active);
+  const preferred = readPreferredFromApi(item);
 
   return {
     id: item?.jB_jobseeker_id ?? id,
@@ -249,10 +262,18 @@ const toJobseekerView = (item, id) => {
     instituteTypeId: String(item?.jB_institute_type_id ?? ""),
     jobCategoryId: String(item?.jB_job_category_id ?? ""),
     jobRoleId: String(item?.jB_job_role_id ?? ""),
+
+    // Current location — unchanged mapping
     countryId: String(item?.jB_country_id ?? ""),
     stateId: String(item?.jB_state_id ?? ""),
     cityId: String(item?.jB_city_id ?? ""),
-    preferredLocationId: String(item?.jB_preferred_location ?? ""),
+
+    // Preferred location — direct mapping (city id + city name from API)
+    preferredCityId: preferred.preferredCityId,
+    preferredLocationId: preferred.preferredCityId,
+    preferredCity: preferred.preferredCityName,
+    preferredCountryId: "",
+    preferredStateId: "",
 
     jobType: item?.instituteTypeName ?? "",
     jobCategory: item?.jobCategoryName ?? "",
@@ -273,12 +294,8 @@ const toJobseekerView = (item, id) => {
     currentEmployment: item?.jB_current_employer ?? "",
     isCurrentlyEmployed: "",
     currentSalary: item?.jB_current_salary ?? "",
-
     expectedSalary: item?.jB_expected_salary ?? "",
-    preferredCountry: "",
-    preferredState: "",
-    preferredCity: item?.jB_preferredLocationName ?? item?.jB_preferred_locationName ?? "",
-    preferredJobLocation: item?.jB_preferred_locationName ?? "",
+
     willingToRelocate: toYesNo(item?.jB_willing_to_relocate),
     employmentPreference: "",
     availabilityToJoin: item?.jB_availability_to_join ?? "",
@@ -334,7 +351,6 @@ const normalizeApplication = (raw) => {
   const employer = lowerKeys(job.employer);
   const jobLocation = lowerKeys(job.joblocation);
   const employmentType = lowerKeys(job.employmenttype);
-
   const requirementActive = job.jq_is_active;
 
   return {
@@ -342,34 +358,28 @@ const normalizeApplication = (raw) => {
     requirementId: app.ap_job_requirement_id,
     applicationNumber: app.apply_id,
     appliedDate: app.ap_created_at,
-
     organizationName:
       employer.em_organization_name ??
       job.employername ??
       raw?.organizationName,
-
     position: job.jq_position_title,
     department: job.jq_department_speciality,
-
     location:
       jobLocation.ctm_cityname ?? job.joblocationname ?? job.locationname,
-
     employmentType:
       employmentType.name ??
       job.employmenttypename ??
       job.jq_employment_type_name,
-
     jobStatus: truthy(requirementActive)
       ? "Open"
       : requirementActive === false || requirementActive === 0
         ? "Closed"
         : "-",
-
     isActive: app.ap_is_active,
   };
 };
 
-/* ---------------- Documents tab helper ---------------- */
+/* ---------------- Document box ---------------- */
 const DocumentBox = ({ doc }) => {
   if (!doc) {
     return (
@@ -439,19 +449,37 @@ const JobSeekerDetails = ({ mode }) => {
   const [editError, setEditError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [modal, setModal] = useState(null);
 
   const [instituteTypes, setInstituteTypes] = useState([]);
   const [jobCategories, setJobCategories] = useState([]);
   const [jobRoles, setJobRoles] = useState([]);
   const [countries, setCountries] = useState([]);
+
+  // Current location
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
   const [statesLoading, setStatesLoading] = useState(false);
   const [citiesLoading, setCitiesLoading] = useState(false);
 
+  // Preferred location (edit mode cascades)
+  const [prefStates, setPrefStates] = useState([]);
+  const [prefCities, setPrefCities] = useState([]);
+  const [prefStatesLoading, setPrefStatesLoading] = useState(false);
+  const [prefCitiesLoading, setPrefCitiesLoading] = useState(false);
+
+  // Resolved preferred-location metadata for VIEW mode
+  const [prefCityMeta, setPrefCityMeta] = useState({
+    cityName: "",
+    stateId: "",
+    stateName: "",
+    countryId: "",
+    countryName: "",
+  });
+
   const [uploadFile, setUploadFile] = useState(null);
 
-  /* Applied jobs state */
+  /* Applied jobs */
   const [appliedJobs, setAppliedJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState(null);
@@ -460,12 +488,57 @@ const JobSeekerDetails = ({ mode }) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
+  /* ---------------- Modal helpers (mirrors AddJobSeeker) ---------------- */
+  const openStatus = (type, message, extra = {}) => {
+    setModal({
+      type,
+      message,
+      confirmText: extra.confirmText || "OK",
+      cancelText: extra.cancelText || "Cancel",
+      showCancel: false,
+      title: extra.title,
+      onConfirm: () => {
+        setModal(null);
+        extra.onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        extra.onCancel?.();
+      },
+    });
+  };
+
+  const openConfirm = ({
+    title,
+    message,
+    confirmText,
+    cancelText,
+    onConfirm,
+    onCancel,
+  }) => {
+    setModal({
+      type: "confirm",
+      title,
+      message,
+      confirmText: confirmText || "Confirm",
+      cancelText: cancelText || "Cancel",
+      showCancel: true,
+      onConfirm: () => {
+        setModal(null);
+        onConfirm?.();
+      },
+      onCancel: () => {
+        setModal(null);
+        onCancel?.();
+      },
+    });
+  };
+
   useEffect(() => {
     setIsEditing(mode === "edit");
   }, [mode]);
 
-  /* Load the jobseeker record. Seed both form and draft so the
-     edit route starts with the saved country/state/city IDs. */
+  /* Load record */
   useEffect(() => {
     let cancelled = false;
 
@@ -502,7 +575,7 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [id, refreshKey]);
 
-  /* Level 1: institute types and countries (edit mode only) */
+  /* Level 1: institute types + countries (edit mode) */
   useEffect(() => {
     if (!isEditing) return undefined;
     let cancelled = false;
@@ -545,7 +618,34 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [isEditing]);
 
-  /* Level 2: states for the selected country */
+  /* Countries for view mode (used to resolve preferred country name) */
+  useEffect(() => {
+    if (isEditing || countries.length > 0) return undefined;
+    let cancelled = false;
+
+    countryMasterApi
+      .getAllList()
+      .then((response) => {
+        if (!cancelled) {
+          setCountries(
+            normalizeLookup(
+              extractList(response),
+              ["cM_Id", "CM_Id"],
+              ["cM_CountryName", "CM_CountryName"],
+            ),
+          );
+        }
+      })
+      .catch(() => {
+        /* silent */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing, countries.length]);
+
+  /* Level 2: current states */
   useEffect(() => {
     if (!isEditing || !draft.countryId) {
       setStates([]);
@@ -588,7 +688,7 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [draft.countryId, isEditing]);
 
-  /* Level 3: cities for the selected state */
+  /* Level 3: current cities */
   useEffect(() => {
     if (!isEditing || !draft.stateId) {
       setCities([]);
@@ -631,7 +731,181 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [draft.stateId, isEditing]);
 
-  /* Job category depends on institute type */
+  /* Level 2 (preferred): states of the preferred country — edit mode */
+  useEffect(() => {
+    if (!isEditing || !draft.preferredCountryId) {
+      setPrefStates([]);
+      setPrefStatesLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setPrefStates([]);
+    setPrefStatesLoading(true);
+
+    stateMasterApi
+      .getByCountry(Number(draft.preferredCountryId))
+      .then((response) => {
+        if (!cancelled) {
+          setPrefStates(
+            normalizeLookup(
+              extractList(response),
+              ["sM_Id", "SM_Id"],
+              ["sM_StateName", "SM_StateName"],
+            ),
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPrefStates([]);
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load preferred states.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPrefStatesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.preferredCountryId, isEditing]);
+
+  /* Level 3 (preferred): cities of the preferred state — edit mode */
+  useEffect(() => {
+    if (!isEditing || !draft.preferredStateId) {
+      setPrefCities([]);
+      setPrefCitiesLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setPrefCities([]);
+    setPrefCitiesLoading(true);
+
+    cityMasterApi
+      .getByState(Number(draft.preferredStateId))
+      .then((response) => {
+        if (!cancelled) {
+          setPrefCities(
+            normalizeLookup(
+              extractList(response),
+              ["ctM_Id", "CTM_Id"],
+              ["ctM_CityName", "CTM_CityName"],
+            ),
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPrefCities([]);
+          setEditError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Unable to load preferred cities.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPrefCitiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.preferredStateId, isEditing]);
+
+  /* VIEW mode: resolve Preferred Location's city -> state -> country.
+     The API returns only the city id + city name in
+     jB_preferred_location / jB_preferred_locationName.
+     We walk back up to state & country using the existing lookups. */
+  useEffect(() => {
+    if (isEditing || !form.preferredCityId) {
+      setPrefCityMeta({
+        cityName: "",
+        stateId: "",
+        stateName: "",
+        countryId: "",
+        countryName: "",
+      });
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const resolve = async () => {
+      const cityId = Number(form.preferredCityId);
+      if (!cityId) return;
+
+      // Seed city name from the API value immediately.
+      setPrefCityMeta((prev) => ({
+        ...prev,
+        cityName: prev.cityName || form.preferredCity || "",
+      }));
+
+      // Preferred path: a direct city lookup (if available).
+      try {
+        if (typeof cityMasterApi.getById === "function") {
+          const cityResp = await cityMasterApi.getById(cityId);
+          const city = extractRecord(cityResp);
+          if (cancelled || !city) return;
+
+          const stateId = String(
+            city.ctM_state_id ?? city.CTM_state_id ?? "",
+          );
+          const countryId = String(
+            city.ctM_country_id ?? city.CTM_country_id ?? "",
+          );
+          const cityName = city.ctM_CityName ?? city.CTM_CityName ?? "";
+
+          let stateName = "";
+          if (stateId) {
+            const stateList = states.length
+              ? states
+              : normalizeLookup(
+                  extractList(
+                    await stateMasterApi.getByCountry(Number(countryId) || 0),
+                  ),
+                  ["sM_Id", "SM_Id"],
+                  ["sM_StateName", "SM_StateName"],
+                );
+            if (cancelled) return;
+            stateName =
+              stateList.find((s) => String(s.id) === stateId)?.name || "";
+          }
+
+          const countryName =
+            countries.find((c) => String(c.id) === countryId)?.name || "";
+
+          setPrefCityMeta({
+            cityName,
+            stateId,
+            stateName,
+            countryId,
+            countryName,
+          });
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+
+      // Fallback: we can only guarantee the city name from the API.
+      setPrefCityMeta((prev) => ({
+        ...prev,
+        cityName: prev.cityName || form.preferredCity || "",
+      }));
+    };
+
+    resolve();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing, form.preferredCityId, form.preferredCity, countries, states]);
+
+  /* Job categories depend on institute type */
   useEffect(() => {
     if (!isEditing || !draft.instituteTypeId) {
       setJobCategories([]);
@@ -666,7 +940,7 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [draft.instituteTypeId, isEditing]);
 
-  /* Job role depends on job category */
+  /* Job roles depend on job category */
   useEffect(() => {
     if (!isEditing || !draft.jobCategoryId) {
       setJobRoles([]);
@@ -701,7 +975,7 @@ const JobSeekerDetails = ({ mode }) => {
     };
   }, [draft.jobCategoryId, isEditing]);
 
-  /* Load applied jobs for this jobseeker */
+  /* Applied jobs */
   useEffect(() => {
     let cancelled = false;
 
@@ -742,7 +1016,59 @@ const JobSeekerDetails = ({ mode }) => {
   const updateDraft = (key, value) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  /* Navigation and edit helpers */
+  /* Country name resolution for preferred country */
+  const preferredCountryName = useMemo(() => {
+    const byId =
+      countries.find(
+        (c) => String(c.id) === String(form.preferredCountryId),
+      )?.name || "";
+    return byId || form.preferredCountry || "";
+  }, [countries, form.preferredCountryId, form.preferredCountry]);
+
+  /* Labels for view mode */
+  const preferredLabels = useMemo(() => {
+    // City: trust the API's jB_preferred_locationName first.
+    const cityName =
+      form.preferredCity ||
+      prefCityMeta.cityName ||
+      prefCities.find(
+        (c) => String(c.id) === String(form.preferredCityId),
+      )?.name ||
+      "";
+
+    // State: from resolved meta, or from prefStates while editing.
+    const stateName =
+      prefCityMeta.stateName ||
+      prefStates.find(
+        (s) => String(s.id) === String(form.preferredStateId),
+      )?.name ||
+      "";
+
+    // Country: from resolved meta, or from countries list.
+    const countryName =
+      prefCityMeta.countryName ||
+      preferredCountryName ||
+      countries.find(
+        (c) => String(c.id) === String(form.preferredCountryId),
+      )?.name ||
+      "";
+
+    // Preferred Location display: per API this is the CITY (e.g. "Godby").
+    const locationDisplayName = cityName || stateName || "";
+
+    return { cityName, stateName, countryName, locationDisplayName };
+  }, [
+    form.preferredCity,
+    form.preferredCityId,
+    form.preferredStateId,
+    form.preferredCountryId,
+    prefCityMeta,
+    prefCities,
+    prefStates,
+    preferredCountryName,
+    countries,
+  ]);
+
   const goToEditProfile = () => {
     setDraft({ ...form });
     setUploadFile(null);
@@ -764,15 +1090,21 @@ const JobSeekerDetails = ({ mode }) => {
   const saveJobseeker = async () => {
     const currentUserId = Number(getCurrentUserId2());
     if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
-      setEditError("Unable to identify the current user. Please sign in again.");
+      openStatus(
+        "warning",
+        "Unable to identify the current user. Please sign in again.",
+      );
       return;
     }
     if (!draft.fullName.trim() || !draft.mobile.trim() || !draft.email.trim()) {
-      setEditError("Full name, mobile number, and email are required.");
+      openStatus(
+        "warning",
+        "Full name, mobile number, and email are required.",
+      );
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) {
-      setEditError("Enter a valid email address.");
+      openStatus("warning", "Enter a valid email address.");
       return;
     }
     if (
@@ -783,7 +1115,10 @@ const JobSeekerDetails = ({ mode }) => {
       !draft.stateId ||
       !draft.cityId
     ) {
-      setEditError("Select valid institute, profession, role, and location values.");
+      openStatus(
+        "warning",
+        "Select valid institute, profession, role, and location values.",
+      );
       return;
     }
 
@@ -791,15 +1126,20 @@ const JobSeekerDetails = ({ mode }) => {
     setEditError("");
     setSuccessMessage("");
     try {
+      const preferredPayload = writePreferredToApi(draft);
+
       const payload = {
         JB_jobseeker_id: Number(id),
         JB_full_name: draft.fullName.trim(),
         Email: draft.email.trim(),
         JB_mobile: draft.mobile.replace(/\D/g, ""),
         JB_whatsapp: (draft.whatsapp || draft.mobile).replace(/\D/g, ""),
+
+        // Current location — unchanged mapping
         JB_city_id: Number(draft.cityId),
         JB_state_id: Number(draft.stateId),
         JB_country_id: Number(draft.countryId),
+
         JB_institute_type_id: Number(draft.instituteTypeId),
         JB_job_category_id: Number(draft.jobCategoryId),
         JB_job_role_id: Number(draft.jobRoleId),
@@ -811,8 +1151,10 @@ const JobSeekerDetails = ({ mode }) => {
         JB_current_employer: draft.currentEmployment.trim(),
         JB_current_salary: Number(draft.currentSalary) || 0,
         JB_expected_salary: Number(draft.expectedSalary) || 0,
-        JB_preferred_location:
-          Number(draft.preferredLocationId) || Number(draft.cityId),
+
+        // Preferred location — API stores the CITY in jB_preferred_location
+        ...preferredPayload,
+
         JB_willing_to_relocate: toBoolean(draft.willingToRelocate),
         JB_availability_to_join: draft.availabilityToJoin
           ? `${draft.availabilityToJoin}T00:00:00`
@@ -838,21 +1180,37 @@ const JobSeekerDetails = ({ mode }) => {
       await jobseekerApi.update(id, formData);
       setIsEditing(false);
       setUploadFile(null);
-      setSuccessMessage("Jobseeker updated successfully.");
       setRefreshKey((current) => current + 1);
-      if (mode === "edit") {
-        navigate(`/admin/jobseekers/${id}`, { replace: true });
-      }
+
+      openStatus("update", "Jobseeker updated successfully.", {
+        confirmText: "Continue",
+        onConfirm: () => {
+          if (mode === "edit") {
+            navigate(`/admin/jobseekers/${id}`, { replace: true });
+          }
+        },
+      });
     } catch (err) {
-      setEditError(
+      const msg =
+        getApiErrorMessage(err) ||
         err?.response?.data?.message ||
-          err?.response?.data?.Message ||
-          err?.message ||
-          "Failed to update jobseeker.",
-      );
+        err?.response?.data?.Message ||
+        err?.message ||
+        "Failed to update jobseeker.";
+      setEditError(msg);
+      openStatus("error", msg);
     } finally {
       setSaving(false);
     }
+  };
+
+  const requestSave = () => {
+    openConfirm({
+      title: "Confirm update",
+      message: "Are you sure you want to update this job seeker?",
+      confirmText: "Update",
+      onConfirm: saveJobseeker,
+    });
   };
 
   const pageTitle = form.fullName || "Jobseeker";
@@ -887,7 +1245,6 @@ const JobSeekerDetails = ({ mode }) => {
       </select>
     ) : undefined;
 
-  /* Loading */
   if (loading) {
     return (
       <div className={`min-h-full ${T.bg} p-4 sm:p-6`}>
@@ -901,7 +1258,6 @@ const JobSeekerDetails = ({ mode }) => {
     );
   }
 
-  /* Error / Not found */
   if (error || !user) {
     return (
       <div className={`min-h-full ${T.bg} p-4 sm:p-6`}>
@@ -913,10 +1269,7 @@ const JobSeekerDetails = ({ mode }) => {
           <p className={`mt-1 text-[13px] ${T.textMuted}`}>
             The record you're looking for doesn't exist or was removed.
           </p>
-          <button
-            onClick={() => navigate(-1)}
-            className={`mt-4 ${BTN_PRIMARY}`}
-          >
+          <button onClick={() => navigate(-1)} className={`mt-4 ${BTN_PRIMARY}`}>
             Go back
           </button>
         </div>
@@ -930,7 +1283,6 @@ const JobSeekerDetails = ({ mode }) => {
     <div className={`min-h-full ${T.bg}`}>
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          {/* MAIN HEADER */}
           <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6">
             <div className="flex items-center gap-3">
               <button
@@ -942,7 +1294,6 @@ const JobSeekerDetails = ({ mode }) => {
               >
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
-
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
 
@@ -959,7 +1310,7 @@ const JobSeekerDetails = ({ mode }) => {
                   </button>
                   <button
                     type="button"
-                    onClick={saveJobseeker}
+                    onClick={requestSave}
                     disabled={saving}
                     className={`${BTN_PRIMARY} flex-1 sm:flex-none justify-center disabled:cursor-not-allowed disabled:opacity-60`}
                   >
@@ -978,23 +1329,17 @@ const JobSeekerDetails = ({ mode }) => {
             </div>
           </div>
 
-          {(editError || successMessage) && (
+          {editError && (
             <div
-              role={editError ? "alert" : "status"}
-              className={`mx-4 mt-4 rounded-lg border px-4 py-2.5 text-sm sm:mx-6 ${
-                editError
-                  ? "border-red-200 bg-red-50 text-red-700"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
-              }`}
+              role="alert"
+              className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm sm:mx-6 text-red-700"
             >
-              {editError || successMessage}
+              {editError}
             </div>
           )}
 
-          {/* BODY */}
           <div className="p-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr] lg:grid-cols-[240px_1fr]">
-              {/* LEFT: vertical nav / horizontal scroll on mobile */}
               <aside className="md:sticky md:top-4 md:h-fit w-full md:w-auto">
                 <nav
                   aria-label="Jobseeker sections"
@@ -1032,39 +1377,24 @@ const JobSeekerDetails = ({ mode }) => {
                 </nav>
               </aside>
 
-              {/* RIGHT: detail panel */}
               <main className="min-w-0">
-                {/* -------- Overview -------- */}
                 {tab === "overview" && (
                   <section>
                     <div className="space-y-6">
-                      {/* Personal / Professional details */}
                       <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
                         <div className="p-4">
                           <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                             Personal & Professional Details
                           </h3>
                           <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                            <FieldRow
-                              label="Jobseeker ID"
-                              value={form.jobseekerNo}
-                            />
-
+                            <FieldRow label="Jobseeker ID" value={form.jobseekerNo} />
                             <FieldRow label="Full Name" value={form.fullName}>
                               {editInput("fullName")}
                             </FieldRow>
-                            <FieldRow
-                              label="Mobile Number"
-                              value={form.mobile}
-                              mono
-                            >
+                            <FieldRow label="Mobile Number" value={form.mobile} mono>
                               {editInput("mobile", "tel")}
                             </FieldRow>
-                            <FieldRow
-                              label="WhatsApp Number"
-                              value={form.whatsapp}
-                              mono
-                            >
+                            <FieldRow label="WhatsApp Number" value={form.whatsapp} mono>
                               {editInput("whatsapp", "tel")}
                             </FieldRow>
 
@@ -1092,10 +1422,7 @@ const JobSeekerDetails = ({ mode }) => {
                               )}
                             </div>
 
-                            <FieldRow
-                              label="Institute Type"
-                              value={form.jobType}
-                            >
+                            <FieldRow label="Institute Type" value={form.jobType}>
                               {editSelect(
                                 "instituteTypeId",
                                 instituteTypes,
@@ -1107,10 +1434,7 @@ const JobSeekerDetails = ({ mode }) => {
                                 },
                               )}
                             </FieldRow>
-                            <FieldRow
-                              label="Job Category"
-                              value={form.jobCategory}
-                            >
+                            <FieldRow label="Job Category" value={form.jobCategory}>
                               {editSelect(
                                 "jobCategoryId",
                                 jobCategories,
@@ -1124,45 +1448,23 @@ const JobSeekerDetails = ({ mode }) => {
                             <FieldRow label="Role" value={form.jobRole}>
                               {editSelect("jobRoleId", jobRoles, "Select role")}
                             </FieldRow>
-                            <FieldRow
-                              label="Highest Qualification"
-                              value={form.highestQualification}
-                            >
+                            <FieldRow label="Highest Qualification" value={form.highestQualification}>
                               {editInput("highestQualification")}
                             </FieldRow>
-                            <FieldRow
-                              label="Speciality / Department"
-                              value={form.speciality}
-                            >
+                            <FieldRow label="Speciality / Department" value={form.speciality}>
                               {editInput("speciality")}
                             </FieldRow>
-                            <FieldRow
-                              label="Professional Reg. No."
-                              value={form.professionalRegistrationNumber}
-                              mono
-                            >
+                            <FieldRow label="Professional Reg. No." value={form.professionalRegistrationNumber} mono>
                               {editInput("professionalRegistrationNumber")}
                             </FieldRow>
-                            <FieldRow
-                              label="Total Experience (Years)"
-                              value={form.totalExperience}
-                            >
+                            <FieldRow label="Total Experience (Years)" value={form.totalExperience}>
                               {editInput("totalExperience", "number")}
                             </FieldRow>
-                            <FieldRow
-                              label="Current Designation"
-                              value={form.currentDesignation}
-                            >
+                            <FieldRow label="Current Designation" value={form.currentDesignation}>
                               {editInput("currentDesignation")}
                             </FieldRow>
-                            <FieldRow
-                              label="Status"
-                              value={active ? "Active" : "Inactive"}
-                            />
-                            <FieldRow
-                              label="Consent Given"
-                              value={form.consentGiven}
-                            >
+                            <FieldRow label="Status" value={active ? "Active" : "Inactive"} />
+                            <FieldRow label="Consent Given" value={form.consentGiven}>
                               {isEditing ? (
                                 <select
                                   className={EDIT_INPUT}
@@ -1183,17 +1485,13 @@ const JobSeekerDetails = ({ mode }) => {
                         </div>
                       </div>
 
-                      {/* Current Location */}
                       <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
                         <div className="p-4">
                           <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                             Current Location
                           </h3>
                           <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                            <FieldRow
-                              label="Country"
-                              value={form.currentCountry}
-                            >
+                            <FieldRow label="Country" value={form.currentCountry}>
                               {editSelect(
                                 "countryId",
                                 countries,
@@ -1202,7 +1500,6 @@ const JobSeekerDetails = ({ mode }) => {
                                   updateDraft("countryId", value);
                                   updateDraft("stateId", "");
                                   updateDraft("cityId", "");
-                                  updateDraft("preferredLocationId", "");
                                 },
                               )}
                             </FieldRow>
@@ -1219,7 +1516,6 @@ const JobSeekerDetails = ({ mode }) => {
                                 (value) => {
                                   updateDraft("stateId", value);
                                   updateDraft("cityId", "");
-                                  updateDraft("preferredLocationId", "");
                                 },
                               )}
                             </FieldRow>
@@ -1233,43 +1529,23 @@ const JobSeekerDetails = ({ mode }) => {
                                   : citiesLoading
                                     ? "Loading cities..."
                                     : "Select city",
-                                (value) => {
-                                  updateDraft("cityId", value);
-                                  updateDraft("preferredLocationId", "");
-                                },
                               )}
                             </FieldRow>
                           </div>
                         </div>
                       </div>
 
-                      {/* ---------- Audit Trail ---------- */}
                       <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
                         <div className="p-4">
                           <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                             User Log
                           </h3>
                           <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                            <FieldRow
-                              label="Created At"
-                              value={formatDateTime(form.createdAt)}
-                            />
-                            <FieldRow
-                              label="Created By"
-                              value={formatUser(form.CreatedByName)}
-                            />
-                            <FieldRow
-                              label="Updated At"
-                              value={formatDateTime(form.updatedAt)}
-                            />
-                            <FieldRow
-                              label="Updated By"
-                              value={formatUser(form.UpdatedByName)}
-                            />
-                            <FieldRow
-                              label="Activated At"
-                              value={formatDateTime(form.activatedAt)}
-                            />
+                            <FieldRow label="Created At" value={formatDateTime(form.createdAt)} />
+                            <FieldRow label="Created By" value={formatUser(form.CreatedByName)} />
+                            <FieldRow label="Updated At" value={formatDateTime(form.updatedAt)} />
+                            <FieldRow label="Updated By" value={formatUser(form.UpdatedByName)} />
+                            <FieldRow label="Activated At" value={formatDateTime(form.activatedAt)} />
                           </div>
                         </div>
                       </div>
@@ -1277,38 +1553,23 @@ const JobSeekerDetails = ({ mode }) => {
                   </section>
                 )}
 
-                {/* -------- Current Employment -------- */}
                 {tab === "employment" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
+                  <section className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
                     <div className="p-4">
                       <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                         Current Employment
                       </h3>
                       <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                        <FieldRow
-                          label="Current Employer"
-                          value={form.currentEmployment}
-                        >
+                        <FieldRow label="Current Employer" value={form.currentEmployment}>
                           {editInput("currentEmployment")}
                         </FieldRow>
-                        <FieldRow
-                          label="Current Designation"
-                          value={form.currentDesignation}
-                        >
+                        <FieldRow label="Current Designation" value={form.currentDesignation}>
                           {editInput("currentDesignation")}
                         </FieldRow>
-                        <FieldRow
-                          label="Current Salary"
-                          value={form.currentSalary}
-                        >
+                        <FieldRow label="Current Salary" value={form.currentSalary}>
                           {editInput("currentSalary", "number")}
                         </FieldRow>
-                        <FieldRow
-                          label="Total Experience (Years)"
-                          value={form.totalExperience}
-                        >
+                        <FieldRow label="Total Experience (Years)" value={form.totalExperience}>
                           {editInput("totalExperience", "number")}
                         </FieldRow>
                         <FieldRow label="Job Type" value={form.jobType}>
@@ -1323,40 +1584,72 @@ const JobSeekerDetails = ({ mode }) => {
                   </section>
                 )}
 
-                {/* -------- Job Preferences -------- */}
                 {tab === "preferences" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
+                  <section className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
                     <div className="p-4">
                       <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                         Job Preferences
                       </h3>
                       <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                        {isEditing && (
+                          <FieldRow label="Preferred Country">
+                            {editSelect(
+                              "preferredCountryId",
+                              countries,
+                              "Select preferred country",
+                              (value) => {
+                                updateDraft("preferredCountryId", value);
+                                updateDraft("preferredStateId", "");
+                                updateDraft("preferredCityId", "");
+                                updateDraft("preferredLocationId", "");
+                              },
+                            )}
+                          </FieldRow>
+                        )}
+
+                        {isEditing && (
+                          <FieldRow label="Preferred State">
+                            {editSelect(
+                              "preferredStateId",
+                              prefStates,
+                              !draft.preferredCountryId
+                                ? "Select country first"
+                                : prefStatesLoading
+                                  ? "Loading states..."
+                                  : "Select preferred state",
+                              (value) => {
+                                updateDraft("preferredStateId", value);
+                                updateDraft("preferredCityId", "");
+                                updateDraft("preferredLocationId", "");
+                              },
+                            )}
+                          </FieldRow>
+                        )}
+
                         <FieldRow
                           label="Preferred Location"
-                          value={form.preferredJobLocation}
+                          value={isEditing ? undefined : preferredLabels.locationDisplayName}
                         >
                           {editSelect(
-                            "preferredLocationId",
-                            cities,
-                            !draft.stateId
+                            "preferredCityId",
+                            prefCities,
+                            !draft.preferredStateId
                               ? "Select state first"
-                              : citiesLoading
+                              : prefCitiesLoading
                                 ? "Loading cities..."
                                 : "Select preferred location",
+                            (value) => {
+                              updateDraft("preferredCityId", value);
+                              updateDraft("preferredLocationId", value);
+                            },
                           )}
                         </FieldRow>
-                        <FieldRow
-                          label="Expected Salary"
-                          value={form.expectedSalary}
-                        >
+
+                        <FieldRow label="Expected Salary" value={form.expectedSalary}>
                           {editInput("expectedSalary", "number")}
                         </FieldRow>
-                        <FieldRow
-                          label="Willing to Relocate?"
-                          value={form.willingToRelocate}
-                        >
+
+                        <FieldRow label="Willing to Relocate?" value={form.willingToRelocate}>
                           {isEditing ? (
                             <select
                               className={EDIT_INPUT}
@@ -1373,6 +1666,7 @@ const JobSeekerDetails = ({ mode }) => {
                             </select>
                           ) : undefined}
                         </FieldRow>
+
                         <FieldRow
                           label="Availability to Join"
                           value={
@@ -1383,10 +1677,8 @@ const JobSeekerDetails = ({ mode }) => {
                         >
                           {editInput("availabilityToJoin", "date")}
                         </FieldRow>
-                        <FieldRow
-                          label="Job Category"
-                          value={form.jobCategory}
-                        >
+
+                        <FieldRow label="Job Category" value={form.jobCategory}>
                           {editSelect(
                             "jobCategoryId",
                             jobCategories,
@@ -1398,17 +1690,12 @@ const JobSeekerDetails = ({ mode }) => {
                   </section>
                 )}
 
-                {/* -------- Documents (Resume/CV only) -------- */}
                 {tab === "resume" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
+                  <section className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
                     <div className="p-4">
                       <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
                         <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3">
-                          <label
-                            className={`${FIELD_LABEL} sm:pt-2 text-left`}
-                          >
+                          <label className={`${FIELD_LABEL} sm:pt-2 text-left`}>
                             Resume / CV
                           </label>
                           <div>
@@ -1430,11 +1717,8 @@ const JobSeekerDetails = ({ mode }) => {
                   </section>
                 )}
 
-                {/* -------- Applied Jobs -------- */}
                 {tab === "jobs" && (
-                  <section
-                    className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
-                  >
+                  <section className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
                     <div className="p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                         <h3 className="font-semibold text-[#1a2b3c]">
@@ -1448,9 +1732,7 @@ const JobSeekerDetails = ({ mode }) => {
 
                       {jobsLoading && (
                         <div className="px-4 py-12 text-center">
-                          <p className="text-[#5b6b7c]">
-                            Loading applied jobs…
-                          </p>
+                          <p className="text-[#5b6b7c]">Loading applied jobs…</p>
                         </div>
                       )}
 
@@ -1460,18 +1742,16 @@ const JobSeekerDetails = ({ mode }) => {
                         </div>
                       )}
 
-                      {!jobsLoading &&
-                        !jobsError &&
-                        appliedJobs.length === 0 && (
-                          <div className="px-4 py-12 text-center">
-                            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                              <Inbox size={22} />
-                            </div>
-                            <p className="mt-3 text-[15px] text-[#1e2b3c]">
-                              No applied jobs yet
-                            </p>
+                      {!jobsLoading && !jobsError && appliedJobs.length === 0 && (
+                        <div className="px-4 py-12 text-center">
+                          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                            <Inbox size={22} />
                           </div>
-                        )}
+                          <p className="mt-3 text-[15px] text-[#1e2b3c]">
+                            No applied jobs yet
+                          </p>
+                        </div>
+                      )}
 
                       {!jobsLoading && !jobsError && appliedJobs.length > 0 && (
                         <div className="overflow-x-auto">
@@ -1530,6 +1810,19 @@ const JobSeekerDetails = ({ mode }) => {
           </div>
         </div>
       </div>
+
+      <StatusModal
+        isOpen={Boolean(modal)}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
     </div>
   );
 };

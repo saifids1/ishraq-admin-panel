@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
+import StatusModal from "../../../components/common/StatusModal";
 import {
   createUser,
   updateUser,
@@ -56,8 +57,6 @@ const passwordChecks = (password) => ({
 
 const isPasswordValid = (password) =>
   Object.values(passwordChecks(password)).every(Boolean);
-
-
 
 const inputClass = (hasError) =>
   `w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:cursor-default disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-800 ${
@@ -113,7 +112,6 @@ const PasswordInput = ({ show, onToggle, hasError, ...props }) => (
 );
 
 // Live checklist shown under the password field in create mode.
-// Live checklist shown under the password field in create mode.
 const PasswordRules = ({ password }) => {
   const checks = passwordChecks(password);
   const items = [
@@ -128,7 +126,7 @@ const PasswordRules = ({ password }) => {
   ];
 
   return (
-    <ul className="mt-2 space-y-1">
+    <ul className="mt-2 space-y-1 flex grid grid-cols-1 gap-1 text-slate-500 sm:grid-cols-2">
       {items.map((item) => (
         <li
           key={item.text}
@@ -149,66 +147,6 @@ const PasswordRules = ({ password }) => {
         </li>
       ))}
     </ul>
-  );
-};
-
-const ConfirmDialog = ({
-  open,
-  title,
-  message,
-  confirmLabel,
-  loading,
-  onConfirm,
-  onCancel,
-}) => {
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (e) => {
-      if (e.key === "Escape" && !loading) onCancel();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, loading, onCancel]);
-
-  if (!open) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="user-confirm-title"
-    >
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
-        <h3
-          id="user-confirm-title"
-          className="text-base font-semibold text-slate-800"
-        >
-          {title}
-        </h3>
-        <p className="mt-2 text-sm text-slate-600">{message}</p>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={loading}
-            className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading && <Loader2 size={16} className="animate-spin" />}
-            {loading ? "Please wait..." : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 };
 
@@ -342,8 +280,7 @@ const UserManagementForm = ({ mode = "create" }) => {
     }
 
     if (isCreate) {
-      const checks = passwordChecks(form.password);
-     if (!form.password) {
+      if (!form.password) {
         e.password = "Password is required.";
       } else if (!isPasswordValid(form.password)) {
         e.password = PASSWORD_ERROR;
@@ -444,13 +381,12 @@ const UserManagementForm = ({ mode = "create" }) => {
     <div className="min-h-full bg-[#f4f8fb]">
       <div className="mx-auto max-w-[1300px]">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          {/* HEADER */}
-          <div className="flex justify-between items-center gap-3 border-b border-slate-200 px-4 py-3">
-            {/* LEFT: back button + title */}
+          {/* HEADER: back + title + admin ID */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => navigate("/admin/users")}
+                onClick={() => navigate(LIST_ROUTE)}
                 title="Back"
                 aria-label="Back"
                 className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-xl bg-[#2f6b8a] text-white transition hover:bg-[#25566f]"
@@ -460,60 +396,12 @@ const UserManagementForm = ({ mode = "create" }) => {
               <h2 className="font-semibold text-slate-800">{TITLES[mode]}</h2>
             </div>
 
-            {/* CENTER: admin id (shown in view and edit modes) */}
-            <div className="text-center">
-              {adminId && (
-                <span className="inline-flex items-center rounded-md bg-[#e8f1f6] px-3 py-1 text-sm font-semibold tracking-wide text-[#2f6b8a] ring-1 ring-inset ring-[#cbe1f4]">
-                  {adminId}
-                </span>
-              )}
-            </div>
-
-            {/* RIGHT: sp */}
-          <div className=" flex items-center gap-3">
-            <div
-              className={` ${
-                isView ? "justify-end" : "justify-between"
-              }`}
-            >
-              {isView ? (
-                <button
-                  type="button"
-                  onClick={() => navigate(EDIT_ROUTE(id))}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
-                >
-                  <Pencil size={16} />
-                  Edit
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleCancel}
-                    disabled={saving}
-                    className="rounded-lg mr-3 border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isBusy}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {saving && <Loader2 size={16} className="animate-spin" />}
-                    {saving
-                      ? "Saving..."
-                      : isCreate
-                        ? "Create"
-                        : "Save Changes"}
-                  </button>
-                </>
-              )}
-            </div>
+            {adminId && (
+              <span className="inline-flex items-center rounded-md bg-[#e8f1f6] px-3 py-1 text-sm font-semibold tracking-wide text-[#2f6b8a] ring-1 ring-inset ring-[#cbe1f4]">
+                {adminId}
+              </span>
+            )}
           </div>
-            {/* <div /> */}
-          </div>
-
 
           {serverError && (
             <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
@@ -673,25 +561,70 @@ const UserManagementForm = ({ mode = "create" }) => {
                   </Field>
                 </div>
               </fieldset>
+
+              {/* FOOTER: Edit (view) OR Cancel + Create/Save (create/edit) */}
+              <div
+                className={`mt-6 flex gap-3 border-t border-slate-100 pt-4 ${
+                  isView ? "justify-end" : "justify-between"
+                }`}
+              >
+                {isView ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate(EDIT_ROUTE(id))}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]"
+                  >
+                    <Pencil size={16} />
+                    Edit
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleCancel}
+                      disabled={saving}
+                      className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isBusy}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {saving && <Loader2 size={16} className="animate-spin" />}
+                      {saving
+                        ? "Saving..."
+                        : isCreate
+                          ? "Create"
+                          : "Save Changes"}
+                    </button>
+                  </>
+                )}
+              </div>
             </form>
           )}
         </div>
       </div>
 
-      {/* CONFIRMATION POPUP */}
-      <ConfirmDialog
-        open={confirmOpen}
-        title={isCreate ? "Create user?" : "Save changes?"}
-        message={
-          isCreate
-            ? "This will create a new admin user. Do you want to continue?"
-            : "This will update the admin user. Do you want to save your changes?"
-        }
-        confirmLabel={isCreate ? "Yes, create" : "Yes, save"}
-        loading={saving}
-        onConfirm={handleConfirm}
-        onCancel={closeConfirm}
-      />
+      {/* CONFIRMATION POPUP — shared StatusModal */}
+      {confirmOpen && (
+        <StatusModal
+          isOpen
+          type="confirm"
+          title={isCreate ? "Create user?" : "Save changes?"}
+          message={
+            isCreate
+              ? "This will create a new admin user. Do you want to continue?"
+              : "This will update the admin user. Do you want to save your changes?"
+          }
+          showCancel
+          busy={saving}
+          confirmText={isCreate ? "Yes, create" : "Yes, save"}
+          onCancel={closeConfirm}
+          onConfirm={handleConfirm}
+        />
+      )}
     </div>
   );
 };

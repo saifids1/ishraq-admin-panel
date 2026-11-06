@@ -30,6 +30,10 @@ const jobRequirementApi = {
 
   updateStatusAndDeadline: (id, payload) =>
     axiosInstance.put(`/JobRequirement/${id}/status-deadline`, payload),
+
+    // GET /api/JobRequirement/dashboard — aggregated counts for stat cards
+  getDashboard: () => axiosInstance.get("/JobRequirement/dashboard"),
+
 };
 
 export default jobRequirementApi;
