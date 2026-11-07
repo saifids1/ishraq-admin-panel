@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ChevronDown, ChevronsLeft, Download, Pencil, X } from "lucide-react";
+import { ChevronDown, ChevronsLeft, Download, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
@@ -22,9 +22,10 @@ const selectClass =
 
 const QUILL_MODULES = {
   toolbar: [
-    [{ header: [false] }],
-    ["bold", "italic", "underline", "blockquote"],
-    [{ color: [] }],
+    [{ header: [1, 2, 3, 4, 5, 6, false] }],
+    [{ size: ["small", false, "large", "huge"] }],
+    ["bold", "italic", "underline", "strike", "blockquote"],
+    [{ color: [] }, { background: [] }],
     [{ list: "ordered" }, { list: "bullet" }],
     [{ indent: "-1" }, { indent: "+1" }],
     [{ align: [] }],
@@ -34,11 +35,14 @@ const QUILL_MODULES = {
 
 const QUILL_FORMATS = [
   "header",
+  "size",
   "bold",
   "italic",
   "underline",
+  "strike",
   "blockquote",
   "color",
+  "background",
   "list",
   "indent",
   "align",
@@ -187,6 +191,16 @@ const injectEditorStyles = () => {
       left: 12px;
       right: 12px;
     }
+    /* Make headings and sizes visibly different inside the editor */
+    .blog-editor .ql-editor h1 { font-size: 2em; font-weight: 700; margin: 0.6em 0 0.4em; }
+    .blog-editor .ql-editor h2 { font-size: 1.6em; font-weight: 700; margin: 0.6em 0 0.4em; }
+    .blog-editor .ql-editor h3 { font-size: 1.3em; font-weight: 600; margin: 0.5em 0 0.3em; }
+    .blog-editor .ql-editor h4 { font-size: 1.1em; font-weight: 600; margin: 0.5em 0 0.3em; }
+    .blog-editor .ql-editor h5 { font-size: 1em;   font-weight: 600; margin: 0.4em 0 0.2em; }
+    .blog-editor .ql-editor h6 { font-size: 0.9em; font-weight: 600; margin: 0.4em 0 0.2em; }
+    .blog-editor .ql-editor .ql-size-small { font-size: 0.75em; }
+    .blog-editor .ql-editor .ql-size-large { font-size: 1.5em; }
+    .blog-editor .ql-editor .ql-size-huge  { font-size: 2.5em; }
   `;
   document.head.appendChild(style);
 };

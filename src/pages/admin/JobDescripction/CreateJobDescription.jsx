@@ -29,9 +29,10 @@ const DESCRIPTION_MAX = 500;
 
 const QUILL_MODULES = {
   toolbar: [
-    [{ header: [false] }],
-    ["bold", "italic", "underline", "blockquote"],
-    [{ color: [] }],
+    [{ header: [1, 2, 3, 4, 5, 6, false] }],
+    [{ size: ["small", false, "large", "huge"] }],
+    ["bold", "italic", "underline", "strike", "blockquote"],
+    [{ color: [] }, { background: [] }],
     [{ list: "ordered" }, { list: "bullet" }],
     [{ indent: "-1" }, { indent: "+1" }],
     [{ align: [] }],
@@ -41,16 +42,33 @@ const QUILL_MODULES = {
 
 const QUILL_FORMATS = [
   "header",
+  "size",
   "bold",
   "italic",
   "underline",
+  "strike",
   "blockquote",
   "color",
+  "background",
   "list",
   "indent",
   "align",
   "link",
 ];
+
+// Styles for rich text. Tailwind's preflight resets h1–h6 to the body size,
+// so headings need explicit sizes. Used in both the editor and the view mode.
+const RICH_TEXT_CSS = `
+  .jd-rich h1 { font-size: 2em; font-weight: 700; line-height: 1.25; margin: 0.6em 0 0.4em; }
+  .jd-rich h2 { font-size: 1.6em; font-weight: 700; line-height: 1.3; margin: 0.6em 0 0.4em; }
+  .jd-rich h3 { font-size: 1.3em; font-weight: 600; line-height: 1.35; margin: 0.5em 0 0.3em; }
+  .jd-rich h4 { font-size: 1.1em; font-weight: 600; margin: 0.5em 0 0.3em; }
+  .jd-rich h5 { font-size: 1em; font-weight: 600; margin: 0.4em 0 0.2em; }
+  .jd-rich h6 { font-size: 0.9em; font-weight: 600; margin: 0.4em 0 0.2em; }
+  .jd-rich .ql-size-small { font-size: 0.75em; }
+  .jd-rich .ql-size-large { font-size: 1.5em; }
+  .jd-rich .ql-size-huge { font-size: 2.5em; }
+`;
 
 /* ------------------------------ HELPERS ------------------------------ */
 
@@ -168,7 +186,6 @@ const validate = (f) => {
   return errors;
 };
 
-// Field names match the existing backend DTOs exactly.
 // Field names match the backend DTO. Create sends CreatedBy, update sends UpdatedBy.
 const toPayload = (f, userId, isCreate) => {
   const base = {
@@ -604,6 +621,8 @@ export default function CreateJobDescription() {
 
   return (
     <div className="min-h-full bg-[#f4f8fb]">
+      <style>{RICH_TEXT_CSS}</style>
+
       <div className="mx-auto max-w-[1300px]">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* HEADER */}
@@ -704,30 +723,30 @@ export default function CreateJobDescription() {
                   error={errors.description}
                 >
                   {isView ? (
-                    <div className="min-h-[38px] rounded-lg border border-slate-200 bg-slate-50 break-words">
+                    <div className="min-h-[38px] rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 break-words">
                       {plainText(descriptionHtml) ? (
                         <div
-                          className="ql-editor !px-3 !py-2 !text-sm !text-slate-800"
+                          className="jd-rich break-words"
                           dangerouslySetInnerHTML={{ __html: descriptionHtml }}
                         />
                       ) : (
-                        <div className="px-3 py-2 text-sm text-slate-800">
-                          —
-                        </div>
+                        <div>—</div>
                       )}
                     </div>
                   ) : (
                     <div className="mt-4">
-                      <ReactQuill
-                        theme="snow"
-                        value={form.description}
-                        onChange={(html) => setField("description", html)}
-                        modules={QUILL_MODULES}
-                        formats={QUILL_FORMATS}
-                        readOnly={saving}
-                        placeholder="Describe the role, responsibilities, and expectations..."
-                        className="h-[200px]"
-                      />
+                      <div className="jd-rich">
+                        <ReactQuill
+                          theme="snow"
+                          value={form.description}
+                          onChange={(html) => setField("description", html)}
+                          modules={QUILL_MODULES}
+                          formats={QUILL_FORMATS}
+                          readOnly={saving}
+                          placeholder="Describe the role, responsibilities, and expectations..."
+                          className="h-[200px]"
+                        />
+                      </div>
                       <div className="mt-1 flex justify-end">
                         <span
                           className={`text-[11px] ${
