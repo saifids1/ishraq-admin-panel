@@ -49,7 +49,6 @@ export const GradientStatCard = ({ item, index, selected, onSelect }) => {
       } ${clickable ? "cursor-pointer" : ""}`}
       style={{
         background: `linear-gradient(135deg, ${item.color}, ${item.color2})`,
-        animationDelay: `${index * 70}ms`,
       }}
     >
       <span className="stat-orb stat-orb-a" />
@@ -58,8 +57,8 @@ export const GradientStatCard = ({ item, index, selected, onSelect }) => {
         <p className="truncate text-[17px] font-semibold text-white">
           {item.title}
         </p>
-        <span className="stat-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/20 backdrop-blur-sm">
-          <Icon size={14} />
+        <span className="stat-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/20 backdrop-blur-sm">
+          <Icon size={22} />
         </span>
       </div>
       <div className="relative mt-1.5 flex items-end justify-between gap-2">
@@ -75,7 +74,7 @@ export const GradientStatCard = ({ item, index, selected, onSelect }) => {
 };
 
 export const StatCardGrid = ({ items, metric, onSelect, isSelected }) => (
-  <div className="mb-3 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+  <div className="mb-1 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
     <KitStyles />
     {items.map((k, i) => (
       <GradientStatCard
@@ -232,12 +231,12 @@ export const Panel = ({
   className = "",
 }) => (
   <section
-    className={`min-w-0 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm ${className}`}
+    className={`min-w-0 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm ${className}`}
   >
     <div className="mb-2.5 flex items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#2f6b8a]/15 to-[#75c5c4]/20">
-          <Icon size={14} className="text-[#2f6b8a]" />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#2f6b8a]/15 to-[#75c5c4]/20">
+          <Icon size={20} className="text-[#2f6b8a]" />
         </div>
         <div className="min-w-0">
           <h2 className="truncate text-[13px] font-semibold leading-tight text-slate-800">
@@ -278,7 +277,6 @@ export const BarRow = ({
           style={{
             width: `${pct}%`,
             background: `linear-gradient(90deg, ${color}, ${color}99)`,
-            animationDelay: `${delay}ms`,
           }}
         />
       </div>
@@ -302,7 +300,7 @@ export const BarRow = ({
 export const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-slate-100 bg-white px-2.5 py-2 shadow-lg">
+    <div className="rounded-lg border border-slate-100 bg-white px-2.5 py- shadow-lg">
       <p className="mb-0.5 text-[10px] font-medium text-slate-500">{label}</p>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-1.5 text-[11px]">
@@ -322,29 +320,16 @@ export const KitStyles = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
     .isharq-dash { font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif; }
-    @keyframes stat-in { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
-    @keyframes stat-float { 50% { transform: translateY(10px) scale(1.12); } }
-    @keyframes stat-bob { 50% { transform: translateY(-3px) rotate(-8deg); } }
-    @keyframes ecg-sweep { from { stroke-dashoffset: 0.16; } to { stroke-dashoffset: -1; } }
-    @keyframes ecg-beat { 0%,100% { opacity: 0; transform: scale(.6); } 8% { opacity: 1; transform: scale(1.5); } 30% { opacity: 0; transform: scale(2.4); } }
-    @keyframes live-ping { 75%,100% { transform: scale(2.4); opacity: 0; } }
-    @keyframes row-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
-    @keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-    @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-    .stat-card { animation: stat-in .55s cubic-bezier(.2,.8,.2,1) both; }
+    .stat-card { }
     .stat-orb { position: absolute; border-radius: 9999px; pointer-events: none; background: rgba(255,255,255,.16); }
-    .stat-orb-a { width: 92px; height: 92px; right: -26px; top: -30px; animation: stat-float 4s ease-in-out infinite; }
-    .stat-orb-b { width: 60px; height: 60px; right: 36px; bottom: -34px; background: rgba(255,255,255,.10); animation: stat-float 5s ease-in-out infinite reverse; }
-    .stat-icon { animation: stat-bob 2.6s ease-in-out infinite; }
-    .ecg-trace { stroke-dasharray: 0.16 1; filter: drop-shadow(0 0 4px rgba(255,255,255,.9)); animation: ecg-sweep 3.6s linear infinite; }
-    .ecg-dot { transform-box: fill-box; transform-origin: center; animation: ecg-beat 3.6s ease-out infinite; animation-delay: 1.6s; }
-    .live-ping { animation: live-ping 1.6s cubic-bezier(0,0,.2,1) infinite; }
-    .row-in { animation: row-in .25s ease both; }
-    .bar-grow { transform-origin: left; animation: bar-grow .7s cubic-bezier(.2,.8,.2,1) both; }
-    .toast-in { animation: toast-in .25s ease both; }
-    @media (prefers-reduced-motion: reduce) {
-      .stat-card,.stat-orb,.stat-icon,.ecg-trace,.ecg-dot,.live-ping,.row-in,.bar-grow,.toast-in { animation: none !important; }
-      .ecg-trace { stroke-dasharray: none; filter: none; } .ecg-dot { opacity: 1; }
-    }
+    .stat-orb-a { width: 92px; height: 92px; right: -26px; top: -30px; }
+    .stat-orb-b { width: 60px; height: 60px; right: 36px; bottom: -34px; background: rgba(255,255,255,.10); }
+    .stat-icon { }
+    .ecg-trace { filter: drop-shadow(0 0 4px rgba(255,255,255,.9)); }
+    .ecg-dot { transform-box: fill-box; transform-origin: center; opacity: 1; }
+    .live-ping { }
+    .row-in { }
+    .bar-grow { transform-origin: left; }
+    .toast-in { }
   `}</style>
 );

@@ -8,14 +8,8 @@ import { createMasterApi } from "./createMasterApi";
 const baseApi = createMasterApi("Employer");
 
 /**
- * Employer API — extends the base with an explicit `toggleActive` method.
- *
- * Endpoint (verified against the working curl):
- *   PATCH /api/Employer/{id}/active-status?isActive=true
- *
- * `isActive` is sent as a query-string parameter.
- * The request body is intentionally null — the endpoint takes no payload,
- * which matches the curl (it sends no body either).
+ * Employer 
+ 
  */
 const employerApi = {
   ...baseApi,
@@ -31,6 +25,9 @@ const employerApi = {
         params: { isActive },
       }
     ),
+
+      // GET /api/Employer/dashboard — aggregated counts for stat cards
+  getDashboard: () => axiosInstance.get("/Employer/dashboard"),
 };
 
 export default employerApi;

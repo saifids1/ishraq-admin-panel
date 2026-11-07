@@ -11,7 +11,7 @@ import {
   Plus,
   Building2,
   Building,
-  BriefcaseBusiness,
+  CalendarPlus,
   RefreshCw,
 } from "lucide-react";
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
@@ -84,13 +84,38 @@ const parseListResponse = (response, pageSize) => {
   const inner = response?.data?.data;
 
   if (Array.isArray(inner)) {
-    return { list: inner, totalRecords: inner.length };
+    return {
+      list: inner,
+      totalRecords: inner.length,
+      totalPages: Math.max(1, Math.ceil(inner.length / pageSize)),
+    };
   }
 
   const list = inner?.data ?? [];
+  const totalRecords = inner?.totalRecords ?? list.length;
+  const totalPages =
+    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize));
+
+  return { list, totalRecords, totalPages };
+};
+
+/* ------------------------------ DASHBOARD PARSE ------------------------------ */
+
+const EMPTY_DASHBOARD = {
+  totalEmployers: 0,
+  activeEmployers: 0,
+  inactiveEmployers: 0,
+  newRegistrationsThisMonth: 0,
+};
+
+const parseDashboardResponse = (response) => {
+  const d = response?.data?.data;
+  if (!d || typeof d !== "object") return { ...EMPTY_DASHBOARD };
   return {
-    list,
-    totalRecords: inner?.totalRecords ?? list.length,
+    totalEmployers: Number(d.totalEmployers) || 0,
+    activeEmployers: Number(d.activeEmployers) || 0,
+    inactiveEmployers: Number(d.inactiveEmployers) || 0,
+    newRegistrationsThisMonth: Number(d.newRegistrationsThisMonth) || 0,
   };
 };
 
@@ -103,40 +128,83 @@ const EmployerList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [dashboard, setDashboard] = useState({ ...EMPTY_DASHBOARD });
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   const [query, setQuery] = useState({ search: "", status: "All" });
+
+  // Debounced search used for the API request
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useStatusToast();
 
+  /* --------------------------- DEBOUNCE SEARCH --------------------------- */
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(query.search.trim());
+    }, 350);
+    return () => clearTimeout(t);
+  }, [query.search]);
+
+  /* --------------------------- DASHBOARD LOADER --------------------------- */
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const res = await employerApi.getDashboard();
+      setDashboard(parseDashboardResponse(res));
+    } catch (err) {
+      console.warn("[EmployerList] dashboard fetch failed", err);
+    }
+  }, []);
+
+  // Fetch dashboard once on mount
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
   /* --------------------------- FETCH --------------------------- */
 
-  const fetchPage = useCallback(async (pageNo, size) => {
-    const response = await employerApi.getAll({ pageNo, pageSize: size });
-    const { list, totalRecords: total } = parseListResponse(response, size);
-    return {
-      rows: list.map((item, index) =>
-        toListRow(item, (pageNo - 1) * size + index + 1),
-      ),
-      total,
-    };
-  }, []);
+  const fetchPage = useCallback(
+    async (pageNo, size) => {
+      const response = await employerApi.getAll({
+        pageNo,
+        pageSize: size,
+        search: debouncedSearch || undefined,
+        status: query.status !== "All" ? query.status : undefined,
+      });
+      const { list, totalRecords: total, totalPages: pages } =
+        parseListResponse(response, size);
+      return {
+        rows: list.map((item, index) =>
+          toListRow(item, (pageNo - 1) * size + index + 1),
+        ),
+        total,
+        pages,
+      };
+    },
+    [debouncedSearch, query.status],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const { rows: nextRows, total } = await fetchPage(page, pageSize);
+      const { rows: nextRows, total, pages } = await fetchPage(page, pageSize);
       setRows(nextRows);
       setTotalRecords(total);
+      setTotalPages(pages);
     } catch (err) {
       setRows([]);
       setTotalRecords(0);
+      setTotalPages(0);
       setError(getApiErrorMessage(err) || "Unable to load employer records.");
     } finally {
       setLoading(false);
@@ -154,27 +222,42 @@ const EmployerList = () => {
     setRefreshing(true);
     setError("");
     setQuery({ search: "", status: "All" });
+    setDebouncedSearch("");
     setPage(1);
     try {
-      const { rows: nextRows, total } = await fetchPage(1, pageSize);
-      setRows(nextRows);
+      const response = await employerApi.getAll({ pageNo: 1, pageSize });
+      const { list, totalRecords: total, totalPages: pages } =
+        parseListResponse(response, pageSize);
+      setRows(list.map((item, index) => toListRow(item, index + 1)));
       setTotalRecords(total);
+      setTotalPages(pages);
+
+      // refresh stat cards too
+      await loadDashboard();
     } catch (err) {
       setRows([]);
       setTotalRecords(0);
+      setTotalPages(0);
       setError(getApiErrorMessage(err) || "Unable to load employer records.");
     } finally {
       setRefreshing(false);
     }
-  }, [fetchPage, pageSize, refreshing]);
+  }, [pageSize, refreshing, loadDashboard]);
 
   /* --------------------------- STATS --------------------------- */
 
-  const stats = useMemo(
-    () => [
+  const stats = useMemo(() => {
+    const {
+      totalEmployers,
+      activeEmployers,
+      inactiveEmployers,
+      newRegistrationsThisMonth,
+    } = dashboard;
+
+    return [
       {
         title: "Total employers",
-        value: totalRecords,
+        value: totalEmployers,
         note: "All time",
         icon: Building2,
         color: "#0ea5e9",
@@ -184,7 +267,7 @@ const EmployerList = () => {
       },
       {
         title: "Active employers",
-        value: rows.filter((u) => u.status === "Active").length,
+        value: activeEmployers,
         note: "Can post jobs",
         icon: Building,
         color: "#6366f1",
@@ -194,7 +277,7 @@ const EmployerList = () => {
       },
       {
         title: "Inactive employers",
-        value: rows.filter((u) => u.status !== "Active").length,
+        value: inactiveEmployers,
         note: "Access suspended",
         icon: ShieldAlert,
         color: "#10b981",
@@ -203,61 +286,47 @@ const EmployerList = () => {
         to: "#059669",
       },
       {
-        title: "With Active Jobs",
-        value: rows.filter((u) => Number(u.jobCount) > 0).length,
-        note: "Posting jobs",
-        icon: BriefcaseBusiness,
+        title: "Registrations this month",
+        value: newRegistrationsThisMonth,
+        note: "Registrations in current month",
+        icon: CalendarPlus,
         color: "#f59e0b",
         color2: "#fb923c",
         from: "#f59e0b",
         to: "#ef4444",
       },
-    ],
-    [rows, totalRecords],
-  );
+    ];
+  }, [dashboard]);
 
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
   const handleToggle = async (row, isActive) => {
     if (row.id == null) throw new Error("Employer ID is missing.");
     await employerApi.toggleActive(row.id, isActive);
-    const { rows: nextRows, total } = await fetchPage(page, pageSize);
+    const { rows: nextRows, total, pages } = await fetchPage(page, pageSize);
     setRows(nextRows);
     setTotalRecords(total);
+    setTotalPages(pages);
+
+    // refresh stat cards (active/inactive counts changed)
+    loadDashboard();
   };
 
-  /* ---------------------------- FILTERED ROWS ---------------------------- */
+  /* ---------------------------- QUERY HELPERS ---------------------------- */
 
-  const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((u) => {
-      if (
-        q &&
-        ![
-          "employerId",
-          "companyName",
-          "email",
-          "mobile",
-          "industry",
-          "city",
-          "state",
-        ].some((k) =>
-          String(u[k] ?? "")
-            .toLowerCase()
-            .includes(q),
-        )
-      )
-        return false;
-      if (query.status !== "All" && u.status !== query.status) return false;
-      return true;
-    });
-  }, [rows, query]);
+  const patchFilter = (patch) => {
+    setQuery((q) => ({ ...q, ...patch }));
+    setPage(1); // reset to first page whenever filters change
+  };
 
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
+  /* ---------------------------- PAGINATION ---------------------------- */
+
+  // Server is the source of truth
+  const count = totalRecords;
+  const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const pageRows = rows; // API already returns only this page
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -342,9 +411,7 @@ const EmployerList = () => {
                 aria-label="Search employers..."
                 placeholder="Search by company, email or mobile"
                 value={query.search}
-                onChange={(e) =>
-                  setQuery((q) => ({ ...q, search: e.target.value }))
-                }
+                onChange={(e) => patchFilter({ search: e.target.value })}
                 className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
               />
             </div>
@@ -353,9 +420,7 @@ const EmployerList = () => {
               <select
                 aria-label="Status"
                 value={query.status}
-                onChange={(e) =>
-                  setQuery((q) => ({ ...q, status: e.target.value }))
-                }
+                onChange={(e) => patchFilter({ status: e.target.value })}
                 className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[14px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
               >
                 <option value="All">Status: All</option>
@@ -422,195 +487,190 @@ const EmployerList = () => {
         )}
 
         {/* TABLE */}
-     
-<div className="mt-4 w-full min-w-0">
-  {/* HEADER (fixed, no vertical scrollbar) */}
-  <div className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]">
-    <table
-      className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
-      style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-    >
-      <colgroup>
-        {COLUMNS.map((c) => (
-          <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
-        ))}
-      </colgroup>
-      <thead>
-        <tr>
-          <th scope="col" className={thClass}>Sr.No</th>
-          <th scope="col" className={thClass}>Employer ID</th>
-          <th scope="col" className={thClass}>Company Name</th>
-          <th scope="col" className={thClass}>Industry</th>
-          <th scope="col" className={thClass}>Status</th>
-          <th scope="col" className={thClass}>Email</th>
-          <th scope="col" className={thClass}>Mobile</th>
-          <th scope="col" className={stickyActionsHead}>Actions</th>
-        </tr>
-      </thead>
-    </table>
-  </div>
+        <div className="mt-4 w-full min-w-0">
+          {/* HEADER (fixed, no vertical scrollbar) */}
+          <div className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]">
+            <table
+              className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
+              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+            >
+              <colgroup>
+                {COLUMNS.map((c) => (
+                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col" className={thClass}>Sr.No</th>
+                  <th scope="col" className={thClass}>Employer ID</th>
+                  <th scope="col" className={thClass}>Company Name</th>
+                  <th scope="col" className={thClass}>Industry</th>
+                  <th scope="col" className={thClass}>Status</th>
+                  <th scope="col" className={thClass}>Email</th>
+                  <th scope="col" className={thClass}>Mobile</th>
+                  <th scope="col" className={stickyActionsHead}>Actions</th>
+                </tr>
+              </thead>
+            </table>
+          </div>
 
-  {/* BODY (scrollable vertically + horizontally) */}
-  <div className="common-scrollbar h-[330px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0">
-    <table
-      className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
-      style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-    >
-      <colgroup>
-        {COLUMNS.map((c) => (
-          <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
-        ))}
-      </colgroup>
-       <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={COL_SPAN_ALL} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center">
-                      <span
-                        aria-hidden="true"
-                        className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
-                      />
-                      <p className="mt-3 text-[14px] text-[#6b7a88] sm:text-[15px]">
-                        Loading...
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : pageRows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={COL_SPAN_ALL}
-                    className="border-t border-[#e2e8ee] px-4 py-12 text-center"
-                  >
-                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                      <Inbox size={22} />
-                    </div>
-                    <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
-                      No employers found
-                    </p>
-                  </td>
-                </tr>
-              ) : (
-                pageRows.map((row, index) => (
-                  <tr
-                    key={row.id ?? index}
-                    style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
-                    className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
-                  >
-                    <td className={`${td} tabular-nums`}>{start + index + 1}</td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate font-medium text-slate-900">
-                          {row.employerId || "-"}
-                        </span>
-                      </span>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate font-medium text-slate-900">
-                          {row.companyName || "-"}
-                        </span>
-                      </span>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span
-                        title={row.industry}
-                        className={`inline-flex h-7 max-w-[140px] items-center justify-center truncate rounded-md px-2 text-[12px] ring-1 ring-inset shadow-sm sm:text-[14px] ${
-                          INDUSTRY_STYLE[row.industry] || INDUSTRY_STYLE.Other
-                        }`}
-                      >
-                        <span className="truncate">{row.industry || "-"}</span>
-                      </span>
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      <span
-                        className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${
-                          toneOf(row.status).badge
-                        }`}
-                      >
-                        {row.status || "-"}
-                      </span>
-                    </td>
-                    {/* <td className={`${td} whitespace-nowrap tabular-nums`}>
-                      <strong className="font-semibold">{row.jobCount ?? 0}</strong>
-                      <span className="text-[#6b7a88]"> jobs</span>
-                    </td> */}
-                    <td className={`${td} whitespace-nowrap`}>
-                      {row.email ? (
+          {/* BODY (scrollable vertically + horizontally) */}
+          <div className="common-scrollbar h-[330px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0">
+            <table
+              className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
+              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
+            >
+              <colgroup>
+                {COLUMNS.map((c) => (
+                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                ))}
+              </colgroup>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={COL_SPAN_ALL} className="px-4 py-12 text-center">
+                      <div className="flex flex-col items-center">
                         <span
-                          className="block truncate text-[12px] sm:text-[14px]"
-                          title={row.email}
-                        >
-                          {row.email}
-                        </span>
-                      ) : (
-                        <span className="text-[#9aa5b1]">-</span>
-                      )}
-                    </td>
-                    <td className={`${td} whitespace-nowrap`}>
-                      {row.mobile ? (
-                        <span className="text-[12px] tabular-nums sm:text-[14px]">
-                          {row.mobile}
-                        </span>
-                      ) : (
-                        <span className="text-[#9aa5b1]">-</span>
-                      )}
-                    </td>
-                    <td className={stickyActionsCell}>
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          title={`View ${row.companyName || "Employer"}`}
-                          aria-label={`View ${row.companyName || "Employer"}`}
-                          onClick={() => navigate(`/admin/employers/${row.id}`)}
-                          className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                        >
-                          <ChevronsRight size={14} strokeWidth={2.2} />
-                        </button>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={row.status === "Active"}
-                          aria-label={
-                            row.status === "Active"
-                              ? `Deactivate ${row.companyName || "Employer"}`
-                              : `Activate ${row.companyName || "Employer"}`
-                          }
-                          title={
-                            row.status === "Active"
-                              ? "Active. Click to deactivate"
-                              : "Not active. Click to activate"
-                          }
-                          onClick={() => askToggle(row)}
-                          className={`relative h-6 w-[38px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:w-[42px] ${
-                            row.status === "Active"
-                              ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
-                              : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
-                          }`}
-                        >
-                          <span
-                            className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
-                              row.status === "Active"
-                                ? "translate-x-[14px] sm:translate-x-[18px]"
-                                : "translate-x-0"
-                            }`}
-                          >
-                            {row.status === "Active" ? (
-                              <Building size={13} strokeWidth={2.7} className="text-emerald-700" />
-                            ) : (
-                              <Building2 size={13} strokeWidth={2.7} className="text-rose-700" />
-                            )}
-                          </span>
-                        </button>
+                          aria-hidden="true"
+                          className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
+                        />
+                        <p className="mt-3 text-[14px] text-[#6b7a88] sm:text-[15px]">
+                          Loading...
+                        </p>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-    </table>
-  </div>
-</div>
+                ) : pageRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={COL_SPAN_ALL}
+                      className="border-t border-[#e2e8ee] px-4 py-12 text-center"
+                    >
+                      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                        <Inbox size={22} />
+                      </div>
+                      <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
+                        No employers found
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  pageRows.map((row, index) => (
+                    <tr
+                      key={row.id ?? index}
+                      style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                      className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
+                    >
+                      <td className={`${td} tabular-nums`}>{start + index + 1}</td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium text-slate-900">
+                            {row.employerId || "-"}
+                          </span>
+                        </span>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium text-slate-900">
+                            {row.companyName || "-"}
+                          </span>
+                        </span>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span
+                          title={row.industry}
+                          className={`inline-flex h-7 max-w-[140px] items-center justify-center truncate rounded-md px-2 text-[12px] ring-1 ring-inset shadow-sm sm:text-[14px] ${
+                            INDUSTRY_STYLE[row.industry] || INDUSTRY_STYLE.Other
+                          }`}
+                        >
+                          <span className="truncate">{row.industry || "-"}</span>
+                        </span>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span
+                          className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${
+                            toneOf(row.status).badge
+                          }`}
+                        >
+                          {row.status || "-"}
+                        </span>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        {row.email ? (
+                          <span
+                            className="block truncate text-[12px] sm:text-[14px]"
+                            title={row.email}
+                          >
+                            {row.email}
+                          </span>
+                        ) : (
+                          <span className="text-[#9aa5b1]">-</span>
+                        )}
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        {row.mobile ? (
+                          <span className="text-[12px] tabular-nums sm:text-[14px]">
+                            {row.mobile}
+                          </span>
+                        ) : (
+                          <span className="text-[#9aa5b1]">-</span>
+                        )}
+                      </td>
+                      <td className={stickyActionsCell}>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            title={`View ${row.companyName || "Employer"}`}
+                            aria-label={`View ${row.companyName || "Employer"}`}
+                            onClick={() => navigate(`/admin/employers/${row.id}`)}
+                            className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                          >
+                            <ChevronsRight size={14} strokeWidth={2.2} />
+                          </button>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={row.status === "Active"}
+                            aria-label={
+                              row.status === "Active"
+                                ? `Deactivate ${row.companyName || "Employer"}`
+                                : `Activate ${row.companyName || "Employer"}`
+                            }
+                            title={
+                              row.status === "Active"
+                                ? "Active. Click to deactivate"
+                                : "Not active. Click to activate"
+                            }
+                            onClick={() => askToggle(row)}
+                            className={`relative h-6 w-[38px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:w-[42px] ${
+                              row.status === "Active"
+                                ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                                : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
+                            }`}
+                          >
+                            <span
+                              className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                                row.status === "Active"
+                                  ? "translate-x-[14px] sm:translate-x-[18px]"
+                                  : "translate-x-0"
+                              }`}
+                            >
+                              {row.status === "Active" ? (
+                                <Building size={13} strokeWidth={2.7} className="text-emerald-700" />
+                              ) : (
+                                <Building2 size={13} strokeWidth={2.7} className="text-rose-700" />
+                              )}
+                            </span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
         {/* PAGINATION */}
         <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">

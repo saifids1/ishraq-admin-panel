@@ -14,6 +14,8 @@ import jobCategoryApi from "../../../api/Services/jobCategoryApi";
 import jobRoleApi from "../../../api/Services/jobRoleApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
 import { getCurrentUserId2 } from "../../../utils/authUtils.js";
+import StatusModal from "../../../components/common/StatusModal";
+import { useStatusToast } from "../../../components/common/StatusModalProvider";
 
 /* ------------------------------ CONSTANTS ------------------------------ */
 
@@ -72,7 +74,6 @@ const RICH_TEXT_CSS = `
 
 /* ------------------------------ HELPERS ------------------------------ */
 
-// Reads a key case-insensitively, so "categoryId" also matches "CategoryId".
 const first = (item, ...keys) => {
   for (const key of keys) {
     if (item?.[key] !== undefined && item?.[key] !== null) return item[key];
@@ -86,7 +87,6 @@ const first = (item, ...keys) => {
   return "";
 };
 
-// Finds the array inside a master API response, whatever the wrapper looks like.
 const listFrom = (response) => {
   const root = response?.data ?? response;
   for (const value of [
@@ -103,7 +103,6 @@ const listFrom = (response) => {
   return [];
 };
 
-// Finds the single job description object inside a GET response.
 const recordFrom = (response) => {
   const root = response?.data ?? response;
   for (const candidate of [root?.data, root?.Data, root]) {
@@ -127,11 +126,9 @@ const options = (response, idKeys, nameKeys) =>
     }))
     .filter((item) => item.id !== "" && item.name !== "");
 
-// Shows "—" for empty values.
 const v = (value) =>
   value === null || value === undefined || value === "" ? "—" : String(value);
 
-// Format used in the reference screenshot: 28-04-25 12:19 PM
 const fmtDateTime = (value) => {
   if (!value) return "—";
   const d = new Date(value);
@@ -144,7 +141,6 @@ const fmtDateTime = (value) => {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy} ${pad(hours12)}:${pad(d.getMinutes())} ${ampm}`;
 };
 
-// Strips HTML tags so rich text can be measured and checked for emptiness.
 const plainText = (html) =>
   String(html ?? "")
     .replace(/<[^>]*>/g, "")
@@ -186,7 +182,6 @@ const validate = (f) => {
   return errors;
 };
 
-// Field names match the backend DTO. Create sends CreatedBy, update sends UpdatedBy.
 const toPayload = (f, userId, isCreate) => {
   const base = {
     InstituteTypeId: Number(f.organizationTypeId),
@@ -269,67 +264,6 @@ const SelectField = ({
   </div>
 );
 
-// Confirmation popup. Matches the page's slate and #2f6b8a palette.
-const ConfirmDialog = ({
-  open,
-  title,
-  message,
-  confirmLabel,
-  loading,
-  onConfirm,
-  onCancel,
-}) => {
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (e) => {
-      if (e.key === "Escape" && !loading) onCancel();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, loading, onCancel]);
-
-  if (!open) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-dialog-title"
-    >
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
-        <h3
-          id="confirm-dialog-title"
-          className="text-base font-semibold text-slate-800"
-        >
-          {title}
-        </h3>
-        <p className="mt-2 text-sm text-slate-600">{message}</p>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={loading}
-            className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading && <Loader2 size={16} className="animate-spin" />}
-            {loading ? "Please wait..." : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 /* ------------------------------ COMPONENT ------------------------------ */
 
 export default function CreateJobDescription() {
@@ -337,10 +271,6 @@ export default function CreateJobDescription() {
   const location = useLocation();
   const { id } = useParams();
 
-  // Mode comes from the URL, not local state:
-  //   /admin/jdbyadmin/add        -> create
-  //   /admin/jdbyadmin/:id        -> view
-  //   /admin/jdbyadmin/:id/edit   -> edit
   const isCreate = !id;
   const isView = !isCreate && !location.pathname.endsWith("/edit");
 
@@ -353,6 +283,9 @@ export default function CreateJobDescription() {
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // Same toast hook the list pages use
+  const [toast, setToast] = useStatusToast();
+
   const [sources, setSources] = useState({
     institutes: [],
     categories: [],
@@ -360,6 +293,13 @@ export default function CreateJobDescription() {
   });
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
+
+  /* ----- auto-dismiss toast (same behavior as list pages) ----- */
+  useEffect(() => {
+    if (!toast) return undefined;
+    const t = setTimeout(() => setToast(null), 2800);
+    return () => clearTimeout(t);
+  }, [toast, setToast]);
 
   /* ----- load the record (view and edit) ----- */
   useEffect(() => {
@@ -511,7 +451,6 @@ export default function CreateJobDescription() {
 
   /* ----- handlers ----- */
 
-  // Changing a parent clears its dependent children.
   const setField = (name, value) => {
     setForm((cur) => {
       const next = { ...cur, [name]: value };
@@ -546,13 +485,11 @@ export default function CreateJobDescription() {
       navigate(LIST_PATH);
       return;
     }
-    // Discard unsaved changes and return to view mode.
     setForm(savedForm);
     setErrors({});
     navigate(`/admin/jdbyadmin/${id}`);
   };
 
-  // Validate first, then ask for confirmation. The API call happens in handleConfirm.
   const handleSubmit = (e) => {
     e.preventDefault();
     if (isView || saving) return;
@@ -566,7 +503,6 @@ export default function CreateJobDescription() {
   };
 
   const handleConfirm = async () => {
-    // Read the logged-in user's ID at save time.
     const userId = Number(getCurrentUserId2());
 
     if (!Number.isInteger(userId) || userId <= 0) {
@@ -584,15 +520,30 @@ export default function CreateJobDescription() {
       if (isCreate) {
         await createJDByAdmin(payload);
         setConfirmOpen(false);
+        setToast({
+          id: Date.now(),
+          tone: "ok",
+          msg: "Job description created successfully",
+        });
         navigate(LIST_PATH, { replace: true });
       } else {
         await updateJDByAdmin(id, payload);
         setConfirmOpen(false);
+        setToast({
+          id: Date.now(),
+          tone: "ok",
+          msg: "Job description updated successfully",
+        });
         navigate(`/admin/jdbyadmin`, { replace: true });
       }
     } catch (err) {
       setConfirmOpen(false);
       setError(getApiErrorMessage(err) || "Unable to save job description.");
+      setToast({
+        id: Date.now(),
+        tone: "err",
+        msg: getApiErrorMessage(err) || "Could not save job description",
+      });
     } finally {
       setSaving(false);
     }
@@ -762,7 +713,6 @@ export default function CreateJobDescription() {
                   )}
                 </Field>
 
-                {/* AUDIT FIELDS (view only) */}
                 {isView && (
                   <>
                     <div className="md:col-span-2 mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -820,20 +770,47 @@ export default function CreateJobDescription() {
         </div>
       </div>
 
-      {/* CONFIRMATION POPUP */}
-      <ConfirmDialog
-        open={confirmOpen}
-        title={isCreate ? "Create job description?" : "Save changes?"}
-        message={
-          isCreate
-            ? "This will create a new job description. Do you want to continue?"
-            : "This will update the job description. Do you want to save your changes?"
-        }
-        confirmLabel={isCreate ? "Yes, create" : "Yes, save"}
-        loading={saving}
-        onConfirm={handleConfirm}
-        onCancel={closeConfirm}
-      />
+      {/* CONFIRMATION POPUP — shared StatusModal */}
+      {confirmOpen && (
+        <StatusModal
+          isOpen
+          type="confirm"
+          title={isCreate ? "Create job description?" : "Save changes?"}
+          message={
+            isCreate
+              ? "This will create a new job description. Do you want to continue?"
+              : "This will update the job description. Do you want to save your changes?"
+          }
+          showCancel
+          busy={saving}
+          confirmText={isCreate ? "Yes, create" : "Yes, save"}
+          onCancel={closeConfirm}
+          onConfirm={handleConfirm}
+        />
+      )}
+
+      {/* SUCCESS / ERROR TOAST — same markup as list pages */}
+      {toast && (
+        <div
+          key={toast.id}
+          role="status"
+          aria-live="polite"
+          className="js-toast fixed bottom-3 left-3 right-3 z-[60] flex items-center gap-2.5 rounded-xl border border-white/10 bg-[#1e2b36] px-4 py-3 text-[14px] font-medium text-white shadow-2xl sm:bottom-5 sm:left-auto sm:right-5 sm:text-[15px]"
+        >
+          <span
+            className={`grid h-5 w-5 place-items-center rounded-full ${
+              toast.tone === "ok"
+                ? "bg-emerald-500"
+                : toast.tone === "warn"
+                  ? "bg-amber-500"
+                  : "bg-rose-500"
+            }`}
+          >
+            ✓
+          </span>
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }

@@ -14,7 +14,7 @@ import {
   ChevronsRight,
   Plus,
   Users,
-  UserPlus,
+  CalendarPlus,
   RefreshCw,
 } from "lucide-react";
 import { StatCardGrid } from "../../../components/common/Dashboardkit";
@@ -41,7 +41,7 @@ const TABLE_MIN_WIDTH = 1130;
 
 const COLUMNS = [
   { key: "srNo", width: "55px", minWidth: "50px" },
-   { key: "jobSeekerId", width: "210px", minWidth: "190px" },  
+  { key: "jobSeekerId", width: "210px", minWidth: "190px" },
   { key: "fullName", width: "170px", minWidth: "130px" },
   { key: "jobCategory", width: "150px", minWidth: "110px" },
   { key: "status", width: "105px", minWidth: "90px" },
@@ -152,6 +152,26 @@ const parseListResponse = (response, pageSize) => {
   return { list, totalRecords, totalPages };
 };
 
+/* ------------------------------ DASHBOARD PARSE ------------------------------ */
+
+const EMPTY_DASHBOARD = {
+  totalJobseekers: 0,
+  activeJobseekers: 0,
+  inactiveJobseekers: 0,
+  newRegistrationsThisMonth: 0,
+};
+
+const parseDashboardResponse = (response) => {
+  const d = response?.data?.data;
+  if (!d || typeof d !== "object") return { ...EMPTY_DASHBOARD };
+  return {
+    totalJobseekers: Number(d.totalJobseekers) || 0,
+    activeJobseekers: Number(d.activeJobseekers) || 0,
+    inactiveJobseekers: Number(d.inactiveJobseekers) || 0,
+    newRegistrationsThisMonth: Number(d.newRegistrationsThisMonth) || 0,
+  };
+};
+
 /* ------------------------------ COMPONENT ------------------------------ */
 
 const JobSeekerList = () => {
@@ -160,6 +180,8 @@ const JobSeekerList = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [dashboard, setDashboard] = useState({ ...EMPTY_DASHBOARD });
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -170,6 +192,9 @@ const JobSeekerList = () => {
     search: "",
     status: "All",
   });
+
+  // Debounced search value used for API calls
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -187,13 +212,43 @@ const JobSeekerList = () => {
     }
   }, []);
 
+  /* --------------------------- DEBOUNCE SEARCH --------------------------- */
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(query.search.trim());
+    }, 350);
+    return () => clearTimeout(t);
+  }, [query.search]);
+
+  /* --------------------------- DASHBOARD LOADER --------------------------- */
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const res = await jobseekerApi.getDashboard();
+      setDashboard(parseDashboardResponse(res));
+    } catch (err) {
+      console.warn("[JobSeekerList] dashboard fetch failed", err);
+    }
+  }, []);
+
+  // Fetch dashboard once on mount
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
   /* --------------------------- FETCH --------------------------- */
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const response = await jobseekerApi.getAll({ pageNo: page, pageSize });
+      const response = await jobseekerApi.getAll({
+        pageNo: page,
+        pageSize,
+        search: debouncedSearch || undefined,
+        status: query.status !== "All" ? query.status : undefined,
+      });
       const {
         list,
         totalRecords: total,
@@ -215,7 +270,7 @@ const JobSeekerList = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, debouncedSearch, query.status]);
 
   useEffect(() => {
     load();
@@ -229,19 +284,26 @@ const JobSeekerList = () => {
     setRefreshing(true);
     setError("");
     setQuery({ search: "", status: "All" });
+    setDebouncedSearch("");
     setPage(1);
 
     try {
-      const response = await jobseekerApi.getAll({ pageNo: 1, pageSize });
+      const [listRes] = await Promise.all([
+        jobseekerApi.getAll({ pageNo: 1, pageSize }),
+      ]);
+
       const {
         list,
         totalRecords: total,
         totalPages: pages,
-      } = parseListResponse(response, pageSize);
+      } = parseListResponse(listRes, pageSize);
 
       setRows(list.map((item, index) => toListRow(item, index + 1)));
       setTotalRecords(total);
       setTotalPages(pages);
+
+      // refresh stat cards too
+      await loadDashboard();
     } catch (err) {
       setRows([]);
       setTotalRecords(0);
@@ -250,15 +312,22 @@ const JobSeekerList = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [pageSize, refreshing]);
+  }, [pageSize, refreshing, loadDashboard]);
 
   /* --------------------------- STATS --------------------------- */
 
   const stats = useMemo(() => {
+    const {
+      totalJobseekers,
+      activeJobseekers,
+      inactiveJobseekers,
+      newRegistrationsThisMonth,
+    } = dashboard;
+
     return [
       {
-        title: "Total users",
-        value: totalRecords,
+        title: "Total jobseekers",
+        value: totalJobseekers,
         note: "All time",
         icon: Users,
         color: "#0ea5e9",
@@ -267,8 +336,8 @@ const JobSeekerList = () => {
         to: "#2563eb",
       },
       {
-        title: "Active users",
-        value: rows.filter((u) => u.status === "Active").length,
+        title: "Active jobseekers",
+        value: activeJobseekers,
         note: "Can log in and apply",
         icon: UserRoundCheck,
         color: "#6366f1",
@@ -277,8 +346,8 @@ const JobSeekerList = () => {
         to: "#8b5cf6",
       },
       {
-        title: "Inactive users",
-        value: rows.filter((u) => u.status !== "Active").length,
+        title: "Inactive jobseekers",
+        value: inactiveJobseekers,
         note: "Access suspended",
         icon: UserRoundX,
         color: "#10b981",
@@ -287,17 +356,17 @@ const JobSeekerList = () => {
         to: "#059669",
       },
       {
-        title: "Experienced",
-        value: rows.filter((u) => Number(u.experience) >= 3).length,
-        note: "3+ years experience",
-        icon: UserPlus,
+        title: "Registrations this month",
+        value: newRegistrationsThisMonth,
+        note: "Registrations in current month",
+        icon: CalendarPlus,
         color: "#f59e0b",
         color2: "#fb923c",
         from: "#f59e0b",
         to: "#ef4444",
       },
     ];
-  }, [rows, totalRecords]);
+  }, [dashboard]);
 
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
@@ -309,7 +378,12 @@ const JobSeekerList = () => {
 
       await jobseekerApi.toggleActive(row.id, isActive);
 
-      const response = await jobseekerApi.getAll({ pageNo: page, pageSize });
+      const response = await jobseekerApi.getAll({
+        pageNo: page,
+        pageSize,
+        search: debouncedSearch || undefined,
+        status: query.status !== "All" ? query.status : undefined,
+      });
       const {
         list,
         totalRecords: total,
@@ -323,6 +397,9 @@ const JobSeekerList = () => {
       );
       setTotalRecords(total);
       setTotalPages(pages);
+
+      // refresh stat cards (active/inactive counts changed)
+      loadDashboard();
     } catch (err) {
       const status = err?.status ?? err?.response?.status;
       if (status === 405) {
@@ -339,33 +416,19 @@ const JobSeekerList = () => {
 
   /* ---------------------------- QUERY HELPERS ---------------------------- */
 
-  const patchFilter = (patch) => setQuery((q) => ({ ...q, ...patch }));
+  const patchFilter = (patch) => {
+    setQuery((q) => ({ ...q, ...patch }));
+    setPage(1); // reset to first page whenever filters change
+  };
 
-  /* ---------------------------- FILTERED ROWS ---------------------------- */
+  /* ---------------------------- PAGINATION ---------------------------- */
 
-  const filteredRows = useMemo(() => {
-    const q = query.search.trim().toLowerCase();
-    return rows.filter((u) => {
-      if (
-        q &&
-        !["jobSeekerId", "fullName", "email", "mobile", "jobCategory", "city", "state"].some(
-          (k) =>
-            String(u[k] ?? "")
-              .toLowerCase()
-              .includes(q),
-        )
-      )
-        return false;
-      if (query.status !== "All" && u.status !== query.status) return false;
-      return true;
-    });
-  }, [rows, query]);
-
-  const count = filteredRows.length;
-  const totalPagesLocal = Math.max(1, Math.ceil(count / pageSize));
+  // Server is the source of truth
+  const count = totalRecords;
+  const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = filteredRows.slice(start, start + pageSize);
+  const pageRows = rows; // API already returns only this page
 
   const pageNumbers = useMemo(() => {
     const win = 5;
@@ -644,7 +707,6 @@ const JobSeekerList = () => {
                       </td>
                       <td className={`${td} whitespace-nowrap text-center tabular-nums`}>
                         <strong className="font-semibold text-center">{row.experience ?? 0}</strong>
-                        {/* <span className="text-[#6b7a88]"> yrs</span> */}
                       </td>
                       <td className={`${td} whitespace-nowrap`}>
                         {row.email ? (
