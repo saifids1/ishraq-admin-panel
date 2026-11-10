@@ -33,6 +33,10 @@ const QUILL_MODULES = {
   ],
 };
 
+// Convert non-breaking spaces to normal spaces so text can wrap at word boundaries.
+const cleanNbsp = (html) =>
+  String(html ?? "").replace(/&nbsp;|&#160;|\u00a0/gi, " ");
+
 const QUILL_FORMATS = [
   "header",
   "size",
@@ -177,13 +181,11 @@ const nowIsoLocal = () => {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, "0")}0000`;
 };
 
-// Normalize an empty Quill value so the placeholder shows correctly.
 const normalizeQuillValue = (html) => {
-  const s = String(html ?? "").trim();
+  const s = cleanNbsp(html).trim();
   if (!s || s === "<p><br></p>" || s === "<p></p>") return "";
   return s;
 };
-
 /* --------------------------- EDITOR STYLES (injected once) --------------------------- */
 
 const EDITOR_STYLE_ID = "blog-editor-scroll-styles";
@@ -693,8 +695,9 @@ const CreateBlog = ({ mode }) => {
                   <div className="min-h-[38px] rounded-md border border-slate-200 bg-slate-50 p-3 text-[14px] text-slate-800 break-words">
                     {plainText(formData.Blog_Description) ? (
                       <div
+                        className="[&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:text-[2em] [&_h1]:font-bold [&_h2]:mb-3 [&_h2]:mt-5 [&_h2]:text-[1.6em] [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-[1.3em] [&_h3]:font-semibold [&_p]:mb-3 [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:italic [&_.ql-size-large]:text-[1.5em] [&_.ql-size-huge]:text-[2.5em] [&_.ql-size-small]:text-[0.75em]"
                         dangerouslySetInnerHTML={{
-                          __html: formData.Blog_Description,
+                          __html: cleanNbsp(formData.Blog_Description),
                         }}
                       />
                     ) : (
