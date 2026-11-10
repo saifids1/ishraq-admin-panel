@@ -212,7 +212,7 @@ const Login = () => {
     ? ROLES.filter((r) => r.key === "admin")
     : ROLES.filter((r) => r.key === "employer" || r.key === "jobseeker");
 
-  const defaultRole = isAdminLogin ? "admin" : "employer";
+  const defaultRole = isAdminLogin ? "admin" : "jobseeker";
 
   const [roleKey, setRoleKey] = useState(defaultRole);
   const [username, setUsername] = useState("");

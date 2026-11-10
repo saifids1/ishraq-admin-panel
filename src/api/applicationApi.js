@@ -10,10 +10,10 @@ const applicationApi = {
     axiosInstance.get(`/Application/${id}`),
 
   // Get paginated applications for a jobseeker
-  getAppliedJobs: (jobseekerId, pageNo = 1, pageSize = 10) =>
+  getAppliedJobs: (jonseekerId, pageNo = 1, pageSize = 10) =>
     axiosInstance.get("/Application", {
       params: {
-        jobseekerId,
+        jonseekerId,
         pageNo,
         pageSize,
       },

@@ -9,7 +9,7 @@ import countryMasterApi from "../../../api/Services/countryMasterApi";
 import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import { getApiErrorMessage } from "../../../api/utils/apiHelpers";
-import { getCurrentUserId } from "../../../utils/authUtils";
+import { getCurrentUserId2 } from "../../../utils/authUtils";
 import StatusModal from "../../../components/common/StatusModal";
 
 const MAX_FILE_MB = 5;
@@ -529,7 +529,7 @@ export default function EditJobSeeker() {
     setSaving(true);
 
     try {
-      const currentUserId = getCurrentUserId();
+      const currentUserId = getCurrentUserId2();
 
       const payload = {
         JB_jobseeker_id: Number(id) || 0,

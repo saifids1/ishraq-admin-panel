@@ -36,8 +36,8 @@ const SECTION_CARD = `${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_
 const SECTION_BODY = "p-3 sm:p-4";
 const SECTION_TITLE =
   "mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]";
-// Two columns only on wide screens; the sidebar takes space below xl.
-const FIELD_GRID_2 = "grid grid-cols-1 gap-x-6 gap-y-3 xl:grid-cols-2";
+// Two columns from md up, since the tabs no longer take up a side column.
+const FIELD_GRID_2 = "grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2";
 // Label above input on phones, label beside input from sm up.
 const FIELD_GRID =
   "grid grid-cols-1 gap-1 sm:grid-cols-[160px_1fr] sm:items-center sm:gap-3";
@@ -973,253 +973,130 @@ const JobSeekerDetails = ({ mode }) => {
 
           {/* BODY */}
           <div className="p-3 sm:p-4">
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[200px_1fr]">
-              {/* SECTION NAV: horizontal scroll below lg, vertical list at lg+ */}
-              <aside className="min-w-0 lg:sticky lg:top-4 lg:h-fit lg:w-[11rem]">
-                <nav
-                  aria-label="Jobseeker sections"
-                  className={`${SECTION_CARD} flex gap-1 overflow-x-auto p-1.5 lg:block lg:overflow-hidden`}
-                >
-                  {NAV.map((n) => {
-                    const on = tab === n.id;
-                    const Icon = n.icon;
-                    return (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => setTab(n.id)}
-                        aria-current={on ? "page" : undefined}
-                        className={`group flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition lg:w-full ${
-                          on
-                            ? "bg-[#eaf2f7] text-[#1e5a7a]"
-                            : "text-[#5b6b7c] hover:bg-[#f3f6f9] hover:text-[#1a2b3c]"
-                        }`}
-                      >
-                        <Icon
-                          size={15}
-                          className={
-                            on
-                              ? "text-[#1e5a7a]"
-                              : "text-[#8895a4] group-hover:text-[#5b6b7c]"
-                          }
-                        />
-                        {n.label}
-                      </button>
-                    );
-                  })}
-                </nav>
-              </aside>
+            {/* HORIZONTAL TABS */}
+            <nav
+              aria-label="Jobseeker sections"
+              className="mb-4 flex overflow-x-auto border-b border-[#e3e8ee]"
+            >
+              {NAV.map((n) => {
+                const on = tab === n.id;
+                const Icon = n.icon;
+                return (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => setTab(n.id)}
+                    aria-current={on ? "page" : undefined}
+                    className={`group -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-[13px] font-semibold transition ${
+                      on
+                        ? "border-[#2f6b8a] text-[#1e5a7a]"
+                        : "border-transparent text-[#5b6b7c] hover:border-[#cfd9e2] hover:text-[#1a2b3c]"
+                    }`}
+                  >
+                    <Icon
+                      size={15}
+                      className={
+                        on
+                          ? "text-[#1e5a7a]"
+                          : "text-[#8895a4] group-hover:text-[#5b6b7c]"
+                      }
+                    />
+                    {n.label}
+                  </button>
+                );
+              })}
+            </nav>
 
-              {/* DETAIL PANEL */}
-              <main className="min-w-0">
-                {/* -------- Overview -------- */}
-                {tab === "overview" && (
-                  <section className="space-y-4 sm:space-y-6">
-                    {/* Personal / Professional details */}
-                    <div className={SECTION_CARD}>
-                      <div className={SECTION_BODY}>
-                        <h3 className={SECTION_TITLE}>
-                          Personal & Professional Details
-                        </h3>
-                        <div className={FIELD_GRID_2}>
-                          <FieldRow label="Jobseeker ID" value={form.jobseekerNo} />
-
-                          <FieldRow label="Full Name" value={form.fullName}>
-                            {editInput("fullName")}
-                          </FieldRow>
-                          <FieldRow label="Mobile Number" value={form.mobile} mono>
-                            {editInput("mobile", "tel")}
-                          </FieldRow>
-                          <FieldRow label="WhatsApp Number" value={form.whatsapp} mono>
-                            {editInput("whatsapp", "tel")}
-                          </FieldRow>
-
-                          <div className={FIELD_GRID}>
-                            <label className={FIELD_LABEL}>Email Address</label>
-                            {isEditing ? (
-                              editInput("email", "email")
-                            ) : (
-                              <div className={FIELD_BOX()}>
-                                <span className="min-w-0 flex-1 truncate">
-                                  {form.email ? (
-                                    <a
-                                      href={`mailto:${form.email}`}
-                                      className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
-                                    >
-                                      {form.email}
-                                    </a>
-                                  ) : (
-                                    "—"
-                                  )}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <FieldRow label="Institute Type" value={form.jobType}>
-                            {editSelect(
-                              "instituteTypeId",
-                              instituteTypes,
-                              "Select institute type",
-                              (value) => {
-                                updateDraft("instituteTypeId", value);
-                                updateDraft("jobCategoryId", "");
-                                updateDraft("jobRoleId", "");
-                              },
-                            )}
-                          </FieldRow>
-                          <FieldRow label="Job Category" value={form.jobCategory}>
-                            {editSelect(
-                              "jobCategoryId",
-                              jobCategories,
-                              "Select profession",
-                              (value) => {
-                                updateDraft("jobCategoryId", value);
-                                updateDraft("jobRoleId", "");
-                              },
-                            )}
-                          </FieldRow>
-                          <FieldRow label="Role" value={form.jobRole}>
-                            {editSelect("jobRoleId", jobRoles, "Select role")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Highest Qualification"
-                            value={form.highestQualification}
-                          >
-                            {editInput("highestQualification")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Speciality / Department"
-                            value={form.speciality}
-                          >
-                            {editInput("speciality")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Professional Reg. No."
-                            value={form.professionalRegistrationNumber}
-                            mono
-                          >
-                            {editInput("professionalRegistrationNumber")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Total Experience (Years)"
-                            value={form.totalExperience}
-                          >
-                            {editInput("totalExperience", "number")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Current Designation"
-                            value={form.currentDesignation}
-                          >
-                            {editInput("currentDesignation")}
-                          </FieldRow>
-                          <FieldRow
-                            label="Status"
-                            value={active ? "Active" : "Inactive"}
-                          />
-                          <FieldRow label="Consent Given" value={form.consentGiven}>
-                            {yesNoSelect("consentGiven")}
-                          </FieldRow>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Current Location: Country → State → City */}
-                    <div className={SECTION_CARD}>
-                      <div className={SECTION_BODY}>
-                        <h3 className={SECTION_TITLE}>Current Location</h3>
-                        <div className={FIELD_GRID_2}>
-                          <FieldRow label="Country" value={form.currentCountry}>
-                            {editSelect(
-                              "countryId",
-                              countries,
-                              "Select country",
-                              (value) => {
-                                updateDraft("countryId", value);
-                                updateDraft("stateId", "");
-                                updateDraft("cityId", "");
-                                updateDraft("preferredLocationId", "");
-                              },
-                            )}
-                          </FieldRow>
-                          <FieldRow label="State" value={form.currentState}>
-                            {editSelect(
-                              "stateId",
-                              states,
-                              statePlaceholder,
-                              (value) => {
-                                updateDraft("stateId", value);
-                                updateDraft("cityId", "");
-                                updateDraft("preferredLocationId", "");
-                              },
-                            )}
-                          </FieldRow>
-                          <FieldRow label="City" value={form.currentCity}>
-                            {editSelect(
-                              "cityId",
-                              cities,
-                              cityPlaceholder,
-                              (value) => {
-                                updateDraft("cityId", value);
-                                updateDraft("preferredLocationId", "");
-                              },
-                            )}
-                          </FieldRow>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* User Log */}
-                    <div className={SECTION_CARD}>
-                      <div className={SECTION_BODY}>
-                        <h3 className={SECTION_TITLE}>User Log</h3>
-                        <div className={FIELD_GRID_2}>
-                          <FieldRow
-                            label="Created At"
-                            value={formatDateTime(form.createdAt)}
-                          />
-                          <FieldRow
-                            label="Created By"
-                            value={formatUser(form.CreatedByName)}
-                          />
-                          <FieldRow
-                            label="Updated At"
-                            value={formatDateTime(form.updatedAt)}
-                          />
-                          <FieldRow
-                            label="Updated By"
-                            value={formatUser(form.UpdatedByName)}
-                          />
-                          <FieldRow
-                            label="Activated At"
-                            value={formatDateTime(form.activatedAt)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-                )}
-
-                {/* -------- Current Employment -------- */}
-                {tab === "employment" && (
-                  <section className={SECTION_CARD}>
+            {/* DETAIL PANEL */}
+            <main className="min-w-0">
+              {/* -------- Overview -------- */}
+              {tab === "overview" && (
+                <section className="space-y-4 sm:space-y-6">
+                  {/* Personal / Professional details */}
+                  <div className={SECTION_CARD}>
                     <div className={SECTION_BODY}>
-                      <h3 className={SECTION_TITLE}>Current Employment</h3>
+                      <h3 className={SECTION_TITLE}>
+                        Personal & Professional Details
+                      </h3>
                       <div className={FIELD_GRID_2}>
-                        <FieldRow
-                          label="Current Employer"
-                          value={form.currentEmployment}
-                        >
-                          {editInput("currentEmployment")}
+                        <FieldRow label="Jobseeker ID" value={form.jobseekerNo} />
+
+                        <FieldRow label="Full Name" value={form.fullName}>
+                          {editInput("fullName")}
+                        </FieldRow>
+                        <FieldRow label="Mobile Number" value={form.mobile} mono>
+                          {editInput("mobile", "tel")}
+                        </FieldRow>
+                        <FieldRow label="WhatsApp Number" value={form.whatsapp} mono>
+                          {editInput("whatsapp", "tel")}
+                        </FieldRow>
+
+                        <div className={FIELD_GRID}>
+                          <label className={FIELD_LABEL}>Email Address</label>
+                          {isEditing ? (
+                            editInput("email", "email")
+                          ) : (
+                            <div className={FIELD_BOX()}>
+                              <span className="min-w-0 flex-1 truncate">
+                                {form.email ? (
+                                  <a
+                                    href={`mailto:${form.email}`}
+                                    className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
+                                  >
+                                    {form.email}
+                                  </a>
+                                ) : (
+                                  "—"
+                                )}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <FieldRow label="Institute Type" value={form.jobType}>
+                          {editSelect(
+                            "instituteTypeId",
+                            instituteTypes,
+                            "Select institute type",
+                            (value) => {
+                              updateDraft("instituteTypeId", value);
+                              updateDraft("jobCategoryId", "");
+                              updateDraft("jobRoleId", "");
+                            },
+                          )}
+                        </FieldRow>
+                        <FieldRow label="Job Category" value={form.jobCategory}>
+                          {editSelect(
+                            "jobCategoryId",
+                            jobCategories,
+                            "Select profession",
+                            (value) => {
+                              updateDraft("jobCategoryId", value);
+                              updateDraft("jobRoleId", "");
+                            },
+                          )}
+                        </FieldRow>
+                        <FieldRow label="Role" value={form.jobRole}>
+                          {editSelect("jobRoleId", jobRoles, "Select role")}
                         </FieldRow>
                         <FieldRow
-                          label="Current Designation"
-                          value={form.currentDesignation}
+                          label="Highest Qualification"
+                          value={form.highestQualification}
                         >
-                          {editInput("currentDesignation")}
+                          {editInput("highestQualification")}
                         </FieldRow>
-                        <FieldRow label="Current Salary" value={form.currentSalary}>
-                          {editInput("currentSalary", "number")}
+                        <FieldRow
+                          label="Speciality / Department"
+                          value={form.speciality}
+                        >
+                          {editInput("speciality")}
+                        </FieldRow>
+                        <FieldRow
+                          label="Professional Reg. No."
+                          value={form.professionalRegistrationNumber}
+                          mono
+                        >
+                          {editInput("professionalRegistrationNumber")}
                         </FieldRow>
                         <FieldRow
                           label="Total Experience (Years)"
@@ -1227,213 +1104,332 @@ const JobSeekerDetails = ({ mode }) => {
                         >
                           {editInput("totalExperience", "number")}
                         </FieldRow>
-                        <FieldRow label="Job Type" value={form.jobType}>
-                          {editSelect(
-                            "instituteTypeId",
-                            instituteTypes,
-                            "Select institute type",
-                          )}
+                        <FieldRow
+                          label="Current Designation"
+                          value={form.currentDesignation}
+                        >
+                          {editInput("currentDesignation")}
+                        </FieldRow>
+                        <FieldRow
+                          label="Status"
+                          value={active ? "Active" : "Inactive"}
+                        />
+                        <FieldRow label="Consent Given" value={form.consentGiven}>
+                          {yesNoSelect("consentGiven")}
                         </FieldRow>
                       </div>
                     </div>
-                  </section>
-                )}
+                  </div>
 
-                {/* -------- Job Preferences -------- */}
-                {tab === "preferences" && (
-                  <section className={SECTION_CARD}>
+                  {/* Current Location: Country → State → City */}
+                  <div className={SECTION_CARD}>
                     <div className={SECTION_BODY}>
-                      <h3 className={SECTION_TITLE}>Job Preferences</h3>
+                      <h3 className={SECTION_TITLE}>Current Location</h3>
                       <div className={FIELD_GRID_2}>
-                        <FieldRow
-                          label="Preferred Location"
-                          value={form.preferredJobLocation}
-                        >
+                        <FieldRow label="Country" value={form.currentCountry}>
                           {editSelect(
-                            "preferredLocationId",
+                            "countryId",
+                            countries,
+                            "Select country",
+                            (value) => {
+                              updateDraft("countryId", value);
+                              updateDraft("stateId", "");
+                              updateDraft("cityId", "");
+                              updateDraft("preferredLocationId", "");
+                            },
+                          )}
+                        </FieldRow>
+                        <FieldRow label="State" value={form.currentState}>
+                          {editSelect(
+                            "stateId",
+                            states,
+                            statePlaceholder,
+                            (value) => {
+                              updateDraft("stateId", value);
+                              updateDraft("cityId", "");
+                              updateDraft("preferredLocationId", "");
+                            },
+                          )}
+                        </FieldRow>
+                        <FieldRow label="City" value={form.currentCity}>
+                          {editSelect(
+                            "cityId",
                             cities,
                             cityPlaceholder,
-                          )}
-                        </FieldRow>
-                        <FieldRow label="Expected Salary" value={form.expectedSalary}>
-                          {editInput("expectedSalary", "number")}
-                        </FieldRow>
-                        <FieldRow
-                          label="Willing to Relocate?"
-                          value={form.willingToRelocate}
-                        >
-                          {yesNoSelect("willingToRelocate")}
-                        </FieldRow>
-                        <FieldRow
-                          label="Availability to Join"
-                          value={
-                            form.availabilityToJoin
-                              ? formatDate(form.availabilityToJoin)
-                              : form.availabilityToJoin
-                          }
-                        >
-                          {editInput("availabilityToJoin", "date")}
-                        </FieldRow>
-                        <FieldRow label="Job Category" value={form.jobCategory}>
-                          {editSelect(
-                            "jobCategoryId",
-                            jobCategories,
-                            "Select profession",
+                            (value) => {
+                              updateDraft("cityId", value);
+                              updateDraft("preferredLocationId", "");
+                            },
                           )}
                         </FieldRow>
                       </div>
                     </div>
-                  </section>
-                )}
+                  </div>
 
-                {/* -------- Upskilling -------- */}
-                {tab === "upskilling" && (
-                  <section className={SECTION_CARD}>
+                  {/* User Log */}
+                  <div className={SECTION_CARD}>
                     <div className={SECTION_BODY}>
-                      <h3 className={SECTION_TITLE}>Upskilling</h3>
+                      <h3 className={SECTION_TITLE}>User Log</h3>
                       <div className={FIELD_GRID_2}>
                         <FieldRow
-                          label="Wants to Upskill?"
-                          value={form.upskillingYesNo}
-                        >
-                          {yesNoSelect("upskillingYesNo")}
-                        </FieldRow>
+                          label="Created At"
+                          value={formatDateTime(form.createdAt)}
+                        />
+                        <FieldRow
+                          label="Created By"
+                          value={formatUser(form.CreatedByName)}
+                        />
+                        <FieldRow
+                          label="Updated At"
+                          value={formatDateTime(form.updatedAt)}
+                        />
+                        <FieldRow
+                          label="Updated By"
+                          value={formatUser(form.UpdatedByName)}
+                        />
+                        <FieldRow
+                          label="Activated At"
+                          value={formatDateTime(form.activatedAt)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
 
-                        {toBoolean(
-                          isEditing ? draft.upskillingYesNo : form.upskillingYesNo,
-                        ) ? (
-                          <FieldRow
-                            label="Upskilling Where"
-                            value={form.upskillingDetails}
-                          >
-                            {editInput("upskillingDetails")}
-                          </FieldRow>
-                        ) : (
-                          <FieldRow label="Interested?" value={form.interested}>
-                            {yesNoSelect("interested")}
-                          </FieldRow>
+              {/* -------- Current Employment -------- */}
+              {tab === "employment" && (
+                <section className={SECTION_CARD}>
+                  <div className={SECTION_BODY}>
+                    <h3 className={SECTION_TITLE}>Current Employment</h3>
+                    <div className={FIELD_GRID_2}>
+                      <FieldRow
+                        label="Current Employer"
+                        value={form.currentEmployment}
+                      >
+                        {editInput("currentEmployment")}
+                      </FieldRow>
+                      <FieldRow
+                        label="Current Designation"
+                        value={form.currentDesignation}
+                      >
+                        {editInput("currentDesignation")}
+                      </FieldRow>
+                      <FieldRow label="Current Salary" value={form.currentSalary}>
+                        {editInput("currentSalary", "number")}
+                      </FieldRow>
+                      <FieldRow
+                        label="Total Experience (Years)"
+                        value={form.totalExperience}
+                      >
+                        {editInput("totalExperience", "number")}
+                      </FieldRow>
+                      <FieldRow label="Job Type" value={form.jobType}>
+                        {editSelect(
+                          "instituteTypeId",
+                          instituteTypes,
+                          "Select institute type",
+                        )}
+                      </FieldRow>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* -------- Job Preferences -------- */}
+              {tab === "preferences" && (
+                <section className={SECTION_CARD}>
+                  <div className={SECTION_BODY}>
+                    <h3 className={SECTION_TITLE}>Job Preferences</h3>
+                    <div className={FIELD_GRID_2}>
+                      <FieldRow
+                        label="Preferred Location"
+                        value={form.preferredJobLocation}
+                      >
+                        {editSelect(
+                          "preferredLocationId",
+                          cities,
+                          cityPlaceholder,
+                        )}
+                      </FieldRow>
+                      <FieldRow label="Expected Salary" value={form.expectedSalary}>
+                        {editInput("expectedSalary", "number")}
+                      </FieldRow>
+                      <FieldRow
+                        label="Willing to Relocate?"
+                        value={form.willingToRelocate}
+                      >
+                        {yesNoSelect("willingToRelocate")}
+                      </FieldRow>
+                      <FieldRow
+                        label="Availability to Join"
+                        value={
+                          form.availabilityToJoin
+                            ? formatDate(form.availabilityToJoin)
+                            : form.availabilityToJoin
+                        }
+                      >
+                        {editInput("availabilityToJoin", "date")}
+                      </FieldRow>
+                      <FieldRow label="Job Category" value={form.jobCategory}>
+                        {editSelect(
+                          "jobCategoryId",
+                          jobCategories,
+                          "Select profession",
+                        )}
+                      </FieldRow>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* -------- Upskilling -------- */}
+              {tab === "upskilling" && (
+                <section className={SECTION_CARD}>
+                  <div className={SECTION_BODY}>
+                    <h3 className={SECTION_TITLE}>Upskilling</h3>
+                    <div className={FIELD_GRID_2}>
+                      <FieldRow
+                        label="Wants to Upskill?"
+                        value={form.upskillingYesNo}
+                      >
+                        {yesNoSelect("upskillingYesNo")}
+                      </FieldRow>
+
+                      {toBoolean(
+                        isEditing ? draft.upskillingYesNo : form.upskillingYesNo,
+                      ) ? (
+                        <FieldRow
+                          label="Upskilling Where"
+                          value={form.upskillingDetails}
+                        >
+                          {editInput("upskillingDetails")}
+                        </FieldRow>
+                      ) : (
+                        <FieldRow label="Interested?" value={form.interested}>
+                          {yesNoSelect("interested")}
+                        </FieldRow>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* -------- Documents (Resume/CV only) -------- */}
+              {tab === "resume" && (
+                <section className={SECTION_CARD}>
+                  <div className={SECTION_BODY}>
+                    <div className={`${FIELD_GRID} sm:items-start`}>
+                      <label className={`${FIELD_LABEL} sm:pt-2`}>
+                        Resume / CV
+                      </label>
+                      <div className="min-w-0">
+                        <DocumentBox doc={form.resume} />
+                        {isEditing && (
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                            className="mt-2 block w-full text-xs text-slate-600"
+                            onChange={(event) =>
+                              setUploadFile(event.target.files?.[0] ?? null)
+                            }
+                          />
                         )}
                       </div>
                     </div>
-                  </section>
-                )}
+                  </div>
+                </section>
+              )}
 
-                {/* -------- Documents (Resume/CV only) -------- */}
-                {tab === "resume" && (
-                  <section className={SECTION_CARD}>
-                    <div className={SECTION_BODY}>
-                      <div className={`${FIELD_GRID} sm:items-start`}>
-                        <label className={`${FIELD_LABEL} sm:pt-2`}>
-                          Resume / CV
-                        </label>
-                        <div className="min-w-0">
-                          <DocumentBox doc={form.resume} />
-                          {isEditing && (
-                            <input
-                              type="file"
-                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                              className="mt-2 block w-full text-xs text-slate-600"
-                              onChange={(event) =>
-                                setUploadFile(event.target.files?.[0] ?? null)
-                              }
-                            />
-                          )}
-                        </div>
-                      </div>
+              {/* -------- Applied Jobs (hidden; re-add to NAV to enable) -------- */}
+              {tab === "jobs" && (
+                <section className={SECTION_CARD}>
+                  <div className={SECTION_BODY}>
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="font-semibold text-[#1a2b3c]">
+                        Applied Jobs
+                      </h3>
+                      <p className="text-xs text-[#5b6b7c]">
+                        {totalRecords} application
+                        {totalRecords !== 1 ? "s" : ""}
+                      </p>
                     </div>
-                  </section>
-                )}
 
-                {/* -------- Applied Jobs (hidden; re-add to NAV to enable) -------- */}
-                {tab === "jobs" && (
-                  <section className={SECTION_CARD}>
-                    <div className={SECTION_BODY}>
-                      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="font-semibold text-[#1a2b3c]">
-                          Applied Jobs
-                        </h3>
-                        <p className="text-xs text-[#5b6b7c]">
-                          {totalRecords} application
-                          {totalRecords !== 1 ? "s" : ""}
+                    {jobsLoading && (
+                      <div className="px-4 py-12 text-center">
+                        <p className="text-[#5b6b7c]">Loading applied jobs…</p>
+                      </div>
+                    )}
+
+                    {jobsError && !jobsLoading && (
+                      <div className="px-4 py-8 text-center text-[#5b6b7c]">
+                        {jobsError}
+                      </div>
+                    )}
+
+                    {!jobsLoading && !jobsError && appliedJobs.length === 0 && (
+                      <div className="px-4 py-12 text-center">
+                        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                          <Inbox size={22} />
+                        </div>
+                        <p className="mt-3 text-[15px] text-[#1e2b3c]">
+                          No applied jobs yet
                         </p>
                       </div>
+                    )}
 
-                      {jobsLoading && (
-                        <div className="px-4 py-12 text-center">
-                          <p className="text-[#5b6b7c]">Loading applied jobs…</p>
-                        </div>
-                      )}
-
-                      {jobsError && !jobsLoading && (
-                        <div className="px-4 py-8 text-center text-[#5b6b7c]">
-                          {jobsError}
-                        </div>
-                      )}
-
-                      {!jobsLoading && !jobsError && appliedJobs.length === 0 && (
-                        <div className="px-4 py-12 text-center">
-                          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                            <Inbox size={22} />
-                          </div>
-                          <p className="mt-3 text-[15px] text-[#1e2b3c]">
-                            No applied jobs yet
-                          </p>
-                        </div>
-                      )}
-
-                      {!jobsLoading && !jobsError && appliedJobs.length > 0 && (
-                        <div className="overflow-x-auto">
-                          <table className="w-full border-collapse text-sm">
-                            <thead>
-                              <tr className="border-b border-[#e3e8ee]">
-                                {[
-                                  "Position",
-                                  "Organization",
-                                  "Location",
-                                  "Job Status",
-                                  "Applied On",
-                                ].map((h) => (
-                                  <th
-                                    key={h}
-                                    className="whitespace-nowrap pb-2 text-left text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]"
-                                  >
-                                    {h}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {appliedJobs.map((application) => (
-                                <tr
-                                  key={application.id}
-                                  className="border-b border-[#e3e8ee] last:border-0"
+                    {!jobsLoading && !jobsError && appliedJobs.length > 0 && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-sm">
+                          <thead>
+                            <tr className="border-b border-[#e3e8ee]">
+                              {[
+                                "Position",
+                                "Organization",
+                                "Location",
+                                "Job Status",
+                                "Applied On",
+                              ].map((h) => (
+                                <th
+                                  key={h}
+                                  className="whitespace-nowrap pb-2 text-left text-[11.5px] font-semibold uppercase tracking-wide text-[#5b6b7c]"
                                 >
-                                  <td className="whitespace-nowrap py-3 font-medium text-[#1a2b3c]">
-                                    {text(application.position)}
-                                  </td>
-                                  <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
-                                    {text(application.organizationName)}
-                                  </td>
-                                  <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
-                                    {text(application.location)}
-                                  </td>
-                                  <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
-                                    {application.jobStatus}
-                                  </td>
-                                  <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
-                                    {formatDate(application.appliedDate)}
-                                  </td>
-                                </tr>
+                                  {h}
+                                </th>
                               ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </section>
-                )}
-              </main>
-            </div>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {appliedJobs.map((application) => (
+                              <tr
+                                key={application.id}
+                                className="border-b border-[#e3e8ee] last:border-0"
+                              >
+                                <td className="whitespace-nowrap py-3 font-medium text-[#1a2b3c]">
+                                  {text(application.position)}
+                                </td>
+                                <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
+                                  {text(application.organizationName)}
+                                </td>
+                                <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
+                                  {text(application.location)}
+                                </td>
+                                <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
+                                  {application.jobStatus}
+                                </td>
+                                <td className="whitespace-nowrap py-3 text-[#1a2b3c]">
+                                  {formatDate(application.appliedDate)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+            </main>
           </div>
         </div>
       </div>
