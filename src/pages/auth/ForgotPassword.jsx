@@ -2,11 +2,22 @@ import { useState } from "react";
 import {
   sendForgotPasswordOtpApi,
   verifyForgotPasswordOtpApi,
-  updatePasswordByEmailApi,
+  updatePasswordApi,
 } from "../../api/authApi";
+import {
+  sendOtp as sendSmsOtpApi,
+  verifyOtp as verifySmsOtpApi,
+} from "../../api/Services/smsOtpSerivce";
 
+/* ---------- Helpers ---------- */
+
+// Handles axios errors (err.response.data) and the plain { success, message }
+// objects thrown by smsOtpApi's normalizeError.
 const getErrorMessage = (err, fallback) =>
-  err?.response?.data?.Message || err?.response?.data?.message || fallback;
+  err?.response?.data?.Message ||
+  err?.response?.data?.message ||
+  (err?.isAxiosError ? fallback : err?.message) ||
+  fallback;
 
 /* ---------- Icons ---------- */
 
@@ -29,6 +40,13 @@ const MailIcon = () => (
   <IconWrap>
     <rect x="3" y="5" width="18" height="14" rx="2" />
     <path d="m3 7 9 6 9-6" />
+  </IconWrap>
+);
+
+const PhoneIcon = () => (
+  <IconWrap>
+    <rect x="7" y="2" width="10" height="20" rx="2" />
+    <path d="M11 18h2" />
   </IconWrap>
 );
 
@@ -112,9 +130,11 @@ const PasswordField = ({ placeholder, value, onChange, disabled }) => {
 /* ---------- Page ---------- */
 
 const ForgotPassword = () => {
-  // 1: email, 2: OTP, 3: new password, 4: done
+  // 1: choose method + identifier, 2: OTP, 3: new password, 4: done
   const [step, setStep] = useState(1);
+  const [method, setMethod] = useState("email"); // "email" | "phone"
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -122,12 +142,22 @@ const ForgotPassword = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const isEmail = method === "email";
+  const identifier = isEmail ? { email } : { phoneNumber: phone };
+  const displayTarget = isEmail ? email : phone;
+
+  // Both email and SMS APIs can return { success: false } without throwing,
+  // so check that before moving on.
   const run = async (action, onSuccess, fallbackError) => {
     setError("");
     setMessage("");
     setLoading(true);
     try {
       const res = await action();
+      if (res?.success === false) {
+        setError(res.message || res.Message || fallbackError);
+        return;
+      }
       onSuccess(res);
     } catch (err) {
       setError(getErrorMessage(err, fallbackError));
@@ -136,12 +166,19 @@ const ForgotPassword = () => {
     }
   };
 
+  const handleMethodChange = (next) => {
+    if (loading) return;
+    setMethod(next);
+    setError("");
+    setMessage("");
+  };
+
   const handleSendOtp = (e) => {
     e?.preventDefault();
     run(
-      () => sendForgotPasswordOtpApi(email),
+      () => (isEmail ? sendForgotPasswordOtpApi(email) : sendSmsOtpApi(phone)),
       (res) => {
-        setMessage(res.Message || "OTP sent to your email.");
+        setMessage(res?.Message || res?.message || "OTP sent.");
         setStep(2);
       },
       "Failed to send OTP. Please try again."
@@ -151,9 +188,12 @@ const ForgotPassword = () => {
   const handleVerifyOtp = (e) => {
     e.preventDefault();
     run(
-      () => verifyForgotPasswordOtpApi(email, otp),
+      () =>
+        isEmail
+          ? verifyForgotPasswordOtpApi(email, otp)
+          : verifySmsOtpApi(phone, otp),
       (res) => {
-        setMessage(res.Message || "OTP verified.");
+        setMessage(res?.Message || res?.message || "OTP verified.");
         setStep(3);
       },
       "Invalid or expired OTP."
@@ -167,9 +207,9 @@ const ForgotPassword = () => {
       return;
     }
     run(
-      () => updatePasswordByEmailApi(email, newPassword),
+      () => updatePasswordApi({ ...identifier, newPassword }),
       (res) => {
-        setMessage(res.Message || "Password reset successfully.");
+        setMessage(res?.Message || res?.message || "Password reset successfully.");
         setStep(4);
       },
       "Failed to reset password."
@@ -184,8 +224,8 @@ const ForgotPassword = () => {
   };
 
   const descriptions = {
-    1: "Enter your email to receive a verification code.",
-    2: `Enter the 6-digit code sent to ${email}.`,
+    1: `Choose how you'd like to receive your verification code.`,
+    2: `Enter the 6-digit code sent to ${displayTarget}.`,
     3: "Choose a new password for your account.",
     4: "Your password has been updated. You can now sign in.",
   };
@@ -193,11 +233,18 @@ const ForgotPassword = () => {
   const buttonClass =
     "w-full rounded-xl bg-gradient-to-r from-[#4a86a4] to-[#2f6b8a] py-3.5 font-semibold text-white shadow-md hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60";
 
+  const tabClass = (active) =>
+    `flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
+      active
+        ? "bg-white text-[#2f6b8a] shadow-sm"
+        : "text-slate-500 hover:text-slate-700"
+    } disabled:opacity-60`;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#eef3f5] p-4 ">
-      <div className="grid h-[90vh] w-full max-w-4xl overflow-hidden rounded-[28px] bg-white shadow-[0_20px_60px_rgba(47,107,138,0.18)] md:grid-cols-2">
+    <div className="flex min-h-screen items-center justify-center bg-[#eef3f5] p-4">
+      <div className="grid h-[90vh] w-full max-w-5xl overflow-hidden rounded-[28px] bg-white shadow-[0_20px_60px_rgba(47,107,138,0.18)] md:grid-cols-2">
         {/* Left brand panel */}
-        <div className="relative hidden flex-col  overflow-hidden bg-gradient-to-br from-[#4a86a4] via-[#2f6b8a] to-[#25586f] p-10 text-white md:flex">
+        <div className="relative hidden flex-col overflow-hidden bg-gradient-to-br from-[#4a86a4] via-[#2f6b8a] to-[#25586f] p-10 text-white md:flex">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/30 bg-white/15">
               <PulseIcon />
@@ -206,7 +253,7 @@ const ForgotPassword = () => {
           </div>
 
           <div>
-            <h2 className="text-4xl mt-14 font-bold leading-tight">
+            <h2 className="mt-14 text-4xl font-bold leading-tight">
               Where hiring
               <br />
               finds its
@@ -217,7 +264,6 @@ const ForgotPassword = () => {
               Post openings, shortlist candidates and track every hire.
             </p>
           </div>
-
         </div>
 
         {/* Right form panel */}
@@ -240,23 +286,69 @@ const ForgotPassword = () => {
               </div>
             )}
 
+            {/* Step 1: choose method and enter identifier */}
             {step === 1 && (
               <form onSubmit={handleSendOtp} className="space-y-4">
-                <IconField
-                  icon={<MailIcon />}
-                  type="email"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={loading}
-                />
+                <div
+                  role="tablist"
+                  className="flex gap-1 rounded-xl bg-slate-100 p-1"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={isEmail}
+                    onClick={() => handleMethodChange("email")}
+                    disabled={loading}
+                    className={tabClass(isEmail)}
+                  >
+                    Email
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={!isEmail}
+                    onClick={() => handleMethodChange("phone")}
+                    disabled={loading}
+                    className={tabClass(!isEmail)}
+                  >
+                    Mobile number
+                  </button>
+                </div>
+
+                {isEmail ? (
+                  <IconField
+                    key="email"
+                    icon={<MailIcon />}
+                    type="email"
+                    placeholder="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    disabled={loading}
+                  />
+                ) : (
+                  <IconField
+                    key="phone"
+                    icon={<PhoneIcon />}
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="Mobile number"
+                    value={phone}
+                    onChange={(e) =>
+                      setPhone(e.target.value.replace(/\D/g, "").slice(0, 15))
+                    }
+                    required
+                    disabled={loading}
+                  />
+                )}
+
                 <button type="submit" disabled={loading} className={buttonClass}>
                   {loading ? "Sending..." : "Send OTP"}
                 </button>
               </form>
             )}
 
+            {/* Step 2: verify OTP */}
             {step === 2 && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <input
@@ -288,9 +380,25 @@ const ForgotPassword = () => {
                     Resend OTP
                   </button>
                 </p>
+                <p className="text-center text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOtp("");
+                      setError("");
+                      setMessage("");
+                      setStep(1);
+                    }}
+                    disabled={loading}
+                    className="text-slate-500 hover:text-slate-700 disabled:opacity-60"
+                  >
+                    Change {isEmail ? "email" : "mobile number"}
+                  </button>
+                </p>
               </form>
             )}
 
+            {/* Step 3: new password */}
             {step === 3 && (
               <form onSubmit={handleResetPassword} className="space-y-4">
                 <PasswordField
@@ -311,6 +419,7 @@ const ForgotPassword = () => {
               </form>
             )}
 
+            {/* Step 4: done */}
             {step === 4 && (
               <div className="space-y-6">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#2f6b8a]/10 text-[#2f6b8a]">

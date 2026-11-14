@@ -32,3 +32,10 @@ export const updatePasswordByEmailApi = async (email, pass) => {
   });
   return response.data;
 };
+export const updatePasswordApi = async ({ email, phoneNumber, newPassword }) => {
+  const params = email ? { email } : { phoneNumber };
+  params.pass = newPassword;
+
+  const { data } = await axiosInstance.patch("/Auth/UpdatePasswordyEmail", null, { params });
+  return data;
+};
