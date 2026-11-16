@@ -9,6 +9,7 @@ import {
   EyeOff,
   Check,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
 import StatusModal from "../../../components/common/StatusModal";
@@ -67,20 +68,31 @@ const inputClass = (hasError) =>
 
 /* ------------------------------ UI PIECES ------------------------------ */
 
-const Field = ({ label, required, error, full, alignTop, children }) => (
+const Field = ({
+  label,
+  required,
+  error,
+  full,
+  alignTop,
+  labelAction,
+  children,
+}) => (
   <div
     className={`flex flex-col gap-1.5 md:flex-row md:gap-3 ${
       alignTop ? "md:items-start" : "md:items-center"
     } ${full ? "md:col-span-2" : ""}`}
   >
-    <label
-      className={`text-sm font-medium text-slate-700 md:w-44 md:shrink-0 ${
+    <div
+      className={`flex items-center gap-1.5 md:w-44 md:shrink-0 ${
         alignTop ? "md:pt-2.5" : ""
       }`}
     >
-      {label}
-      {required && <span className="ml-1 text-red-500">*</span>}
-    </label>
+      <label className="text-sm font-medium text-slate-700">
+        {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
+      </label>
+      {labelAction}
+    </div>
     <div className="min-w-0 flex-1">
       {children}
       {error && (
@@ -126,7 +138,7 @@ const PasswordRules = ({ password }) => {
   ];
 
   return (
-    <ul className="mt-2 space-y-1 flex grid grid-cols-1 gap-1 text-slate-500 sm:grid-cols-2">
+    <ul className="mt-2 space-y-1 grid grid-cols-1 gap-1 text-slate-500 sm:grid-cols-1">
       {items.map((item) => (
         <li
           key={item.text}
@@ -158,6 +170,8 @@ const UserManagementForm = ({ mode = "create" }) => {
 
   const isCreate = mode === "create";
   const isView = mode === "view";
+
+  const [showPasswordInfo, setShowPasswordInfo] = useState(false);
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [savedForm, setSavedForm] = useState(EMPTY_FORM);
@@ -481,6 +495,22 @@ const UserManagementForm = ({ mode = "create" }) => {
                         required
                         error={errors.password}
                         alignTop
+                        labelAction={
+                          <button
+                            type="button"
+                            onClick={() => setShowPasswordInfo((s) => !s)}
+                            aria-expanded={showPasswordInfo}
+                            aria-label="Show password requirements"
+                            title="Password requirements"
+                            className={`grid h-5 w-5 place-items-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6b8a]/40 ${
+                              showPasswordInfo
+                                ? "bg-[#2f6b8a] text-white"
+                                : "text-slate-400 hover:text-[#2f6b8a]"
+                            }`}
+                          >
+                            <Info size={14} strokeWidth={2.2} />
+                          </button>
+                        }
                       >
                         <PasswordInput
                           name="password"
@@ -492,7 +522,9 @@ const UserManagementForm = ({ mode = "create" }) => {
                           onToggle={() => setShowPassword((s) => !s)}
                           hasError={!!errors.password}
                         />
-                        <PasswordRules password={form.password} />
+                        {showPasswordInfo && (
+                          <PasswordRules password={form.password} />
+                        )}
                       </Field>
 
                       <Field
