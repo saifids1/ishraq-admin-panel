@@ -1,21 +1,24 @@
 import { useState } from "react";
 import {
-  sendForgotPasswordOtpApi,
-  verifyForgotPasswordOtpApi,
+  sendOtp,
+  verifyOtp,
   updatePasswordApi,
 } from "../../api/authApi";
-import {
-  sendOtp as sendSmsOtpApi,
-  verifyOtp as verifySmsOtpApi,
-} from "../../api/Services/smsOtpSerivce";
 
 /* ---------- Helpers ---------- */
 
-// Handles axios errors (err.response.data) and the plain { success, message }
-// objects thrown by smsOtpApi's normalizeError.
+// Matches the backend normalization: emails are lowercased, phones keep digits and "+".
+const normalizeIdentifier = (value) => {
+  const v = value.trim();
+  return v.includes("@") ? v.toLowerCase() : v.replace(/[^\d+]/g, "");
+};
+
+const looksLikePhone = (value) => /^\+?\d/.test(value.trim());
+
+// Handles axios errors (err.response.data) and plain Error objects.
 const getErrorMessage = (err, fallback) =>
-  err?.response?.data?.Message ||
   err?.response?.data?.message ||
+  err?.response?.data?.Message ||
   (err?.isAxiosError ? fallback : err?.message) ||
   fallback;
 
@@ -130,11 +133,9 @@ const PasswordField = ({ placeholder, value, onChange, disabled }) => {
 /* ---------- Page ---------- */
 
 const ForgotPassword = () => {
-  // 1: choose method + identifier, 2: OTP, 3: new password, 4: done
+  // 1: enter identifier, 2: OTP, 3: new password, 4: done
   const [step, setStep] = useState(1);
-  const [method, setMethod] = useState("email"); // "email" | "phone"
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -142,12 +143,9 @@ const ForgotPassword = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const isEmail = method === "email";
-  const identifier = isEmail ? { email } : { phoneNumber: phone };
-  const displayTarget = isEmail ? email : phone;
+  const normalized = normalizeIdentifier(identifier);
+  const isEmail = normalized.includes("@");
 
-  // Both email and SMS APIs can return { success: false } without throwing,
-  // so check that before moving on.
   const run = async (action, onSuccess, fallbackError) => {
     setError("");
     setMessage("");
@@ -166,19 +164,21 @@ const ForgotPassword = () => {
     }
   };
 
-  const handleMethodChange = (next) => {
-    if (loading) return;
-    setMethod(next);
-    setError("");
-    setMessage("");
-  };
-
   const handleSendOtp = (e) => {
     e?.preventDefault();
     run(
-      () => (isEmail ? sendForgotPasswordOtpApi(email) : sendSmsOtpApi(phone)),
+      () => sendOtp(normalized),
       (res) => {
-        setMessage(res?.Message || res?.message || "OTP sent.");
+        const channels = [
+          res?.emailSent && "email",
+          res?.smsSent && "mobile number",
+        ].filter(Boolean);
+
+        setMessage(
+          channels.length
+            ? `OTP sent to your ${channels.join(" and ")}.`
+            : res?.message || "OTP sent."
+        );
         setStep(2);
       },
       "Failed to send OTP. Please try again."
@@ -188,12 +188,9 @@ const ForgotPassword = () => {
   const handleVerifyOtp = (e) => {
     e.preventDefault();
     run(
-      () =>
-        isEmail
-          ? verifyForgotPasswordOtpApi(email, otp)
-          : verifySmsOtpApi(phone, otp),
+      () => verifyOtp(normalized, otp),
       (res) => {
-        setMessage(res?.Message || res?.message || "OTP verified.");
+        setMessage(res?.message || res?.Message || "OTP verified.");
         setStep(3);
       },
       "Invalid or expired OTP."
@@ -207,9 +204,13 @@ const ForgotPassword = () => {
       return;
     }
     run(
-      () => updatePasswordApi({ ...identifier, newPassword }),
+      () =>
+        updatePasswordApi({
+          ...(isEmail ? { email: normalized } : { phoneNumber: normalized }),
+          newPassword,
+        }),
       (res) => {
-        setMessage(res?.Message || res?.message || "Password reset successfully.");
+        setMessage(res?.message || res?.Message || "Password reset successfully.");
         setStep(4);
       },
       "Failed to reset password."
@@ -224,21 +225,14 @@ const ForgotPassword = () => {
   };
 
   const descriptions = {
-    1: `Choose how you'd like to receive your verification code.`,
-    2: `Enter the 6-digit code sent to ${displayTarget}.`,
+    1: "Enter the email or mobile number registered on your account. We'll send a verification code to it.",
+    2: `Enter the 6-digit code sent to ${identifier.trim()}.`,
     3: "Choose a new password for your account.",
     4: "Your password has been updated. You can now sign in.",
   };
 
   const buttonClass =
     "w-full rounded-xl bg-gradient-to-r from-[#4a86a4] to-[#2f6b8a] py-3.5 font-semibold text-white shadow-md hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60";
-
-  const tabClass = (active) =>
-    `flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
-      active
-        ? "bg-white text-[#2f6b8a] shadow-sm"
-        : "text-slate-500 hover:text-slate-700"
-    } disabled:opacity-60`;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#eef3f5] p-4">
@@ -269,7 +263,7 @@ const ForgotPassword = () => {
         {/* Right form panel */}
         <div className="flex flex-col justify-center p-8 sm:p-12">
           <p className="mb-2 text-sm font-medium text-[#2f6b8a]">
-            Step {step} of 3
+            Step {Math.min(step, 3)} of 3
           </p>
           <h1 className="text-3xl font-bold text-slate-900">{titles[step]}</h1>
           <p className="mt-2 text-sm text-slate-500">{descriptions[step]}</p>
@@ -286,63 +280,23 @@ const ForgotPassword = () => {
               </div>
             )}
 
-            {/* Step 1: choose method and enter identifier */}
+            {/* Step 1: single identifier input */}
             {step === 1 && (
               <form onSubmit={handleSendOtp} className="space-y-4">
-                <div
-                  role="tablist"
-                  className="flex gap-1 rounded-xl bg-slate-100 p-1"
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={isEmail}
-                    onClick={() => handleMethodChange("email")}
-                    disabled={loading}
-                    className={tabClass(isEmail)}
-                  >
-                    Email
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={!isEmail}
-                    onClick={() => handleMethodChange("phone")}
-                    disabled={loading}
-                    className={tabClass(!isEmail)}
-                  >
-                    Mobile number
-                  </button>
-                </div>
+                <IconField
+                  icon={looksLikePhone(identifier) ? <PhoneIcon /> : <MailIcon />}
+                  type="text"
+                  inputMode="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  placeholder="Enter registered email or phone number"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  required
+                  disabled={loading}
+                />
 
-                {isEmail ? (
-                  <IconField
-                    key="email"
-                    icon={<MailIcon />}
-                    type="email"
-                    placeholder="Email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={loading}
-                  />
-                ) : (
-                  <IconField
-                    key="phone"
-                    icon={<PhoneIcon />}
-                    type="tel"
-                    inputMode="numeric"
-                    placeholder="Mobile number"
-                    value={phone}
-                    onChange={(e) =>
-                      setPhone(e.target.value.replace(/\D/g, "").slice(0, 15))
-                    }
-                    required
-                    disabled={loading}
-                  />
-                )}
-
-                <button type="submit" disabled={loading} className={buttonClass}>
+                <button type="submit" disabled={loading || !normalized} className={buttonClass}>
                   {loading ? "Sending..." : "Send OTP"}
                 </button>
               </form>
@@ -392,7 +346,7 @@ const ForgotPassword = () => {
                     disabled={loading}
                     className="text-slate-500 hover:text-slate-700 disabled:opacity-60"
                   >
-                    Change {isEmail ? "email" : "mobile number"}
+                    Change email or mobile number
                   </button>
                 </p>
               </form>

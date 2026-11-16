@@ -39,3 +39,15 @@ export const updatePasswordApi = async ({ email, phoneNumber, newPassword }) => 
   const { data } = await axiosInstance.patch("/Auth/UpdatePasswordyEmail", null, { params });
   return data;
 };
+
+/** POST /api/Otp/send */
+export const sendOtp = async (identifier) => {
+  const response = await axiosInstance.post("/Otp/send", { identifier });
+  return response.data;
+};
+
+/** POST /api/Otp/verify */
+export const verifyOtp = async (identifier, otp) => {
+  const response = await axiosInstance.post("/Otp/verify", { identifier, otp });
+  return response.data;
+};
