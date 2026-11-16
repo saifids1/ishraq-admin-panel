@@ -69,7 +69,7 @@ const CARD_STATUS_DOT = {
   Closed: "bg-slate-400",
 };
 
-/* ---------------- Shared field styles (same as JobSeekerDetails) ---------------- */
+/* ---------------- Shared field styles ---------------- */
 const FIELD_LABEL = `text-[13px] font-semibold tracking-wide ${T.textFaint}`;
 const FIELD_BOX = (mono) =>
   `flex h-9 w-full min-w-0 items-center rounded-md border ${T.border} bg-[#fbfcfd] px-3 text-[13px] font-medium ${T.text} ${
@@ -80,10 +80,9 @@ const BTN_PRIMARY =
   "inline-flex items-center gap-2 rounded-lg bg-[#2f6b8a] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25566f]";
 const EDIT_INPUT =
   "h-9 w-full min-w-0 rounded-md border border-[#c9d5dd] bg-white px-3 text-[13px] text-[#1a2b3c] outline-none focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/20 disabled:bg-slate-100 disabled:text-slate-500";
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MOBILE_RE = /^\d{10}$/;
 
-/* ---------------- Card primitive (identical to JobSeekerDetails) ---------------- */
+/* ---------------- Card primitive ---------------- */
 function Card({ title, action, children, className = "" }) {
   return (
     <section
@@ -106,13 +105,22 @@ function Card({ title, action, children, className = "" }) {
   );
 }
 
-/* ---------------- FieldRow (responsive: stacks on mobile) ---------------- */
-const FieldRow = ({ label, value, mono = false, children }) => {
+/* ---------------- FieldRow (stacks on mobile) ----------------
+   Pass children only for editable fields. Without children the
+   field is shown read-only. The red asterisk appears only while editing. */
+const FieldRow = ({ label, value, mono = false, required = false, children }) => {
   const isEditing = children !== undefined && children !== null;
 
   return (
     <div className="grid grid-cols-1 items-start gap-1 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-center sm:gap-3">
-      <label className={`${FIELD_LABEL} text-left sm:text-right`}>{label}</label>
+      <label className={`${FIELD_LABEL} text-left sm:text-left`}>
+        {label}
+        {isEditing && required && (
+          <span className="ml-0.5 text-red-500" aria-hidden="true">
+            *
+          </span>
+        )}
+      </label>
 
       {isEditing ? (
         <div className="min-w-0">{children}</div>
@@ -127,7 +135,7 @@ const FieldRow = ({ label, value, mono = false, children }) => {
   );
 };
 
-/* ---------------- Nav ---------------- */
+/* ---------------- Tabs ---------------- */
 const NAV = [
   { id: "overview", label: "Overview", icon: Building2 },
   { id: "jobs", label: "Job Requirements", icon: BriefcaseBusiness },
@@ -158,8 +166,8 @@ const getErrorMessage = (error, fallback) =>
   fallback;
 
 const draftFromEmployer = (emp) => ({
-  email: emp?.email ?? emp?.userName ?? "",
   mobile: emp?.mobile ?? "",
+  whatsappNumber: emp?.eM_whatsapp_number ?? "",
   fullName: emp?.fullName ?? "",
   organizationName: emp?.eM_organization_name ?? "",
   instituteTypeId: String(emp?.eM_institute_type_id ?? ""),
@@ -169,7 +177,6 @@ const draftFromEmployer = (emp) => ({
   stateId: String(emp?.eM_state_id ?? ""),
   cityId: String(emp?.eM_city_id ?? ""),
   website: emp?.eM_website ?? "",
-  consentGiven: Boolean(emp?.eM_consent_given),
 });
 
 const parseDate = (value) => {
@@ -236,25 +243,6 @@ const EmployerProfile = ({ mode }) => {
   const [draft, setDraft] = useState({});
   const [modal, setModal] = useState(null);
 
-  const openStatus = (type, message, extra = {}) => {
-    setModal({
-      type,
-      message,
-      confirmText: extra.confirmText || "OK",
-      cancelText: extra.cancelText || "Cancel",
-      showCancel: false,
-      title: extra.title,
-      onConfirm: () => {
-        setModal(null);
-        extra.onConfirm?.();
-      },
-      onCancel: () => {
-        setModal(null);
-        extra.onCancel?.();
-      },
-    });
-  };
-
   const openConfirm = ({
     title,
     message,
@@ -319,7 +307,7 @@ const EmployerProfile = ({ mode }) => {
     };
   }, [isEditing]);
 
-  /* --------------------------- Level 2: states for the draft country (by id) --------------------------- */
+  /* --------------------------- Level 2: states for the draft country --------------------------- */
 
   useEffect(() => {
     if (!isEditing) return undefined;
@@ -352,7 +340,7 @@ const EmployerProfile = ({ mode }) => {
     };
   }, [isEditing, draft.countryId]);
 
-  /* --------------------------- Level 3: cities for the draft state (by id) --------------------------- */
+  /* --------------------------- Level 3: cities for the draft state --------------------------- */
 
   useEffect(() => {
     if (!isEditing) return undefined;
@@ -495,25 +483,21 @@ const EmployerProfile = ({ mode }) => {
       !draft.instituteTypeId ||
       !draft.contactPerson.trim() ||
       !draft.designation.trim() ||
-      !draft.email.trim() ||
       !draft.mobile.trim() ||
+      !draft.whatsappNumber.trim() ||
       !draft.countryId ||
       !draft.stateId ||
       !draft.cityId
     ) {
-      setEditError("Complete all required employer fields before saving.");
+      setEditError("Complete all required fields (marked *) before saving.");
       return;
     }
     if (!MOBILE_RE.test(draft.mobile.trim())) {
       setEditError("Mobile must be exactly 10 digits.");
       return;
     }
-    if (!EMAIL_RE.test(draft.email.trim())) {
-      setEditError("Enter a valid email address.");
-      return;
-    }
-    if (!draft.consentGiven) {
-      setEditError("Please provide consent before submitting.");
+    if (!MOBILE_RE.test(draft.whatsappNumber.trim())) {
+      setEditError("WhatsApp number must be exactly 10 digits.");
       return;
     }
     if (
@@ -541,10 +525,12 @@ const EmployerProfile = ({ mode }) => {
       setSaving(true);
       setEditError("");
       try {
+        // Employer ID, email, status, consent and the user log are read-only,
+        // so they are intentionally not part of this payload.
         await updateEmployer(id, {
           eM_employer_id: Number(id),
-          email: draft.email.trim(),
           mobile: draft.mobile.trim(),
+          eM_whatsapp_number: draft.whatsappNumber.trim(),
           fullName: draft.fullName.trim(),
           eM_organization_name: draft.organizationName.trim(),
           eM_institute_type_id: Number(draft.instituteTypeId),
@@ -554,9 +540,7 @@ const EmployerProfile = ({ mode }) => {
           eM_state_id: Number(draft.stateId),
           eM_city_id: Number(draft.cityId),
           eM_website: draft.website.trim(),
-          eM_consent_given: Boolean(draft.consentGiven),
-          eM_created_by: emp.eM_created_by,
-          EM_updated_by: userId,
+          eM_updated_by: userId,
         });
         setIsEditing(false);
         setRefreshKey((current) => current + 1);
@@ -620,9 +604,9 @@ const EmployerProfile = ({ mode }) => {
     <div className={`min-h-full ${T.bg}`}>
       <div className="mx-auto">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          {/* MAIN HEADER */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
-            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          {/* HEADER: back, org name, employer ID, actions */}
+          <div className="flex flex-wrap justify-between items-center gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
+            <div className="flex min-w-0  flex-wrap items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={() => navigate(-1)}
@@ -633,10 +617,20 @@ const EmployerProfile = ({ mode }) => {
                 <ChevronsLeft size={18} strokeWidth={2} />
               </button>
 
-              <h2 className="truncate font-semibold text-slate-800">
+              <h2 className="min-w-0 truncate font-semibold text-slate-800">
                 {pageTitle}
               </h2>
+
+              {/* <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md bg-slate-100 px-2 text-[12px] text-slate-600 ring-1 ring-inset ring-slate-200">
+                <span className="font-semibold text-slate-500">Employer ID</span>
+                <span className="font-mono font-semibold text-[#1a2b3c]">
+                  {val(emp.eM_request_no)} ---
+                </span>
+              </span> */}
             </div>
+             <h2 className="min-w-0 truncate font-semibold text-slate-800">
+                {val(emp.eM_request_no)}
+              </h2>
 
             <div className="flex shrink-0 items-center gap-2">
               {isEditing ? (
@@ -679,469 +673,426 @@ const EmployerProfile = ({ mode }) => {
             </div>
           )}
 
-          {/* BODY */}
-          <div className="p-3 sm:p-4">
-            <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[200px_1fr]">
-              {/* LEFT: vertical nav — becomes horizontal on mobile */}
-              <aside className="md:sticky md:top-4 md:h-fit md:w-[11rem]">
-                <nav
-                  aria-label="Employer sections"
-                  className={`${T.surface} ${T.radius} border ${T.border} overflow-x-auto p-1.5 ${T.cardShadow}`}
+          {/* HORIZONTAL TABS */}
+          <nav
+            aria-label="Employer sections"
+            className="flex gap-1 overflow-x-auto border-b border-slate-200 px-3 sm:px-4"
+          >
+            {NAV.map((n) => {
+              const on = tab === n.id;
+              const Icon = n.icon;
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => setTab(n.id)}
+                  aria-current={on ? "page" : undefined}
+                  className={`group -mb-px flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-[13px] font-semibold whitespace-nowrap transition ${
+                    on
+                      ? "border-[#2f6b8a] text-[#1e5a7a]"
+                      : "border-transparent text-[#5b6b7c] hover:border-[#c9d5dd] hover:text-[#1a2b3c]"
+                  }`}
                 >
-                  <div className="flex min-w-max gap-1 md:min-w-0 md:flex-col">
-                    {NAV.map((n) => {
-                      const on = tab === n.id;
-                      const Icon = n.icon;
-                      return (
-                        <button
-                          key={n.id}
-                          type="button"
-                          onClick={() => setTab(n.id)}
-                          aria-current={on ? "page" : undefined}
-                          className={`group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition ${
-                            on
-                              ? "bg-[#eaf2f7] text-[#1e5a7a]"
-                              : "text-[#5b6b7c] hover:bg-[#f3f6f9] hover:text-[#1a2b3c]"
-                          }`}
+                  <Icon
+                    size={15}
+                    className={
+                      on
+                        ? "text-[#1e5a7a]"
+                        : "text-[#8895a4] group-hover:text-[#5b6b7c]"
+                    }
+                  />
+                  {n.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* CONTENT */}
+          <main className="min-w-0 p-3 sm:p-4 bg-white">
+            {/* -------- Overview -------- */}
+            {tab === "overview" && (
+              <div className="space-y-4 sm:space-y-6">
+                {/* Organization Details */}
+                <Card title="Organization Details">
+                  <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                    <FieldRow
+                      label="Organization Name"
+                      value={emp.eM_organization_name}
+                      required
+                    >
+                      {isEditing ? (
+                        <input
+                          className={EDIT_INPUT}
+                          value={draft.organizationName ?? ""}
+                          onChange={(event) =>
+                            updateDraft("organizationName", event.target.value)
+                          }
+                        />
+                      ) : undefined}
+                    </FieldRow>
+
+                    <FieldRow
+                      label="Organization Type"
+                      value={emp.instituteTypeName}
+                      required
+                    >
+                      {isEditing ? (
+                        <select
+                          className={EDIT_INPUT}
+                          value={draft.instituteTypeId ?? ""}
+                          onChange={(event) =>
+                            updateDraft("instituteTypeId", event.target.value)
+                          }
                         >
-                          <span className="flex items-center gap-2.5 whitespace-nowrap">
-                            <Icon
-                              size={15}
-                              className={
-                                on
-                                  ? "text-[#1e5a7a]"
-                                  : "text-[#8895a4] group-hover:text-[#5b6b7c]"
+                          <option value="">Select organization type</option>
+                          {instituteTypes.map((type) => (
+                            <option
+                              key={type.iT_institute_type_id}
+                              value={String(type.iT_institute_type_id)}
+                            >
+                              {type.iT_name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : undefined}
+                    </FieldRow>
+
+                    <FieldRow label="Website">
+                      {isEditing ? (
+                        <input
+                          className={EDIT_INPUT}
+                          value={draft.website ?? ""}
+                          onChange={(event) =>
+                            updateDraft("website", event.target.value)
+                          }
+                        />
+                      ) : (
+                        <div className={FIELD_BOX(false)}>
+                          {emp.eM_website ? (
+                            <a
+                              href={
+                                /^https?:\/\//i.test(emp.eM_website)
+                                  ? emp.eM_website
+                                  : `https://${emp.eM_website}`
                               }
-                            />
-                            {n.label}
-                          </span>
-                        </button>
+                              target="_blank"
+                              rel="noreferrer"
+                              title={emp.eM_website}
+                              className="inline-flex min-w-0 flex-1 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
+                            >
+                              <span className="min-w-0 truncate">
+                                {emp.eM_website}
+                              </span>
+                              <ExternalLink size={11} className="shrink-0" />
+                            </a>
+                          ) : (
+                            <span className="min-w-0 flex-1 truncate">—</span>
+                          )}
+                        </div>
+                      )}
+                    </FieldRow>
+
+                    {/* Read-only: Email / Username */}
+                    <FieldRow label="Email / Username" value={emp.userName} />
+
+                    {/* Read-only: Status */}
+                    <FieldRow
+                      label="Status"
+                      value={active ? "Active" : "Inactive"}
+                    />
+
+                    {/* Read-only: Consent */}
+                    <FieldRow
+                      label="Consent Given"
+                      value={toYesNo(emp.eM_consent_given)}
+                    />
+                    <FieldRow
+                      label="Consent At"
+                      value={formatDateTime(emp.eM_consent_at)}
+                    />
+                  </div>
+                </Card>
+
+                {/* Contact Person */}
+                <Card title="Contact Person">
+                  <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                    <FieldRow
+                      label="Contact Person"
+                      value={emp.eM_contact_person}
+                      required
+                    >
+                      {isEditing ? (
+                        <input
+                          className={EDIT_INPUT}
+                          value={draft.contactPerson ?? ""}
+                          onChange={(event) =>
+                            updateDraft("contactPerson", event.target.value)
+                          }
+                        />
+                      ) : undefined}
+                    </FieldRow>
+
+                    <FieldRow
+                      label="Designation"
+                      value={emp.eM_designation}
+                      required
+                    >
+                      {isEditing ? (
+                        <input
+                          className={EDIT_INPUT}
+                          value={draft.designation ?? ""}
+                          onChange={(event) =>
+                            updateDraft("designation", event.target.value)
+                          }
+                        />
+                      ) : undefined}
+                    </FieldRow>
+
+                    <FieldRow label="Mobile" value={emp.mobile} mono required>
+                      {isEditing ? (
+                        <input
+                          className={EDIT_INPUT}
+                          value={draft.mobile ?? ""}
+                          onChange={(event) =>
+                            updateDraft(
+                              "mobile",
+                              event.target.value.replace(/\D/g, "").slice(0, 10),
+                            )
+                          }
+                          inputMode="numeric"
+                        />
+                      ) : undefined}
+                    </FieldRow>
+
+                    <FieldRow
+                      label="WhatsApp Number"
+                      value={emp.eM_whatsapp_number}
+                      mono
+                      required
+                    >
+                      {isEditing ? (
+                        <input
+                          className={EDIT_INPUT}
+                          value={draft.whatsappNumber ?? ""}
+                          onChange={(event) =>
+                            updateDraft(
+                              "whatsappNumber",
+                              event.target.value.replace(/\D/g, "").slice(0, 10),
+                            )
+                          }
+                          inputMode="numeric"
+                        />
+                      ) : undefined}
+                    </FieldRow>
+                  </div>
+                </Card>
+
+                {/* Location */}
+                <Card title="Location">
+                  <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                    <FieldRow label="Country" value={emp.countryName} required>
+                      {isEditing ? (
+                        <select
+                          className={EDIT_INPUT}
+                          value={draft.countryId ?? ""}
+                          disabled={loadingStates}
+                          onChange={(event) =>
+                            handleCountryChange(event.target.value)
+                          }
+                        >
+                          <option value="">Select country</option>
+                          {countries.map((country) => (
+                            <option
+                              key={country.cM_Id}
+                              value={String(country.cM_Id)}
+                            >
+                              {country.cM_CountryName}
+                            </option>
+                          ))}
+                        </select>
+                      ) : undefined}
+                    </FieldRow>
+
+                    <FieldRow label="State" value={emp.stateName} required>
+                      {isEditing ? (
+                        <select
+                          className={EDIT_INPUT}
+                          value={draft.stateId ?? ""}
+                          disabled={!draft.countryId || loadingStates}
+                          onChange={(event) =>
+                            handleStateChange(event.target.value)
+                          }
+                        >
+                          <option value="">
+                            {!draft.countryId
+                              ? "Select country first"
+                              : loadingStates
+                                ? "Loading states..."
+                                : "Select state"}
+                          </option>
+                          {states.map((state) => (
+                            <option key={state.sM_Id} value={String(state.sM_Id)}>
+                              {state.sM_StateName}
+                            </option>
+                          ))}
+                        </select>
+                      ) : undefined}
+                    </FieldRow>
+
+                    <FieldRow label="City" value={emp.cityName} required>
+                      {isEditing ? (
+                        <select
+                          className={EDIT_INPUT}
+                          value={draft.cityId ?? ""}
+                          disabled={!draft.stateId || loadingCities}
+                          onChange={(event) =>
+                            updateDraft("cityId", event.target.value)
+                          }
+                        >
+                          <option value="">
+                            {!draft.stateId
+                              ? "Select state first"
+                              : loadingCities
+                                ? "Loading cities..."
+                                : "Select city"}
+                          </option>
+                          {cities.map((city) => (
+                            <option key={city.ctM_Id} value={String(city.ctM_Id)}>
+                              {city.ctM_CityName}
+                            </option>
+                          ))}
+                        </select>
+                      ) : undefined}
+                    </FieldRow>
+                  </div>
+                </Card>
+
+                {/* User Log (read-only) */}
+                <Card title="User Log">
+                  <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                    <FieldRow
+                      label="Created At"
+                      value={formatDateTime(emp.eM_created_at)}
+                    />
+                    <FieldRow
+                      label="Created By"
+                      value={formatUser(emp.createdByName)}
+                    />
+                    <FieldRow
+                      label="Updated At"
+                      value={formatDateTime(emp.eM_updated_at)}
+                    />
+                    <FieldRow
+                      label="Updated By"
+                      value={formatUser(emp.updatedByName)}
+                    />
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* -------- Job Requirements -------- */}
+            {tab === "jobs" && (
+              <Card
+                title="Job Requirements"
+                action={
+                  <p className="text-xs text-[#5b6b7c]">
+                    {jobs.length} posting{jobs.length !== 1 ? "s" : ""}
+                  </p>
+                }
+              >
+                {jobs.length === 0 ? (
+                  <div className="px-4 py-12 text-center">
+                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
+                      <Inbox size={22} />
+                    </div>
+                    <p className="mt-3 text-[15px] text-[#1e2b36]">
+                      No jobs yet
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {jobs.map((job) => {
+                      const pct = job.vacancies
+                        ? Math.round((job.filled / job.vacancies) * 100)
+                        : 0;
+                      const statusStyle =
+                        CARD_STATUS_STYLE[job.status] || CARD_STATUS_STYLE.Closed;
+                      const statusDot =
+                        CARD_STATUS_DOT[job.status] || CARD_STATUS_DOT.Closed;
+                      return (
+                        <div
+                          key={job.id}
+                          className={`${T.surface} ${T.radius} border ${T.border} flex flex-col p-3.5 transition hover:border-[#c7d6e0]`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p
+                                className={`truncate text-[13.5px] font-semibold ${T.text}`}
+                              >
+                                {job.title || "-"}
+                              </p>
+                              <p className="mt-0.5 text-[11.5px] text-[#8895a4]">
+                                Posted {job.postedOn} · Deadline {job.deadline}
+                              </p>
+                            </div>
+                            <span className={`${BADGE} ${statusStyle} gap-1.5`}>
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${statusDot}`}
+                              />
+                              {job.status || "-"}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <span
+                              className={`${BADGE} ${
+                                CATEGORY_STYLE[job.category] || CATEGORY_STYLE.Other
+                              }`}
+                            >
+                              {job.category || "-"}
+                            </span>
+                            <span className="text-[11.5px] text-[#5b6b7c]">
+                              <span className="font-semibold text-[#1a2b3c]">
+                                {job.applicants ?? 0}
+                              </span>{" "}
+                              applicants
+                            </span>
+                          </div>
+
+                          <div className="mt-3 flex items-center gap-2">
+                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef1f5]">
+                              <div
+                                className="h-full rounded-full bg-emerald-500"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="shrink-0 text-[11.5px] tabular-nums text-[#5b6b7c]">
+                              {job.filled ?? 0}/{job.vacancies ?? 0} filled
+                            </span>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-end gap-2 border-t border-[#eef1f5] pt-3">
+                            <button
+                              type="button"
+                              title={`View ${job.title || "Job"}`}
+                              aria-label={`View ${job.title || "Job"}`}
+                              onClick={() =>
+                                navigate(`/admin/job-requirements/${job.id}`)
+                              }
+                              className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
+                            >
+                              <ChevronsRight size={14} strokeWidth={2.2} />
+                            </button>
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
-                </nav>
-              </aside>
-
-              {/* RIGHT: detail panel */}
-              <main className="min-w-0">
-                {/* -------- Overview -------- */}
-                {tab === "overview" && (
-                  <div className="space-y-4 sm:space-y-6">
-                    {/* Organization Details */}
-                    <Card title="Organization Details">
-                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                        <FieldRow
-                          label="Employer ID"
-                          value={emp.eM_request_no}
-                          mono
-                        />
-                        <FieldRow
-                          label="Organization Name"
-                          value={emp.eM_organization_name}
-                        >
-                          {isEditing ? (
-                            <input
-                              className={EDIT_INPUT}
-                              value={draft.organizationName ?? ""}
-                              onChange={(event) =>
-                                updateDraft(
-                                  "organizationName",
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          ) : undefined}
-                        </FieldRow>
-                        <FieldRow
-                          label="Organization Type"
-                          value={emp.instituteTypeName}
-                        >
-                          {isEditing ? (
-                            <select
-                              className={EDIT_INPUT}
-                              value={draft.instituteTypeId ?? ""}
-                              onChange={(event) =>
-                                updateDraft(
-                                  "instituteTypeId",
-                                  event.target.value,
-                                )
-                              }
-                            >
-                              <option value="">Select organization type</option>
-                              {instituteTypes.map((type) => (
-                                <option
-                                  key={type.iT_institute_type_id}
-                                  value={String(type.iT_institute_type_id)}
-                                >
-                                  {type.iT_name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : undefined}
-                        </FieldRow>
-                        <FieldRow label="Website">
-                          {isEditing ? (
-                            <input
-                              className={EDIT_INPUT}
-                              value={draft.website ?? ""}
-                              onChange={(event) =>
-                                updateDraft("website", event.target.value)
-                              }
-                            />
-                          ) : (
-                            <div className={FIELD_BOX(false)}>
-                              {emp.eM_website ? (
-                                <a
-                                  href={
-                                    /^https?:\/\//i.test(emp.eM_website)
-                                      ? emp.eM_website
-                                      : `https://${emp.eM_website}`
-                                  }
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  title={emp.eM_website}
-                                  className="inline-flex min-w-0 flex-1 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
-                                >
-                                  <span className="min-w-0 truncate">
-                                    {emp.eM_website}
-                                  </span>
-                                  <ExternalLink
-                                    size={11}
-                                    className="shrink-0"
-                                  />
-                                </a>
-                              ) : (
-                                <span className="min-w-0 flex-1 truncate">
-                                  —
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </FieldRow>
-                        <FieldRow
-                          label="Email / Username"
-                          value={emp.userName}
-                        >
-                          {isEditing ? (
-                            <input
-                              type="email"
-                              className={EDIT_INPUT}
-                              value={draft.email ?? ""}
-                              onChange={(event) =>
-                                updateDraft("email", event.target.value)
-                              }
-                            />
-                          ) : undefined}
-                        </FieldRow>
-                        <FieldRow
-                          label="Status"
-                          value={active ? "Active" : "Inactive"}
-                        />
-                        <FieldRow
-                          label="Consent Given"
-                          value={toYesNo(emp.eM_consent_given)}
-                        >
-                          {isEditing ? (
-                            <label className="flex items-center gap-2 text-[13px]">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(draft.consentGiven)}
-                                onChange={(event) =>
-                                  updateDraft(
-                                    "consentGiven",
-                                    event.target.checked,
-                                  )
-                                }
-                              />
-                              Consent given
-                            </label>
-                          ) : undefined}
-                        </FieldRow>
-                        <FieldRow
-                          label="Consent At"
-                          value={formatDateTime(emp.eM_consent_at)}
-                        />
-                      </div>
-                    </Card>
-
-                    {/* Contact Person */}
-                    <Card title="Contact Person">
-                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                        <FieldRow
-                          label="Contact Person"
-                          value={emp.eM_contact_person}
-                        >
-                          {isEditing ? (
-                            <input
-                              className={EDIT_INPUT}
-                              value={draft.contactPerson ?? ""}
-                              onChange={(event) =>
-                                updateDraft(
-                                  "contactPerson",
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          ) : undefined}
-                        </FieldRow>
-                        <FieldRow
-                          label="Designation"
-                          value={emp.eM_designation}
-                        >
-                          {isEditing ? (
-                            <input
-                              className={EDIT_INPUT}
-                              value={draft.designation ?? ""}
-                              onChange={(event) =>
-                                updateDraft("designation", event.target.value)
-                              }
-                            />
-                          ) : undefined}
-                        </FieldRow>
-                        <FieldRow label="Mobile" value={emp.mobile} mono>
-                          {isEditing ? (
-                            <input
-                              className={EDIT_INPUT}
-                              value={draft.mobile ?? ""}
-                              onChange={(event) =>
-                                updateDraft(
-                                  "mobile",
-                                  event.target.value.replace(/\D/g, "").slice(0, 10),
-                                )
-                              }
-                              inputMode="numeric"
-                            />
-                          ) : undefined}
-                        </FieldRow>
-                      </div>
-                    </Card>
-
-                    {/* Location */}
-                    <Card title="Location">
-                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                        <FieldRow label="Country" value={emp.countryName}>
-                          {isEditing ? (
-                            <select
-                              className={EDIT_INPUT}
-                              value={draft.countryId ?? ""}
-                              disabled={loadingStates}
-                              onChange={(event) =>
-                                handleCountryChange(event.target.value)
-                              }
-                            >
-                              <option value="">Select country</option>
-                              {countries.map((country) => (
-                                <option
-                                  key={country.cM_Id}
-                                  value={String(country.cM_Id)}
-                                >
-                                  {country.cM_CountryName}
-                                </option>
-                              ))}
-                            </select>
-                          ) : undefined}
-                        </FieldRow>
-
-                        <FieldRow label="State" value={emp.stateName}>
-                          {isEditing ? (
-                            <select
-                              className={EDIT_INPUT}
-                              value={draft.stateId ?? ""}
-                              disabled={!draft.countryId || loadingStates}
-                              onChange={(event) =>
-                                handleStateChange(event.target.value)
-                              }
-                            >
-                              <option value="">
-                                {!draft.countryId
-                                  ? "Select country first"
-                                  : loadingStates
-                                    ? "Loading states..."
-                                    : "Select state"}
-                              </option>
-                              {states.map((state) => (
-                                <option
-                                  key={state.sM_Id}
-                                  value={String(state.sM_Id)}
-                                >
-                                  {state.sM_StateName}
-                                </option>
-                              ))}
-                            </select>
-                          ) : undefined}
-                        </FieldRow>
-
-                        <FieldRow label="City" value={emp.cityName}>
-                          {isEditing ? (
-                            <select
-                              className={EDIT_INPUT}
-                              value={draft.cityId ?? ""}
-                              disabled={!draft.stateId || loadingCities}
-                              onChange={(event) =>
-                                updateDraft("cityId", event.target.value)
-                              }
-                            >
-                              <option value="">
-                                {!draft.stateId
-                                  ? "Select state first"
-                                  : loadingCities
-                                    ? "Loading cities..."
-                                    : "Select city"}
-                              </option>
-                              {cities.map((city) => (
-                                <option
-                                  key={city.ctM_Id}
-                                  value={String(city.ctM_Id)}
-                                >
-                                  {city.ctM_CityName}
-                                </option>
-                              ))}
-                            </select>
-                          ) : undefined}
-                        </FieldRow>
-                      </div>
-                    </Card>
-
-                    {/* User Log */}
-                    <Card title="User Log">
-                      <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                        <FieldRow
-                          label="Created At"
-                          value={formatDateTime(emp.eM_created_at)}
-                        />
-                        <FieldRow
-                          label="Created By"
-                          value={formatUser(emp.createdByName)}
-                        />
-                        <FieldRow
-                          label="Updated At"
-                          value={formatDateTime(emp.eM_updated_at)}
-                        />
-                        <FieldRow
-                          label="Updated By"
-                          value={formatUser(emp.updatedByName)}
-                        />
-                        <FieldRow
-                          label="Activated At"
-                          value={formatDateTime(emp.eM_activated_at)}
-                        />
-                      </div>
-                    </Card>
-                  </div>
                 )}
-
-                {/* -------- Job Requirements -------- */}
-                {tab === "jobs" && (
-                  <Card
-                    title="Job Requirements"
-                    action={
-                      <p className="text-xs text-[#5b6b7c]">
-                        {jobs.length} posting{jobs.length !== 1 ? "s" : ""}
-                      </p>
-                    }
-                  >
-                    {jobs.length === 0 ? (
-                      <div className="px-4 py-12 text-center">
-                        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
-                          <Inbox size={22} />
-                        </div>
-                        <p className="mt-3 text-[15px] text-[#1e2b36]">
-                          No jobs yet
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {jobs.map((job) => {
-                          const pct = job.vacancies
-                            ? Math.round((job.filled / job.vacancies) * 100)
-                            : 0;
-                          const statusStyle =
-                            CARD_STATUS_STYLE[job.status] ||
-                            CARD_STATUS_STYLE.Closed;
-                          const statusDot =
-                            CARD_STATUS_DOT[job.status] ||
-                            CARD_STATUS_DOT.Closed;
-                          return (
-                            <div
-                              key={job.id}
-                              className={`${T.surface} ${T.radius} border ${T.border} flex flex-col p-3.5 transition hover:border-[#c7d6e0]`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p
-                                    className={`truncate text-[13.5px] font-semibold ${T.text}`}
-                                  >
-                                    {job.title || "-"}
-                                  </p>
-                                  <p className="mt-0.5 text-[11.5px] text-[#8895a4]">
-                                    Posted {job.postedOn} · Deadline{" "}
-                                    {job.deadline}
-                                  </p>
-                                </div>
-                                <span
-                                  className={`${BADGE} ${statusStyle} gap-1.5`}
-                                >
-                                  <span
-                                    className={`h-1.5 w-1.5 rounded-full ${statusDot}`}
-                                  />
-                                  {job.status || "-"}
-                                </span>
-                              </div>
-
-                              <div className="mt-3 flex flex-wrap items-center gap-2">
-                                <span
-                                  className={`${BADGE} ${
-                                    CATEGORY_STYLE[job.category] ||
-                                    CATEGORY_STYLE.Other
-                                  }`}
-                                >
-                                  {job.category || "-"}
-                                </span>
-                                <span className="text-[11.5px] text-[#5b6b7c]">
-                                  <span className="font-semibold text-[#1a2b3c]">
-                                    {job.applicants ?? 0}
-                                  </span>{" "}
-                                  applicants
-                                </span>
-                              </div>
-
-                              <div className="mt-3 flex items-center gap-2">
-                                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef1f5]">
-                                  <div
-                                    className="h-full rounded-full bg-emerald-500"
-                                    style={{ width: `${pct}%` }}
-                                  />
-                                </div>
-                                <span className="shrink-0 text-[11.5px] tabular-nums text-[#5b6b7c]">
-                                  {job.filled ?? 0}/{job.vacancies ?? 0} filled
-                                </span>
-                              </div>
-
-                              <div className="mt-3 flex items-center justify-end gap-2 border-t border-[#eef1f5] pt-3">
-                                <button
-                                  type="button"
-                                  title={`View ${job.title || "Job"}`}
-                                  aria-label={`View ${job.title || "Job"}`}
-                                  onClick={() =>
-                                    navigate(
-                                      `/admin/job-requirements/${job.id}`,
-                                    )
-                                  }
-                                  className="grid h-7 w-7 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
-                                >
-                                  <ChevronsRight size={14} strokeWidth={2.2} />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </Card>
-                )}
-              </main>
-            </div>
-          </div>
+              </Card>
+            )}
+          </main>
         </div>
       </div>
       <StatusModal
