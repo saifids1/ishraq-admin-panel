@@ -8,11 +8,10 @@ import {
   Inbox,
   ChevronsRight,
   X,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
-import {
-  getEmployerById,
-  updateEmployer,
-} from "../../../api/employerApi";
+import { getEmployerById, updateEmployer } from "../../../api/employerApi";
 import { getJobRequirementsByEmployer } from "../../../api/jobRequirementApi";
 import instituteTypeApi from "../../../api/Services/instituteTypeApi";
 import countryMasterApi from "../../../api/Services/countryMasterApi";
@@ -105,10 +104,78 @@ function Card({ title, action, children, className = "" }) {
   );
 }
 
+const truthy = (v) => {
+  if (v === true) return true;
+  if (v === false || v === null || v === undefined) return false;
+  if (typeof v === "number") return v === 1;
+  const s = String(v).trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes" || s === "y";
+};
+
+const StatusBox = ({
+  value,
+  verified,
+  mono = false,
+  mailto = false,
+  input,
+}) => {
+  const ok = truthy(verified);
+
+  const badge = (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+        ok
+          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+          : "bg-amber-50 text-amber-700 ring-amber-200"
+      }`}
+    >
+      {ok ? (
+        <CheckCircle2 size={12} strokeWidth={2.4} />
+      ) : (
+        <AlertTriangle size={12} strokeWidth={2.4} />
+      )}
+      {ok ? "Verified" : "Not verified"}
+    </span>
+  );
+
+  if (input) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">{input}</div>
+        {badge}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${FIELD_BOX(mono)} justify-between gap-2`}>
+      <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
+        {mailto && value ? (
+          <a
+            href={`mailto:${value}`}
+            className="text-[#1e5a7a] hover:underline"
+          >
+            {value}
+          </a>
+        ) : (
+          val(value)
+        )}
+      </span>
+      {badge}
+    </div>
+  );
+};
+
 /* ---------------- FieldRow (stacks on mobile) ----------------
    Pass children only for editable fields. Without children the
    field is shown read-only. The red asterisk appears only while editing. */
-const FieldRow = ({ label, value, mono = false, required = false, children }) => {
+const FieldRow = ({
+  label,
+  value,
+  mono = false,
+  required = false,
+  children,
+}) => {
   const isEditing = children !== undefined && children !== null;
 
   return (
@@ -393,7 +460,7 @@ const EmployerProfile = ({ mode }) => {
           const jobResponse = await getJobRequirementsByEmployer(id);
           jobRequirements = Array.isArray(jobResponse)
             ? jobResponse
-            : jobResponse?.data ?? jobResponse?.Data ?? [];
+            : (jobResponse?.data ?? jobResponse?.Data ?? []);
         } catch {
           jobRequirements = [];
         }
@@ -475,7 +542,9 @@ const EmployerProfile = ({ mode }) => {
   const saveEmployer = async () => {
     const userId = Number(getCurrentUserId2());
     if (!Number.isInteger(userId) || userId <= 0) {
-      setEditError("Unable to identify the current user. Please sign in again.");
+      setEditError(
+        "Unable to identify the current user. Please sign in again.",
+      );
       return;
     }
     if (
@@ -548,9 +617,7 @@ const EmployerProfile = ({ mode }) => {
           navigate(`/admin/employers/${id}`, { replace: true });
         }
       } catch (err) {
-        setEditError(
-          getErrorMessage(err, "Failed to update employer."),
-        );
+        setEditError(getErrorMessage(err, "Failed to update employer."));
       } finally {
         setSaving(false);
       }
@@ -590,7 +657,10 @@ const EmployerProfile = ({ mode }) => {
           <p className={`mt-1 text-[13px] ${T.textMuted}`}>
             The record you're looking for doesn't exist or was removed.
           </p>
-          <button onClick={() => navigate(-1)} className={`mt-4 ${BTN_PRIMARY}`}>
+          <button
+            onClick={() => navigate(-1)}
+            className={`mt-4 ${BTN_PRIMARY}`}
+          >
             Go back
           </button>
         </div>
@@ -628,9 +698,9 @@ const EmployerProfile = ({ mode }) => {
                 </span>
               </span> */}
             </div>
-             <h2 className="min-w-0 truncate font-semibold text-slate-800">
-                {val(emp.eM_request_no)}
-              </h2>
+            <h2 className="min-w-0 truncate font-semibold text-slate-800">
+              {val(emp.eM_request_no)}
+            </h2>
 
             <div className="flex shrink-0 items-center gap-2">
               {isEditing ? (
@@ -641,7 +711,8 @@ const EmployerProfile = ({ mode }) => {
                     disabled={saving}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:gap-2 sm:px-4 sm:py-2.5"
                   >
-                    <X size={15} /> <span className="hidden xs:inline">Cancel</span>
+                    <X size={15} />{" "}
+                    <span className="hidden xs:inline">Cancel</span>
                   </button>
                   <button
                     type="button"
@@ -793,7 +864,13 @@ const EmployerProfile = ({ mode }) => {
                     </FieldRow>
 
                     {/* Read-only: Email / Username */}
-                    <FieldRow label="Email / Username" value={emp.userName} />
+                    <FieldRow label="Email / Username">
+                      <StatusBox
+                        value={emp.userName}
+                        mailto
+                        verified={emp.isEmailVerified}
+                      />
+                    </FieldRow>
 
                     {/* Read-only: Status */}
                     <FieldRow
@@ -848,20 +925,29 @@ const EmployerProfile = ({ mode }) => {
                       ) : undefined}
                     </FieldRow>
 
-                    <FieldRow label="Mobile" value={emp.mobile} mono required>
-                      {isEditing ? (
-                        <input
-                          className={EDIT_INPUT}
-                          value={draft.mobile ?? ""}
-                          onChange={(event) =>
-                            updateDraft(
-                              "mobile",
-                              event.target.value.replace(/\D/g, "").slice(0, 10),
-                            )
-                          }
-                          inputMode="numeric"
-                        />
-                      ) : undefined}
+                    <FieldRow label="Mobile" required={isEditing} mono>
+                      <StatusBox
+                        value={emp.mobile}
+                        mono
+                        verified={emp.isNumberVerified}
+                        input={
+                          isEditing ? (
+                            <input
+                              className={EDIT_INPUT}
+                              value={draft.mobile ?? ""}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "mobile",
+                                  event.target.value
+                                    .replace(/\D/g, "")
+                                    .slice(0, 10),
+                                )
+                              }
+                              inputMode="numeric"
+                            />
+                          ) : undefined
+                        }
+                      />
                     </FieldRow>
 
                     <FieldRow
@@ -877,7 +963,9 @@ const EmployerProfile = ({ mode }) => {
                           onChange={(event) =>
                             updateDraft(
                               "whatsappNumber",
-                              event.target.value.replace(/\D/g, "").slice(0, 10),
+                              event.target.value
+                                .replace(/\D/g, "")
+                                .slice(0, 10),
                             )
                           }
                           inputMode="numeric"
@@ -931,7 +1019,10 @@ const EmployerProfile = ({ mode }) => {
                                 : "Select state"}
                           </option>
                           {states.map((state) => (
-                            <option key={state.sM_Id} value={String(state.sM_Id)}>
+                            <option
+                              key={state.sM_Id}
+                              value={String(state.sM_Id)}
+                            >
                               {state.sM_StateName}
                             </option>
                           ))}
@@ -957,7 +1048,10 @@ const EmployerProfile = ({ mode }) => {
                                 : "Select city"}
                           </option>
                           {cities.map((city) => (
-                            <option key={city.ctM_Id} value={String(city.ctM_Id)}>
+                            <option
+                              key={city.ctM_Id}
+                              value={String(city.ctM_Id)}
+                            >
                               {city.ctM_CityName}
                             </option>
                           ))}
@@ -1017,7 +1111,8 @@ const EmployerProfile = ({ mode }) => {
                         ? Math.round((job.filled / job.vacancies) * 100)
                         : 0;
                       const statusStyle =
-                        CARD_STATUS_STYLE[job.status] || CARD_STATUS_STYLE.Closed;
+                        CARD_STATUS_STYLE[job.status] ||
+                        CARD_STATUS_STYLE.Closed;
                       const statusDot =
                         CARD_STATUS_DOT[job.status] || CARD_STATUS_DOT.Closed;
                       return (
@@ -1047,7 +1142,8 @@ const EmployerProfile = ({ mode }) => {
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <span
                               className={`${BADGE} ${
-                                CATEGORY_STYLE[job.category] || CATEGORY_STYLE.Other
+                                CATEGORY_STYLE[job.category] ||
+                                CATEGORY_STYLE.Other
                               }`}
                             >
                               {job.category || "-"}

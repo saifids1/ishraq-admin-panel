@@ -5,6 +5,8 @@ import {
   Building2,
   ExternalLink,
   X,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { getEmployerById, updateEmployer } from "../../../api/employerApi";
 import instituteTypeApi from "../../../api/Services/instituteTypeApi";
@@ -12,7 +14,7 @@ import countryMasterApi from "../../../api/Services/countryMasterApi";
 import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import StatusModal from "../../../components/common/StatusModal";
-import {getCurrentUserId, getCurrentUserId2 } from "../../../utils/authUtils";
+import { getCurrentUserId, getCurrentUserId2 } from "../../../utils/authUtils";
 /* ---------------- Design tokens ---------------- */
 
 const T = {
@@ -52,10 +54,19 @@ const MOBILE_RE = /^\d{10}$/;
 
 /* ---------------- Lookup key mappings (tolerant of API casing) ---------------- */
 
-const INSTITUTE_ID_KEYS = ["iT_institute_type_id", "IT_institute_type_id", "id"];
+const INSTITUTE_ID_KEYS = [
+  "iT_institute_type_id",
+  "IT_institute_type_id",
+  "id",
+];
 const INSTITUTE_NAME_KEYS = ["iT_name", "IT_name", "name"];
 const COUNTRY_ID_KEYS = ["cM_Id", "CM_Id", "id"];
-const COUNTRY_NAME_KEYS = ["cM_CountryName", "CM_CountryName", "countryName", "name"];
+const COUNTRY_NAME_KEYS = [
+  "cM_CountryName",
+  "CM_CountryName",
+  "countryName",
+  "name",
+];
 const STATE_ID_KEYS = ["sM_Id", "SM_Id", "id"];
 const STATE_NAME_KEYS = ["sM_StateName", "SM_StateName", "stateName", "name"];
 const CITY_ID_KEYS = ["ctM_Id", "CTM_Id", "id"];
@@ -80,11 +91,79 @@ function Card({ title, children }) {
   );
 }
 
+const truthy = (v) => {
+  if (v === true) return true;
+  if (v === false || v === null || v === undefined) return false;
+  if (typeof v === "number") return v === 1;
+  const s = String(v).trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes" || s === "y";
+};
+
+const StatusBox = ({
+  value,
+  verified,
+  mono = false,
+  mailto = false,
+  input,
+}) => {
+  const ok = truthy(verified);
+
+  const badge = (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+        ok
+          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+          : "bg-amber-50 text-amber-700 ring-amber-200"
+      }`}
+    >
+      {ok ? (
+        <CheckCircle2 size={12} strokeWidth={2.4} />
+      ) : (
+        <AlertTriangle size={12} strokeWidth={2.4} />
+      )}
+      {ok ? "Verified" : "Not verified"}
+    </span>
+  );
+
+  if (input) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">{input}</div>
+        {badge}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${FIELD_BOX(mono)} justify-between gap-2`}>
+      <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
+        {mailto && value ? (
+          <a
+            href={`mailto:${value}`}
+            className="text-[#1e5a7a] hover:underline"
+          >
+            {value}
+          </a>
+        ) : (
+          val(value)
+        )}
+      </span>
+      {badge}
+    </div>
+  );
+};
+
 /* ---------------- FieldRow ----------------
    Pass children only for editable fields. Without children the field is
    read-only. The red * appears only while editing and only if required. */
 
-const FieldRow = ({ label, value, mono = false, required = false, children }) => {
+const FieldRow = ({
+  label,
+  value,
+  mono = false,
+  required = false,
+  children,
+}) => {
   const isEditing = children !== undefined && children !== null;
 
   return (
@@ -317,7 +396,11 @@ const EmployerProfile = () => {
       .then((response) => {
         if (!cancelled) {
           setStates(
-            normalizeLookup(extractList(response), STATE_ID_KEYS, STATE_NAME_KEYS),
+            normalizeLookup(
+              extractList(response),
+              STATE_ID_KEYS,
+              STATE_NAME_KEYS,
+            ),
           );
         }
       })
@@ -352,7 +435,11 @@ const EmployerProfile = () => {
       .then((response) => {
         if (!cancelled) {
           setCities(
-            normalizeLookup(extractList(response), CITY_ID_KEYS, CITY_NAME_KEYS),
+            normalizeLookup(
+              extractList(response),
+              CITY_ID_KEYS,
+              CITY_NAME_KEYS,
+            ),
           );
         }
       })
@@ -442,7 +529,9 @@ const EmployerProfile = () => {
 
     const userId = Number(getCurrentUserId2());
     if (!Number.isInteger(userId) || userId <= 0) {
-      setEditError("Unable to identify the current user. Please sign in again.");
+      setEditError(
+        "Unable to identify the current user. Please sign in again.",
+      );
       return;
     }
 
@@ -564,10 +653,9 @@ const EmployerProfile = () => {
               </span> */}
             </div>
 
-             <h2 className="min-w-0 truncate font-semibold text-slate-800">
-                {val(emp.eM_request_no)}
-              </h2>
-
+            <h2 className="min-w-0 truncate font-semibold text-slate-800">
+              {val(emp.eM_request_no)}
+            </h2>
 
             <div className="flex shrink-0 items-center gap-2">
               {isEditing ? (
@@ -590,7 +678,11 @@ const EmployerProfile = () => {
                   </button>
                 </>
               ) : (
-                <button type="button" onClick={goToEditProfile} className={BTN_PRIMARY}>
+                <button
+                  type="button"
+                  onClick={goToEditProfile}
+                  className={BTN_PRIMARY}
+                >
                   Edit
                 </button>
               )}
@@ -629,7 +721,9 @@ const EmployerProfile = () => {
                   <Icon
                     size={15}
                     className={
-                      on ? "text-[#1e5a7a]" : "text-[#8895a4] group-hover:text-[#5b6b7c]"
+                      on
+                        ? "text-[#1e5a7a]"
+                        : "text-[#8895a4] group-hover:text-[#5b6b7c]"
                     }
                   />
                   {n.label}
@@ -654,7 +748,9 @@ const EmployerProfile = () => {
                         <input
                           className={EDIT_INPUT}
                           value={draft.organizationName ?? ""}
-                          onChange={(e) => updateDraft("organizationName", e.target.value)}
+                          onChange={(e) =>
+                            updateDraft("organizationName", e.target.value)
+                          }
                         />
                       ) : undefined}
                     </FieldRow>
@@ -668,7 +764,9 @@ const EmployerProfile = () => {
                         <select
                           className={EDIT_INPUT}
                           value={draft.instituteTypeId ?? ""}
-                          onChange={(e) => updateDraft("instituteTypeId", e.target.value)}
+                          onChange={(e) =>
+                            updateDraft("instituteTypeId", e.target.value)
+                          }
                         >
                           <option value="">Select organization type</option>
                           {instituteTypes.map((type) => (
@@ -685,7 +783,9 @@ const EmployerProfile = () => {
                         <input
                           className={EDIT_INPUT}
                           value={draft.website ?? ""}
-                          onChange={(e) => updateDraft("website", e.target.value)}
+                          onChange={(e) =>
+                            updateDraft("website", e.target.value)
+                          }
                         />
                       ) : (
                         <div className={FIELD_BOX(false)}>
@@ -701,7 +801,9 @@ const EmployerProfile = () => {
                               title={emp.eM_website}
                               className="inline-flex min-w-0 flex-1 items-center gap-1 truncate text-[#1e5a7a] hover:underline"
                             >
-                              <span className="min-w-0 truncate">{emp.eM_website}</span>
+                              <span className="min-w-0 truncate">
+                                {emp.eM_website}
+                              </span>
                               <ExternalLink size={11} className="shrink-0" />
                             </a>
                           ) : (
@@ -712,10 +814,25 @@ const EmployerProfile = () => {
                     </FieldRow>
 
                     {/* Read-only */}
-                    <FieldRow label="Email / Username" value={emp.userName} />
-                    <FieldRow label="Status" value={active ? "Active" : "Inactive"} />
-                    <FieldRow label="Consent Given" value={toYesNo(emp.eM_consent_given)} />
-                    <FieldRow label="Consent At" value={formatDateTime(emp.eM_consent_at)} />
+                    <FieldRow label="Email Address">
+                      <StatusBox
+                        value={emp.userName}
+                        mailto
+                        verified={emp.isEmailVerified}
+                      />
+                    </FieldRow>
+                    <FieldRow
+                      label="Status"
+                      value={active ? "Active" : "Inactive"}
+                    />
+                    <FieldRow
+                      label="Consent Given"
+                      value={toYesNo(emp.eM_consent_given)}
+                    />
+                    <FieldRow
+                      label="Consent At"
+                      value={formatDateTime(emp.eM_consent_at)}
+                    />
                   </div>
                 </Card>
 
@@ -731,35 +848,52 @@ const EmployerProfile = () => {
                         <input
                           className={EDIT_INPUT}
                           value={draft.contactPerson ?? ""}
-                          onChange={(e) => updateDraft("contactPerson", e.target.value)}
+                          onChange={(e) =>
+                            updateDraft("contactPerson", e.target.value)
+                          }
                         />
                       ) : undefined}
                     </FieldRow>
 
-                    <FieldRow label="Designation" value={emp.eM_designation} required>
+                    <FieldRow
+                      label="Designation"
+                      value={emp.eM_designation}
+                      required
+                    >
                       {isEditing ? (
                         <input
                           className={EDIT_INPUT}
                           value={draft.designation ?? ""}
-                          onChange={(e) => updateDraft("designation", e.target.value)}
+                          onChange={(e) =>
+                            updateDraft("designation", e.target.value)
+                          }
                         />
                       ) : undefined}
                     </FieldRow>
 
-                    <FieldRow label="Mobile" value={emp.mobile} mono required>
-                      {isEditing ? (
-                        <input
-                          className={EDIT_INPUT}
-                          value={draft.mobile ?? ""}
-                          inputMode="numeric"
-                          onChange={(e) =>
-                            updateDraft(
-                              "mobile",
-                              e.target.value.replace(/\D/g, "").slice(0, 10),
-                            )
-                          }
-                        />
-                      ) : undefined}
+                    <FieldRow label="Mobile Number" mono required={isEditing}>
+                      <StatusBox
+                        value={emp.mobile}
+                        mono
+                        verified={emp.isNumberVerified}
+                        input={
+                          isEditing ? (
+                            <input
+                              className={EDIT_INPUT}
+                              value={draft.mobile ?? ""}
+                              inputMode="numeric"
+                              onChange={(e) =>
+                                updateDraft(
+                                  "mobile",
+                                  e.target.value
+                                    .replace(/\D/g, "")
+                                    .slice(0, 10),
+                                )
+                              }
+                            />
+                          ) : undefined
+                        }
+                      />
                     </FieldRow>
 
                     <FieldRow
@@ -829,7 +963,9 @@ const EmployerProfile = () => {
                           className={EDIT_INPUT}
                           value={draft.cityId ?? ""}
                           disabled={!draft.stateId || citiesLoading}
-                          onChange={(e) => updateDraft("cityId", e.target.value)}
+                          onChange={(e) =>
+                            updateDraft("cityId", e.target.value)
+                          }
                         >
                           <option value="">{cityPlaceholder}</option>
                           {cities.map((city) => (
@@ -846,10 +982,22 @@ const EmployerProfile = () => {
                 {/* User Log (read-only) */}
                 <Card title="User Log">
                   <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                    <FieldRow label="Created At" value={formatDateTime(emp.eM_created_at)} />
-                    <FieldRow label="Created By" value={val(emp.createdByName)} />
-                    <FieldRow label="Updated At" value={formatDateTime(emp.eM_updated_at)} />
-                    <FieldRow label="Updated By" value={val(emp.updatedByName)} />
+                    <FieldRow
+                      label="Created At"
+                      value={formatDateTime(emp.eM_created_at)}
+                    />
+                    <FieldRow
+                      label="Created By"
+                      value={val(emp.createdByName)}
+                    />
+                    <FieldRow
+                      label="Updated At"
+                      value={formatDateTime(emp.eM_updated_at)}
+                    />
+                    <FieldRow
+                      label="Updated By"
+                      value={val(emp.updatedByName)}
+                    />
                   </div>
                 </Card>
               </div>

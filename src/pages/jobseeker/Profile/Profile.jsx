@@ -11,6 +11,8 @@ import {
   Building2,
   SlidersHorizontal,
   X,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import jobCategoryApi from "../../../api/Services/jobCategoryApi";
@@ -86,10 +88,19 @@ const NAV = [
 ];
 
 /* ---------------- Lookup key mappings (tolerant of API casing) ---------------- */
-const INSTITUTE_ID_KEYS = ["iT_institute_type_id", "IT_institute_type_id", "id"];
+const INSTITUTE_ID_KEYS = [
+  "iT_institute_type_id",
+  "IT_institute_type_id",
+  "id",
+];
 const INSTITUTE_NAME_KEYS = ["iT_name", "IT_name", "name"];
 const COUNTRY_ID_KEYS = ["cM_Id", "CM_Id", "id"];
-const COUNTRY_NAME_KEYS = ["cM_CountryName", "CM_CountryName", "countryName", "name"];
+const COUNTRY_NAME_KEYS = [
+  "cM_CountryName",
+  "CM_CountryName",
+  "countryName",
+  "name",
+];
 const STATE_ID_KEYS = ["sM_Id", "SM_Id", "id"];
 const STATE_NAME_KEYS = ["sM_StateName", "SM_StateName", "stateName", "name"];
 const CITY_ID_KEYS = ["ctM_Id", "CTM_Id", "id"];
@@ -114,6 +125,60 @@ const FieldRow = ({ label, value, mono = false, children }) => (
     )}
   </div>
 );
+
+const StatusBox = ({
+  value,
+  verified,
+  mono = false,
+  mailto = false,
+  input,
+}) => {
+  const ok = truthy(verified);
+
+  const badge = (
+    <span
+      className={`inline-flex shrink-0 items-center font-mono gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+        ok
+          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+          : "bg-amber-50 text-amber-700 ring-amber-200"
+      }`}
+    >
+      {ok ? (
+        <CheckCircle2 size={12} strokeWidth={2.4} />
+      ) : (
+        <AlertTriangle size={12} strokeWidth={2.4} />
+      )}
+      {ok ? "Verified" : "Not verified"}
+    </span>
+  );
+
+  if (input) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">{input}</div>
+        {badge}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${FIELD_BOX(mono)} justify-between gap-2`}>
+      <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
+        {mailto && value ? (
+          <a
+            href={`mailto:${value}`}
+            className="text-[#1e5a7a] hover:underline"
+          >
+            {value}
+          </a>
+        ) : (
+          val(value)
+        )}
+      </span>
+      {badge}
+    </div>
+  );
+};
 
 /* ---------------- API URL Configuration ---------------- */
 const DOCUMENT_BASE_URL = (
@@ -288,8 +353,10 @@ const toJobseekerView = (item, id) => {
 
     fullName: item?.fullName ?? "",
     mobile: item?.mobile ?? "",
+    isNumberVerified: item?.isNumberVerified,
     whatsapp: item?.jB_whatsapp ?? "",
     email: item?.email ?? "",
+    isEmailVerified: item?.isEmailVerified,
     instituteTypeId: String(item?.jB_institute_type_id ?? ""),
     jobCategoryId: String(item?.jB_job_category_id ?? ""),
     jobRoleId: String(item?.jB_job_role_id ?? ""),
@@ -926,6 +993,10 @@ const JobSeekerDetails = ({ mode }) => {
               </h2>
             </div>
 
+              <h2 className="truncate font-semibold text-slate-800">
+                {form.jobseekerNo}
+              </h2>
+
             <div className="flex w-full items-center gap-2 sm:w-auto">
               {isEditing ? (
                 <>
@@ -1019,39 +1090,42 @@ const JobSeekerDetails = ({ mode }) => {
                         Personal & Professional Details
                       </h3>
                       <div className={FIELD_GRID_2}>
-                        <FieldRow label="Jobseeker ID" value={form.jobseekerNo} />
+                        {/* <FieldRow
+                          label="Jobseeker ID"
+                          value={form.jobseekerNo}
+                        /> */}
 
                         <FieldRow label="Full Name" value={form.fullName}>
                           {editInput("fullName")}
                         </FieldRow>
-                        <FieldRow label="Mobile Number" value={form.mobile} mono>
-                          {editInput("mobile", "tel")}
+                        <FieldRow
+                          label="Mobile Number"
+                          value={form.mobile}
+                          mono
+                        >
+                          <StatusBox
+                            value={form.mobile}
+                            mono
+                            verified={form.isNumberVerified}
+                            input={editInput("mobile", "tel")}
+                          />
                         </FieldRow>
-                        <FieldRow label="WhatsApp Number" value={form.whatsapp} mono>
+                        <FieldRow
+                          label="WhatsApp Number"
+                          value={form.whatsapp}
+                          mono
+                        >
                           {editInput("whatsapp", "tel")}
                         </FieldRow>
 
-                        <div className={FIELD_GRID}>
-                          <label className={FIELD_LABEL}>Email Address</label>
-                          {isEditing ? (
-                            editInput("email", "email")
-                          ) : (
-                            <div className={FIELD_BOX()}>
-                              <span className="min-w-0 flex-1 truncate">
-                                {form.email ? (
-                                  <a
-                                    href={`mailto:${form.email}`}
-                                    className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
-                                  >
-                                    {form.email}
-                                  </a>
-                                ) : (
-                                  "—"
-                                )}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                        <FieldRow label="Email Address">
+                          <StatusBox
+                            value={form.email}
+                            mailto
+                            verified={form.isEmailVerified}
+                            input={editInput("email", "email")}
+                          />
+                        </FieldRow>
 
                         <FieldRow label="Institute Type" value={form.jobType}>
                           {editSelect(
@@ -1114,7 +1188,10 @@ const JobSeekerDetails = ({ mode }) => {
                           label="Status"
                           value={active ? "Active" : "Inactive"}
                         />
-                        <FieldRow label="Consent Given" value={form.consentGiven}>
+                        <FieldRow
+                          label="Consent Given"
+                          value={form.consentGiven}
+                        >
                           {yesNoSelect("consentGiven")}
                         </FieldRow>
                       </div>
@@ -1215,7 +1292,10 @@ const JobSeekerDetails = ({ mode }) => {
                       >
                         {editInput("currentDesignation")}
                       </FieldRow>
-                      <FieldRow label="Current Salary" value={form.currentSalary}>
+                      <FieldRow
+                        label="Current Salary"
+                        value={form.currentSalary}
+                      >
                         {editInput("currentSalary", "number")}
                       </FieldRow>
                       <FieldRow
@@ -1252,7 +1332,10 @@ const JobSeekerDetails = ({ mode }) => {
                           cityPlaceholder,
                         )}
                       </FieldRow>
-                      <FieldRow label="Expected Salary" value={form.expectedSalary}>
+                      <FieldRow
+                        label="Expected Salary"
+                        value={form.expectedSalary}
+                      >
                         {editInput("expectedSalary", "number")}
                       </FieldRow>
                       <FieldRow
@@ -1297,7 +1380,9 @@ const JobSeekerDetails = ({ mode }) => {
                       </FieldRow>
 
                       {toBoolean(
-                        isEditing ? draft.upskillingYesNo : form.upskillingYesNo,
+                        isEditing
+                          ? draft.upskillingYesNo
+                          : form.upskillingYesNo,
                       ) ? (
                         <FieldRow
                           label="Upskilling Where"

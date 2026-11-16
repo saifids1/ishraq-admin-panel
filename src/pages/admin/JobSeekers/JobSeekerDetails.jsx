@@ -11,6 +11,8 @@ import {
   SlidersHorizontal,
   X,
   Building2,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import applicationApi from "../../../api/applicationApi";
@@ -37,6 +39,60 @@ const T = {
   hover: "hover:bg-[#f3f6f9]",
 };
 
+const StatusBox = ({
+  value,
+  verified,
+  mono = false,
+  mailto = false,
+  input,
+}) => {
+  const ok = truthy(verified);
+
+  const badge = (
+    <span
+      className={`inline-flex shrink-0 font-mono w-[90px] items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+        ok
+          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+          : "bg-amber-50 text-amber-700 ring-amber-200"
+      }`}
+    >
+      {ok ? (
+        <CheckCircle2 size={12} strokeWidth={2.4} />
+      ) : (
+        <AlertTriangle size={12} strokeWidth={2.4} />
+      )}
+      {ok ? "Verified" : "Unverified"}
+    </span>
+  );
+
+  if (input) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">{input}</div>
+        {badge}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${FIELD_BOX(mono)} justify-between gap-2`}>
+      <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
+        {mailto && value ? (
+          <a
+            href={`mailto:${value}`}
+            className="text-[#1e5a7a] hover:underline"
+          >
+            {value}
+          </a>
+        ) : (
+          val(value)
+        )}
+      </span>
+      {badge}
+    </div>
+  );
+};
+
 const val = (v) => (v && String(v).trim() ? v : "—");
 
 const toYesNo = (v) => {
@@ -45,7 +101,9 @@ const toYesNo = (v) => {
   return "—";
 };
 const toBoolean = (value) =>
-  value === true || value === 1 || ["true", "1", "yes"].includes(String(value).toLowerCase());
+  value === true ||
+  value === 1 ||
+  ["true", "1", "yes"].includes(String(value).toLowerCase());
 
 const truthy = (v) => {
   if (v === true) return true;
@@ -197,6 +255,8 @@ const EMPTY_FORM = {
   activatedAt: "",
   activatedBy: "",
   consentAt: "",
+  isNumberVerified: "",
+  isEmailVerified: "",
 };
 
 const extractRecord = (response) => {
@@ -233,12 +293,10 @@ const normalizeLookup = (list, idKeys, nameKeys) =>
 ------------------------------------------------------------- */
 const readPreferredFromApi = (item) => ({
   preferredCityId: String(
-    item?.jB_preferred_location ?? item?.jB_preferredLocation ?? ""
+    item?.jB_preferred_location ?? item?.jB_preferredLocation ?? "",
   ),
   preferredCityName:
-    item?.jB_preferred_locationName ??
-    item?.jB_preferredLocationName ??
-    "",
+    item?.jB_preferred_locationName ?? item?.jB_preferredLocationName ?? "",
 });
 
 const writePreferredToApi = (draft) => ({
@@ -309,6 +367,8 @@ const toJobseekerView = (item, id) => {
     activatedAt: item?.jB_activated_at ?? "",
     activatedBy: item?.jB_activated_by ?? "",
     consentAt: item?.jB_consent_at ?? "",
+    isNumberVerified: item?.isNumberVerified ?? "",
+    isEmailVerified: item?.isEmailVerified ?? "",
 
     resume: item?.jB_cv_file_path
       ? {
@@ -851,9 +911,7 @@ const JobSeekerDetails = ({ mode }) => {
           const city = extractRecord(cityResp);
           if (cancelled || !city) return;
 
-          const stateId = String(
-            city.ctM_state_id ?? city.CTM_state_id ?? "",
-          );
+          const stateId = String(city.ctM_state_id ?? city.CTM_state_id ?? "");
           const countryId = String(
             city.ctM_country_id ?? city.CTM_country_id ?? "",
           );
@@ -1018,9 +1076,8 @@ const JobSeekerDetails = ({ mode }) => {
   /* Country name resolution for preferred country */
   const preferredCountryName = useMemo(() => {
     const byId =
-      countries.find(
-        (c) => String(c.id) === String(form.preferredCountryId),
-      )?.name || "";
+      countries.find((c) => String(c.id) === String(form.preferredCountryId))
+        ?.name || "";
     return byId || form.preferredCountry || "";
   }, [countries, form.preferredCountryId, form.preferredCountry]);
 
@@ -1030,26 +1087,23 @@ const JobSeekerDetails = ({ mode }) => {
     const cityName =
       form.preferredCity ||
       prefCityMeta.cityName ||
-      prefCities.find(
-        (c) => String(c.id) === String(form.preferredCityId),
-      )?.name ||
+      prefCities.find((c) => String(c.id) === String(form.preferredCityId))
+        ?.name ||
       "";
 
     // State: from resolved meta, or from prefStates while editing.
     const stateName =
       prefCityMeta.stateName ||
-      prefStates.find(
-        (s) => String(s.id) === String(form.preferredStateId),
-      )?.name ||
+      prefStates.find((s) => String(s.id) === String(form.preferredStateId))
+        ?.name ||
       "";
 
     // Country: from resolved meta, or from countries list.
     const countryName =
       prefCityMeta.countryName ||
       preferredCountryName ||
-      countries.find(
-        (c) => String(c.id) === String(form.preferredCountryId),
-      )?.name ||
+      countries.find((c) => String(c.id) === String(form.preferredCountryId))
+        ?.name ||
       "";
 
     // Preferred Location display: per API this is the CITY (e.g. "Godby").
@@ -1266,7 +1320,10 @@ const JobSeekerDetails = ({ mode }) => {
           <p className={`mt-1 text-[13px] ${T.textMuted}`}>
             The record you're looking for doesn't exist or was removed.
           </p>
-          <button onClick={() => navigate(-1)} className={`mt-4 ${BTN_PRIMARY}`}>
+          <button
+            onClick={() => navigate(-1)}
+            className={`mt-4 ${BTN_PRIMARY}`}
+          >
             Go back
           </button>
         </div>
@@ -1294,6 +1351,8 @@ const JobSeekerDetails = ({ mode }) => {
               </button>
               <h2 className="font-semibold text-slate-800">{pageTitle}</h2>
             </div>
+
+            <h2 className="font-semibold text-slate-800">{form.jobseekerNo}</h2>
 
             <div className="flex w-full items-center gap-2 sm:w-auto">
               {isEditing ? (
@@ -1375,46 +1434,48 @@ const JobSeekerDetails = ({ mode }) => {
               {tab === "overview" && (
                 <section>
                   <div className="space-y-6">
-                    <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                    <div
+                      className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                    >
                       <div className="p-4">
                         <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                           Personal & Professional Details
                         </h3>
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow label="Jobseeker ID" value={form.jobseekerNo} />
+                          {/* <FieldRow
+                            label="Jobseeker ID"
+                            value={form.jobseekerNo}
+                          /> */}
                           <FieldRow label="Full Name" value={form.fullName}>
                             {editInput("fullName")}
                           </FieldRow>
-                          <FieldRow label="Mobile Number" value={form.mobile} mono>
-                            {editInput("mobile", "tel")}
+                          <FieldRow
+                            label="Mobile Number"
+                            value={form.mobile}
+                            mono
+                          >
+                            <StatusBox
+                              value={form.mobile}
+                              mono
+                              verified={form.isNumberVerified}
+                              input={editInput("mobile", "tel")}
+                            />
                           </FieldRow>
-                          <FieldRow label="WhatsApp Number" value={form.whatsapp} mono>
+                          <FieldRow
+                            label="WhatsApp Number"
+                            value={form.whatsapp}
+                            mono
+                          >
                             {editInput("whatsapp", "tel")}
                           </FieldRow>
-
-                          <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-center sm:gap-3">
-                            <label className={`${FIELD_LABEL} text-left`}>
-                              Email Address
-                            </label>
-                            {isEditing ? (
-                              editInput("email", "email")
-                            ) : (
-                              <div className={FIELD_BOX()}>
-                                <span className="min-w-0 flex-1 truncate">
-                                  {form.email ? (
-                                    <a
-                                      href={`mailto:${form.email}`}
-                                      className="inline-flex items-center gap-1 text-[#1e5a7a] hover:underline"
-                                    >
-                                      {form.email}
-                                    </a>
-                                  ) : (
-                                    "—"
-                                  )}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                          <FieldRow label="Email Address" value={form.email}>
+                            <StatusBox
+                              value={form.email}
+                              mailto
+                              verified={form.isEmailVerified}
+                              input={editInput("email", "email")}
+                            />
+                          </FieldRow>
 
                           <FieldRow label="Institute Type" value={form.jobType}>
                             {editSelect(
@@ -1428,7 +1489,10 @@ const JobSeekerDetails = ({ mode }) => {
                               },
                             )}
                           </FieldRow>
-                          <FieldRow label="Job Category" value={form.jobCategory}>
+                          <FieldRow
+                            label="Job Category"
+                            value={form.jobCategory}
+                          >
                             {editSelect(
                               "jobCategoryId",
                               jobCategories,
@@ -1442,27 +1506,53 @@ const JobSeekerDetails = ({ mode }) => {
                           <FieldRow label="Role" value={form.jobRole}>
                             {editSelect("jobRoleId", jobRoles, "Select role")}
                           </FieldRow>
-                          <FieldRow label="Highest Qualification" value={form.highestQualification}>
+                          <FieldRow
+                            label="Highest Qualification"
+                            value={form.highestQualification}
+                          >
                             {editInput("highestQualification")}
                           </FieldRow>
-                          <FieldRow label="Speciality / Department" value={form.speciality}>
+                          <FieldRow
+                            label="Speciality / Department"
+                            value={form.speciality}
+                          >
                             {editInput("speciality")}
                           </FieldRow>
-                          <FieldRow label="Professional Reg. No." value={form.professionalRegistrationNumber} mono>
+                          <FieldRow
+                            label="Professional Reg. No."
+                            value={form.professionalRegistrationNumber}
+                            mono
+                          >
                             {editInput("professionalRegistrationNumber")}
                           </FieldRow>
-                          <FieldRow label="Total Experience (Years)" value={form.totalExperience}>
+                          <FieldRow
+                            label="Total Experience (Years)"
+                            value={form.totalExperience}
+                          >
                             {editInput("totalExperience", "number")}
                           </FieldRow>
-                          <FieldRow label="Current Designation" value={form.currentDesignation}>
+                          <FieldRow
+                            label="Current Designation"
+                            value={form.currentDesignation}
+                          >
                             {editInput("currentDesignation")}
                           </FieldRow>
-                          <FieldRow label="Status" value={active ? "Active" : "Inactive"} />
-                          <FieldRow label="Consent Given" value={form.consentGiven}>
+                          <FieldRow
+                            label="Status"
+                            value={active ? "Active" : "Inactive"}
+                          />
+                          <FieldRow
+                            label="Consent Given"
+                            value={form.consentGiven}
+                          >
                             {isEditing ? (
                               <select
                                 className={EDIT_INPUT}
-                                value={toBoolean(draft.consentGiven) ? "true" : "false"}
+                                value={
+                                  toBoolean(draft.consentGiven)
+                                    ? "true"
+                                    : "false"
+                                }
                                 onChange={(event) =>
                                   updateDraft(
                                     "consentGiven",
@@ -1479,7 +1569,9 @@ const JobSeekerDetails = ({ mode }) => {
                       </div>
                     </div>
 
-                    <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                    <div
+                      className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                    >
                       <div className="p-4">
                         <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                           Current Location
@@ -1529,17 +1621,34 @@ const JobSeekerDetails = ({ mode }) => {
                       </div>
                     </div>
 
-                    <div className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                    <div
+                      className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                    >
                       <div className="p-4">
                         <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                           User Log
                         </h3>
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          <FieldRow label="Created At" value={formatDateTime(form.createdAt)} />
-                          <FieldRow label="Created By" value={formatUser(form.CreatedByName)} />
-                          <FieldRow label="Updated At" value={formatDateTime(form.updatedAt)} />
-                          <FieldRow label="Updated By" value={formatUser(form.UpdatedByName)} />
-                          <FieldRow label="Activated At" value={formatDateTime(form.activatedAt)} />
+                          <FieldRow
+                            label="Created At"
+                            value={formatDateTime(form.createdAt)}
+                          />
+                          <FieldRow
+                            label="Created By"
+                            value={formatUser(form.CreatedByName)}
+                          />
+                          <FieldRow
+                            label="Updated At"
+                            value={formatDateTime(form.updatedAt)}
+                          />
+                          <FieldRow
+                            label="Updated By"
+                            value={formatUser(form.UpdatedByName)}
+                          />
+                          <FieldRow
+                            label="Activated At"
+                            value={formatDateTime(form.activatedAt)}
+                          />
                         </div>
                       </div>
                     </div>
@@ -1548,22 +1657,36 @@ const JobSeekerDetails = ({ mode }) => {
               )}
 
               {tab === "employment" && (
-                <section className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                <section
+                  className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                >
                   <div className="p-4">
                     <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                       Current Employment
                     </h3>
                     <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                      <FieldRow label="Current Employer" value={form.currentEmployment}>
+                      <FieldRow
+                        label="Current Employer"
+                        value={form.currentEmployment}
+                      >
                         {editInput("currentEmployment")}
                       </FieldRow>
-                      <FieldRow label="Current Designation" value={form.currentDesignation}>
+                      <FieldRow
+                        label="Current Designation"
+                        value={form.currentDesignation}
+                      >
                         {editInput("currentDesignation")}
                       </FieldRow>
-                      <FieldRow label="Current Salary" value={form.currentSalary}>
+                      <FieldRow
+                        label="Current Salary"
+                        value={form.currentSalary}
+                      >
                         {editInput("currentSalary", "number")}
                       </FieldRow>
-                      <FieldRow label="Total Experience (Years)" value={form.totalExperience}>
+                      <FieldRow
+                        label="Total Experience (Years)"
+                        value={form.totalExperience}
+                      >
                         {editInput("totalExperience", "number")}
                       </FieldRow>
                       <FieldRow label="Job Type" value={form.jobType}>
@@ -1579,7 +1702,9 @@ const JobSeekerDetails = ({ mode }) => {
               )}
 
               {tab === "preferences" && (
-                <section className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                <section
+                  className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                >
                   <div className="p-4">
                     <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
                       Job Preferences
@@ -1622,7 +1747,11 @@ const JobSeekerDetails = ({ mode }) => {
 
                       <FieldRow
                         label="Preferred Location"
-                        value={isEditing ? undefined : preferredLabels.locationDisplayName}
+                        value={
+                          isEditing
+                            ? undefined
+                            : preferredLabels.locationDisplayName
+                        }
                       >
                         {editSelect(
                           "preferredCityId",
@@ -1639,15 +1768,25 @@ const JobSeekerDetails = ({ mode }) => {
                         )}
                       </FieldRow>
 
-                      <FieldRow label="Expected Salary" value={form.expectedSalary}>
+                      <FieldRow
+                        label="Expected Salary"
+                        value={form.expectedSalary}
+                      >
                         {editInput("expectedSalary", "number")}
                       </FieldRow>
 
-                      <FieldRow label="Willing to Relocate?" value={form.willingToRelocate}>
+                      <FieldRow
+                        label="Willing to Relocate?"
+                        value={form.willingToRelocate}
+                      >
                         {isEditing ? (
                           <select
                             className={EDIT_INPUT}
-                            value={toBoolean(draft.willingToRelocate) ? "true" : "false"}
+                            value={
+                              toBoolean(draft.willingToRelocate)
+                                ? "true"
+                                : "false"
+                            }
                             onChange={(event) =>
                               updateDraft(
                                 "willingToRelocate",
@@ -1685,7 +1824,9 @@ const JobSeekerDetails = ({ mode }) => {
               )}
 
               {tab === "resume" && (
-                <section className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                <section
+                  className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                >
                   <div className="p-4">
                     <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
                       <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3">
@@ -1712,7 +1853,9 @@ const JobSeekerDetails = ({ mode }) => {
               )}
 
               {tab === "jobs" && (
-                <section className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}>
+                <section
+                  className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                >
                   <div className="p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                       <h3 className="font-semibold text-[#1a2b3c]">
