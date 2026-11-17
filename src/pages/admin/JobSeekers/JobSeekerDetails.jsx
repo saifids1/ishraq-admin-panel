@@ -1473,7 +1473,7 @@ const JobSeekerDetails = ({ mode }) => {
                               value={form.email}
                               mailto
                               verified={form.isEmailVerified}
-                              input={editInput("email", "email")}
+                              // input={editInput("email", "email")}
                             />
                           </FieldRow>
 

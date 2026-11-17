@@ -15,6 +15,16 @@ import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import StatusModal from "../../../components/common/StatusModal";
 import { getCurrentUserId, getCurrentUserId2 } from "../../../utils/authUtils";
+import { sendOtp, verifyOtp } from "../../../api/Services/smsOtpSerivce";
+import {
+  sendForgotPasswordOtpApi,
+  verifyForgotPasswordOtpApi,
+} from "../../../api/authApi";
+import {
+  markEmailVerifiedApi,
+  markNumberVerifiedApi,
+} from "../../../api/verificationApi";
+import OtpVerifyModal from "../../../components/common/OtpVerifyModal";
 /* ---------------- Design tokens ---------------- */
 
 const T = {
@@ -105,50 +115,91 @@ const StatusBox = ({
   mono = false,
   mailto = false,
   input,
+  onVerify,
+  verifying = false,
 }) => {
   const ok = truthy(verified);
 
-  const badge = (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
-        ok
-          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-          : "bg-amber-50 text-amber-700 ring-amber-200"
-      }`}
-    >
-      {ok ? (
-        <CheckCircle2 size={12} strokeWidth={2.4} />
-      ) : (
-        <AlertTriangle size={12} strokeWidth={2.4} />
-      )}
-      {ok ? "Verified" : "Not verified"}
+  const badge = ok ? (
+    <span className="inline-flex shrink-0 font-mono items-center gap-1 whitespace-nowrap rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+      <CheckCircle2 size={12} strokeWidth={2.4} />
+      Verified
+    </span>
+  ) : (
+    <span className="inline-flex shrink-0 animate-pulse items-center gap-1 whitespace-nowrap rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm">
+      <AlertTriangle size={12} strokeWidth={2.6} />
+      UnVerified
     </span>
   );
 
+  const verifyButton =
+    !ok && onVerify ? (
+      <button
+        type="button"
+        onClick={onVerify}
+        disabled={verifying}
+        className="shrink-0 whitespace-nowrap rounded-md bg-[#2f6b8a] px-3 py-1 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {verifying ? "Sending..." : "Verify"}
+      </button>
+    ) : null;
+
+  const warningText = !ok ? (
+    <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-red-700">
+      <AlertTriangle size={13} strokeWidth={2.4} className="shrink-0" />
+      This {mailto ? "email address" : "number"} is not verified. Please verify
+      it now.
+    </p>
+  ) : null;
+
+  const warningFrame = !ok
+    ? "border-2 border-red-500 bg-red-50 ring-4 ring-red-100"
+    : `border ${T.border} bg-[#fbfcfd]`;
+
   if (input) {
     return (
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">{input}</div>
-        {badge}
+      <div>
+        <div
+          className={`flex items-center gap-2 rounded-md p-1 ${
+            !ok ? "border-2 border-red-500 bg-red-50 ring-4 ring-red-100" : ""
+          }`}
+        >
+          <div className="min-w-0 flex-1">{input}</div>
+          <div className="flex shrink-0 items-center gap-2">
+            {badge}
+            {verifyButton}
+          </div>
+        </div>
+        {warningText}
       </div>
     );
   }
 
   return (
-    <div className={`${FIELD_BOX(mono)} justify-between gap-2`}>
-      <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
-        {mailto && value ? (
-          <a
-            href={`mailto:${value}`}
-            className="text-[#1e5a7a] hover:underline"
-          >
-            {value}
-          </a>
-        ) : (
-          val(value)
-        )}
-      </span>
-      {badge}
+    <div>
+      <div
+        className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md px-3 text-[13px] font-medium ${T.text} ${
+          mono ? "font-mono text-[12.5px]" : ""
+        } ${warningFrame}`}
+      >
+        <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
+          {mailto && value ? (
+            <a
+              href={`mailto:${value}`}
+              className="text-[#1e5a7a] hover:underline"
+            >
+              {value}
+            </a>
+          ) : (
+            val(value)
+          )}
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          {badge}
+          {verifyButton}
+        </div>
+      </div>
+      {warningText}
     </div>
   );
 };
@@ -287,6 +338,12 @@ const EmployerProfile = () => {
   const [statesLoading, setStatesLoading] = useState(false);
   const [cities, setCities] = useState([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
+
+  const [verifyTarget, setVerifyTarget] = useState(null); // "email" | "phone" | null
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpError, setOtpError] = useState("");
+  const [otpInfo, setOtpInfo] = useState("");
 
   const openConfirm = ({ title, message, confirmText, onConfirm }) => {
     setModal({
@@ -589,6 +646,87 @@ const EmployerProfile = () => {
       ? "Loading cities..."
       : "Select city";
 
+  const contactForTarget =
+    verifyTarget === "phone" ? emp?.mobile : emp?.userName;
+
+  const sendVerificationOtp = async (type) => {
+    setVerifyTarget(type);
+    setOtpSending(true);
+
+    try {
+      const res =
+        type === "phone"
+          ? await sendOtp(emp.mobile)
+          : await sendForgotPasswordOtpApi(emp.userName);
+
+      if (res?.success === false) throw new Error(res.message);
+    } catch (err) {
+      setVerifyTarget(null);
+      showStatus({
+        type: "error",
+        title: "Could not send OTP",
+        message: getErrorMessage(err, "Failed to send OTP."),
+      });
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const confirmVerificationOtp = async (otp) => {
+    setOtpVerifying(true);
+    const isPhone = verifyTarget === "phone";
+
+    try {
+      if (isPhone) {
+        const res = await verifyOtp(emp.mobile, otp);
+        if (res?.success === false)
+          throw new Error(res.message || "Invalid OTP.");
+        await markNumberVerifiedApi(emp.mobile);
+      } else {
+        const res = await verifyForgotPasswordOtpApi(emp.userName, otp);
+        if (res?.success === false)
+          throw new Error(res.message || "Invalid OTP.");
+        await markEmailVerifiedApi(emp.userName);
+      }
+
+      setVerifyTarget(null);
+      setRefreshKey((current) => current + 1);
+      showStatus({
+        type: "success",
+        title: "Verified",
+        message: isPhone
+          ? "Mobile number verified successfully."
+          : "Email address verified successfully.",
+      });
+    } catch (err) {
+      setVerifyTarget(null);
+      showStatus({
+        type: "error",
+        title: "Verification failed",
+        message: getErrorMessage(err, "OTP verification failed."),
+      });
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
+  const closeVerification = () => {
+    if (otpVerifying) return;
+    setVerifyTarget(null);
+  };
+
+  const showStatus = ({ type, title, message }) => {
+    setModal({
+      type,
+      title,
+      message,
+      confirmText: "OK",
+      showCancel: false,
+      onConfirm: () => setModal(null),
+      onCancel: () => setModal(null),
+    });
+  };
+
   if (loading) {
     return (
       <div className={`min-h-full ${T.bg} p-6`}>
@@ -819,6 +957,12 @@ const EmployerProfile = () => {
                         value={emp.userName}
                         mailto
                         verified={emp.isEmailVerified}
+                        onVerify={
+                          isEditing
+                            ? undefined
+                            : () => sendVerificationOtp("email")
+                        }
+                        verifying={otpSending}
                       />
                     </FieldRow>
                     <FieldRow
@@ -876,6 +1020,12 @@ const EmployerProfile = () => {
                         value={emp.mobile}
                         mono
                         verified={emp.isNumberVerified}
+                        onVerify={
+                          isEditing
+                            ? undefined
+                            : () => sendVerificationOtp("phone")
+                        }
+                        verifying={otpSending}
                         input={
                           isEditing ? (
                             <input
@@ -1017,6 +1167,20 @@ const EmployerProfile = () => {
         busy={saving}
         onConfirm={modal?.onConfirm}
         onCancel={modal?.onCancel}
+      />
+      <OtpVerifyModal
+        isOpen={Boolean(verifyTarget)}
+        title={
+          verifyTarget === "phone"
+            ? "Verify mobile number"
+            : "Verify email address"
+        }
+        contact={contactForTarget}
+        sending={otpSending}
+        verifying={otpVerifying}
+        onClose={closeVerification}
+        onVerify={confirmVerificationOtp}
+        onResend={() => sendVerificationOtp(verifyTarget)}
       />
     </div>
   );

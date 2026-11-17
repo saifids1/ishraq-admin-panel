@@ -281,6 +281,8 @@ const CreateEmployer = ({ onCancel, onSaved }) => {
         [config.cityField]: Number(cityId),
         [config.websiteField]: website.trim(),
         [config.consentField]: Boolean(consentGiven),
+        isEmailVerified : false,
+        isNumberVerified : false,
       };
 
       const response = await config.api.create(payload);

@@ -22,6 +22,17 @@ import countryMasterApi from "../../../api/Services/countryMasterApi";
 import stateMasterApi from "../../../api/Services/stateMasterApi";
 import cityMasterApi from "../../../api/Services/cityMasterApi";
 import { getCurrentUserId2, getCurrentUserId } from "../../../utils/authUtils";
+import StatusModal from "../../../components/common/StatusModal";
+import OtpVerifyModal from "../../../components/common/OtpVerifyModal";
+import { sendOtp, verifyOtp } from "../../../api/Services/smsOtpSerivce";
+import {
+  sendForgotPasswordOtpApi,
+  verifyForgotPasswordOtpApi,
+} from "../../../api/authApi";
+import {
+  markEmailVerifiedApi,
+  markNumberVerifiedApi,
+} from "../../../api/verificationApi";
 
 /* ---------------- Design tokens (match EmployerProfile) ---------------- */
 const T = {
@@ -132,50 +143,92 @@ const StatusBox = ({
   mono = false,
   mailto = false,
   input,
+  onVerify,
+  verifying = false,
 }) => {
   const ok = truthy(verified);
 
-  const badge = (
-    <span
-      className={`inline-flex shrink-0 items-center font-mono gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
-        ok
-          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-          : "bg-amber-50 text-amber-700 ring-amber-200"
-      }`}
-    >
-      {ok ? (
-        <CheckCircle2 size={12} strokeWidth={2.4} />
-      ) : (
-        <AlertTriangle size={12} strokeWidth={2.4} />
-      )}
-      {ok ? "Verified" : "Not verified"}
+  const badge = ok ? (
+    <span className="inline-flex font-mono shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+      <CheckCircle2 size={12} strokeWidth={2.4} />
+      Verified
     </span>
+  ) : (
+    ""
+    // <span className="inline-flex font-mono shrink-0 animate-pulse items-center gap-1 whitespace-nowrap rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm">
+    //   <AlertTriangle size={12} strokeWidth={2.6} />
+    //   {/* UnVerified */}
+    // </span>
   );
+
+  const verifyButton =
+    !ok && onVerify ? (
+      <button
+        type="button"
+        onClick={onVerify}
+        disabled={verifying}
+        className="shrink-0 whitespace-nowrap rounded-md bg-[#2f6b8a] px-3 py-1 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#25566f] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {verifying ? "Sending..." : "Verify"}
+      </button>
+    ) : null;
+
+  const warningText = !ok ? (
+    <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-red-700">
+      <AlertTriangle size={13} strokeWidth={2.4} className="shrink-0" />
+      This {mailto ? "email address" : "number"} is not verified. Please verify
+      it now.
+    </p>
+  ) : null;
+
+  const warningFrame = !ok
+    ? "border-2 border-red-500 bg-red-50 ring-4 ring-red-100"
+    : `border ${T.border} bg-[#fbfcfd]`;
 
   if (input) {
     return (
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">{input}</div>
-        {badge}
+      <div>
+        <div
+          className={`flex items-center gap-2 rounded-md p-1 ${
+            !ok ? "border-2 border-red-500 bg-red-50 ring-4 ring-red-100" : ""
+          }`}
+        >
+          <div className="min-w-0 flex-1">{input}</div>
+          <div className="flex shrink-0 items-center gap-2">
+            {badge}
+            {verifyButton}
+          </div>
+        </div>
+        {warningText}
       </div>
     );
   }
 
   return (
-    <div className={`${FIELD_BOX(mono)} justify-between gap-2`}>
-      <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
-        {mailto && value ? (
-          <a
-            href={`mailto:${value}`}
-            className="text-[#1e5a7a] hover:underline"
-          >
-            {value}
-          </a>
-        ) : (
-          val(value)
-        )}
-      </span>
-      {badge}
+    <div>
+      <div
+        className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md px-3 text-[13px] font-medium ${T.text} ${
+          mono ? "font-mono text-[12.5px]" : ""
+        } ${warningFrame}`}
+      >
+        <span className="min-w-0 flex-1 truncate" title={String(val(value))}>
+          {mailto && value ? (
+            <a
+              href={`mailto:${value}`}
+              className="text-[#1e5a7a] hover:underline"
+            >
+              {value}
+            </a>
+          ) : (
+            val(value)
+          )}
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          {badge}
+          {verifyButton}
+        </div>
+      </div>
+      {warningText}
     </div>
   );
 };
@@ -487,8 +540,6 @@ const JobSeekerDetails = ({ mode }) => {
   const [isEditing, setIsEditing] = useState(mode === "edit");
   const [draft, setDraft] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [editError, setEditError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [instituteTypes, setInstituteTypes] = useState([]);
@@ -499,6 +550,11 @@ const JobSeekerDetails = ({ mode }) => {
   const [cities, setCities] = useState([]);
   const [statesLoading, setStatesLoading] = useState(false);
   const [citiesLoading, setCitiesLoading] = useState(false);
+
+  const [modal, setModal] = useState(null);
+  const [verifyTarget, setVerifyTarget] = useState(null); // "email" | "phone" | null
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
 
   const [uploadFile, setUploadFile] = useState(null);
 
@@ -579,13 +635,7 @@ const JobSeekerDetails = ({ mode }) => {
           ),
         );
       } catch (err) {
-        if (!cancelled) {
-          setEditError(
-            err?.response?.data?.message ||
-              err?.message ||
-              "Unable to load jobseeker edit options.",
-          );
-        }
+        console.log(err);
       }
     };
 
@@ -622,11 +672,6 @@ const JobSeekerDetails = ({ mode }) => {
       .catch((err) => {
         if (!cancelled) {
           setStates([]);
-          setEditError(
-            err?.response?.data?.message ||
-              err?.message ||
-              "Unable to load states.",
-          );
         }
       })
       .finally(() => {
@@ -665,11 +710,6 @@ const JobSeekerDetails = ({ mode }) => {
       .catch((err) => {
         if (!cancelled) {
           setCities([]);
-          setEditError(
-            err?.response?.data?.message ||
-              err?.message ||
-              "Unable to load cities.",
-          );
         }
       })
       .finally(() => {
@@ -703,11 +743,6 @@ const JobSeekerDetails = ({ mode }) => {
       })
       .catch((err) => {
         if (!cancelled) {
-          setEditError(
-            err?.response?.data?.message ||
-              err?.message ||
-              "Unable to load job categories.",
-          );
         }
       });
     return () => {
@@ -737,11 +772,6 @@ const JobSeekerDetails = ({ mode }) => {
       })
       .catch((err) => {
         if (!cancelled) {
-          setEditError(
-            err?.response?.data?.message ||
-              err?.message ||
-              "Unable to load job roles.",
-          );
         }
       });
     return () => {
@@ -756,15 +786,13 @@ const JobSeekerDetails = ({ mode }) => {
   const goToEditProfile = () => {
     setDraft({ ...form });
     setUploadFile(null);
-    setEditError("");
-    setSuccessMessage("");
+
     setIsEditing(true);
   };
 
   const cancelEdit = () => {
     setDraft({ ...form });
     setUploadFile(null);
-    setEditError("");
     setIsEditing(false);
     if (mode === "edit") {
       navigate(`/jobseeker/profile`, { replace: true });
@@ -774,19 +802,26 @@ const JobSeekerDetails = ({ mode }) => {
   const saveJobseeker = async () => {
     const currentUserId = Number(getCurrentUserId2());
     if (!Number.isInteger(currentUserId) || currentUserId <= 0) {
-      setEditError(
+      showError(
         "Unable to identify the current user. Please sign in again.",
+        "Update failed",
       );
       return;
     }
+
     if (!draft.fullName.trim() || !draft.mobile.trim() || !draft.email.trim()) {
-      setEditError("Full name, mobile number, and email are required.");
+      showError(
+        "Full name, mobile number, and email are required.",
+        "Missing information",
+      );
       return;
     }
+
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) {
-      setEditError("Enter a valid email address.");
+      showError("Enter a valid email address.", "Invalid email");
       return;
     }
+
     if (
       !draft.instituteTypeId ||
       !draft.jobCategoryId ||
@@ -795,15 +830,15 @@ const JobSeekerDetails = ({ mode }) => {
       !draft.stateId ||
       !draft.cityId
     ) {
-      setEditError(
+      showError(
         "Select valid institute, profession, role, and location values.",
+        "Missing information",
       );
       return;
     }
 
     setSaving(true);
-    setEditError("");
-    setSuccessMessage("");
+
     try {
       const payload = {
         JB_jobseeker_id: Number(userId),
@@ -840,6 +875,7 @@ const JobSeekerDetails = ({ mode }) => {
           : "",
         JB_are_intrested: toBoolean(draft.interested),
       };
+
       const createdBy = Number(form.createdBy);
       if (Number.isInteger(createdBy) && createdBy > 0) {
         payload.JB_created_by = createdBy;
@@ -855,19 +891,28 @@ const JobSeekerDetails = ({ mode }) => {
       }
 
       await jobseekerApi.update(userId, formData);
+
       setIsEditing(false);
       setUploadFile(null);
-      setSuccessMessage("Jobseeker updated successfully.");
       setRefreshKey((current) => current + 1);
-      if (mode === "edit") {
-        navigate(`/jobseeker/profile`, { replace: true });
-      }
+
+      showStatus({
+        type: "success",
+        title: "Profile updated",
+        message: "Jobseeker updated successfully.",
+        onClose: () => {
+          if (mode === "edit") {
+            navigate("/jobseeker/profile", { replace: true });
+          }
+        },
+      });
     } catch (err) {
-      setEditError(
+      showError(
         err?.response?.data?.message ||
           err?.response?.data?.Message ||
           err?.message ||
           "Failed to update jobseeker.",
+        "Update failed",
       );
     } finally {
       setSaving(false);
@@ -931,6 +976,98 @@ const JobSeekerDetails = ({ mode }) => {
       ? "Loading cities..."
       : "Select city";
 
+  const showStatus = ({ type, title, message, onClose }) => {
+    const close = () => {
+      setModal(null);
+      onClose?.();
+    };
+
+    setModal({
+      type,
+      title,
+      message,
+      confirmText: "OK",
+      showCancel: false,
+      onConfirm: close,
+      onCancel: close,
+    });
+  };
+
+  const showError = (message, title = "Something went wrong") =>
+    showStatus({ type: "error", title, message });
+
+  const contactForTarget = verifyTarget === "phone" ? form.mobile : form.email;
+
+  const sendVerificationOtp = async (type) => {
+    setVerifyTarget(type);
+    setOtpSending(true);
+
+    try {
+      const res =
+        type === "phone"
+          ? await sendOtp(form.mobile)
+          : await sendForgotPasswordOtpApi(form.email);
+
+      if (res?.success === false) throw new Error(res.message);
+    } catch (err) {
+      setVerifyTarget(null);
+      showStatus({
+        type: "error",
+        title: "Could not send OTP",
+        message:
+          err?.response?.data?.message || err?.message || "Failed to send OTP.",
+      });
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const confirmVerificationOtp = async (otp) => {
+    setOtpVerifying(true);
+    const isPhone = verifyTarget === "phone";
+
+    try {
+      if (isPhone) {
+        const res = await verifyOtp(form.mobile, otp);
+        if (res?.success === false)
+          throw new Error(res.message || "Invalid OTP.");
+        await markNumberVerifiedApi(form.mobile);
+      } else {
+        const res = await verifyForgotPasswordOtpApi(form.email, otp);
+        if (res?.success === false)
+          throw new Error(res.message || "Invalid OTP.");
+        await markEmailVerifiedApi(form.email);
+      }
+
+      setVerifyTarget(null);
+      setRefreshKey((current) => current + 1);
+      showStatus({
+        type: "success",
+        title: "Verified",
+        message: isPhone
+          ? "Mobile number verified successfully."
+          : "Email address verified successfully.",
+      });
+    } catch (err) {
+      setVerifyTarget(null);
+      showStatus({
+        type: "error",
+        title: "Verification failed",
+        message:
+          err?.response?.data?.message ||
+          err?.message ||
+          "OTP verification failed.",
+      });
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
+  const closeVerification = () => {
+    if (otpVerifying) return;
+    setVerifyTarget(null);
+  };
+
   /* Loading */
   if (loading) {
     return (
@@ -993,9 +1130,9 @@ const JobSeekerDetails = ({ mode }) => {
               </h2>
             </div>
 
-              <h2 className="truncate font-semibold text-slate-800">
-                {form.jobseekerNo}
-              </h2>
+            <h2 className="truncate font-semibold text-slate-800">
+              {form.jobseekerNo}
+            </h2>
 
             <div className="flex w-full items-center gap-2 sm:w-auto">
               {isEditing ? (
@@ -1028,19 +1165,6 @@ const JobSeekerDetails = ({ mode }) => {
               )}
             </div>
           </div>
-
-          {(editError || successMessage) && (
-            <div
-              role={editError ? "alert" : "status"}
-              className={`mx-3 mt-3 rounded-lg border px-4 py-2.5 text-sm sm:mx-6 sm:mt-4 ${
-                editError
-                  ? "border-red-200 bg-red-50 text-red-700"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
-              }`}
-            >
-              {editError || successMessage}
-            </div>
-          )}
 
           {/* BODY */}
           <div className="p-3 sm:p-4">
@@ -1099,6 +1223,13 @@ const JobSeekerDetails = ({ mode }) => {
                           {editInput("fullName")}
                         </FieldRow>
                         <FieldRow
+                          label="WhatsApp Number"
+                          value={form.whatsapp}
+                          mono
+                        >
+                          {editInput("whatsapp", "tel")}
+                        </FieldRow>
+                        <FieldRow
                           label="Mobile Number"
                           value={form.mobile}
                           mono
@@ -1107,15 +1238,14 @@ const JobSeekerDetails = ({ mode }) => {
                             value={form.mobile}
                             mono
                             verified={form.isNumberVerified}
+                            onVerify={
+                              isEditing
+                                ? undefined
+                                : () => sendVerificationOtp("phone")
+                            }
+                            verifying={otpSending}
                             input={editInput("mobile", "tel")}
                           />
-                        </FieldRow>
-                        <FieldRow
-                          label="WhatsApp Number"
-                          value={form.whatsapp}
-                          mono
-                        >
-                          {editInput("whatsapp", "tel")}
                         </FieldRow>
 
                         <FieldRow label="Email Address">
@@ -1123,7 +1253,12 @@ const JobSeekerDetails = ({ mode }) => {
                             value={form.email}
                             mailto
                             verified={form.isEmailVerified}
-                            input={editInput("email", "email")}
+                            onVerify={
+                              isEditing
+                                ? undefined
+                                : () => sendVerificationOtp("email")
+                            }
+                            verifying={otpSending}
                           />
                         </FieldRow>
 
@@ -1263,10 +1398,6 @@ const JobSeekerDetails = ({ mode }) => {
                         <FieldRow
                           label="Updated By"
                           value={formatUser(form.UpdatedByName)}
-                        />
-                        <FieldRow
-                          label="Activated At"
-                          value={formatDateTime(form.activatedAt)}
                         />
                       </div>
                     </div>
@@ -1518,6 +1649,33 @@ const JobSeekerDetails = ({ mode }) => {
           </div>
         </div>
       </div>
+      <StatusModal
+        isOpen={Boolean(modal)}
+        type={modal?.type}
+        title={modal?.title}
+        message={modal?.message}
+        confirmText={modal?.confirmText}
+        cancelText={modal?.cancelText}
+        showCancel={modal?.showCancel}
+        busy={saving || otpVerifying}
+        onConfirm={modal?.onConfirm}
+        onCancel={modal?.onCancel}
+      />
+
+      <OtpVerifyModal
+        isOpen={Boolean(verifyTarget)}
+        title={
+          verifyTarget === "phone"
+            ? "Verify mobile number"
+            : "Verify email address"
+        }
+        contact={contactForTarget}
+        sending={otpSending}
+        verifying={otpVerifying}
+        onClose={closeVerification}
+        onVerify={confirmVerificationOtp}
+        onResend={() => sendVerificationOtp(verifyTarget)}
+      />
     </div>
   );
 };

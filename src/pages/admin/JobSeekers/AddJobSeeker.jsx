@@ -706,6 +706,8 @@ const AddJobSeeker = ({ mode }) => {
         JB_updated_by: currentUserId,
         jB_created_by: currentUserId,
         jB_updated_by: currentUserId,
+        IsEmailVerified : false,
+        IsNumberVerified: false,
       };
 
       const formData = new FormData();
