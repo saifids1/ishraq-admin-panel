@@ -13,6 +13,7 @@ import {
   Building2,
   CheckCircle2,
   AlertTriangle,
+  GraduationCap,
 } from "lucide-react";
 import jobseekerApi from "../../../api/Services/adjobseekerApi";
 import applicationApi from "../../../api/applicationApi";
@@ -99,6 +100,19 @@ const toBoolean = (value) =>
   value === 1 ||
   ["true", "1", "yes"].includes(String(value).toLowerCase());
 
+/* Normalizes a Yes/No answer (boolean, "Yes"/"No", "true"/"false", 1/0)
+   into "yes" | "no" | "" (unanswered). */
+const upskillingState = (value) => {
+  if (value === true || value === 1) return "yes";
+  if (value === false || value === 0) return "no";
+  const s = String(value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes"].includes(s)) return "yes";
+  if (["false", "0", "no"].includes(s)) return "no";
+  return "";
+};
+
+const yesNoLabel = (state) => (state === "yes" ? "Yes" : state === "no" ? "No" : "");
+
 const truthy = (v) => {
   if (v === true) return true;
   if (v === false || v === null || v === undefined) return false;
@@ -122,6 +136,7 @@ const NAV = [
   { id: "overview", label: "Overview", icon: UserRound },
   { id: "employment", label: "Employment", icon: Building2 },
   { id: "preferences", label: "Preferences", icon: SlidersHorizontal },
+  { id: "upskilling", label: "Upskilling", icon: GraduationCap },
   { id: "resume", label: "Documents", icon: FileIcon },
   { id: "jobs", label: "Applied Jobs", icon: Briefcase },
 ];
@@ -1076,6 +1091,26 @@ const JobSeekerDetails = ({ mode }) => {
   const updateDraft = (key, value) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
+  /* Upskilling flow:
+     - "Upskilling Done?" Yes -> ask where, clear the "interested" answer
+     - "Upskilling Done?" No  -> ask interested, clear the "where" answer */
+  const setUpskillingDone = (state) =>
+    setDraft((current) => ({
+      ...current,
+      upskillingDone: state === "yes" ? true : state === "no" ? false : "",
+      upskillingLocation:
+        state === "yes" ? current.upskillingLocation : "",
+      interestedInUpskilling:
+        state === "no" ? current.interestedInUpskilling : "",
+    }));
+
+  const setInterestedInUpskilling = (state) =>
+    setDraft((current) => ({
+      ...current,
+      interestedInUpskilling:
+        state === "yes" ? true : state === "no" ? false : "",
+    }));
+
   /* Country name resolution for preferred country */
   const preferredCountryName = useMemo(() => {
     const byId =
@@ -1182,7 +1217,7 @@ const JobSeekerDetails = ({ mode }) => {
     try {
       const preferredPayload = writePreferredToApi(draft);
 
-      const upskillingDone = toBoolean(draft.upskillingDone);
+      const upskillingDone = upskillingState(draft.upskillingDone) === "yes";
 
       const payload = {
         JB_jobseeker_id: Number(id),
@@ -1208,7 +1243,7 @@ const JobSeekerDetails = ({ mode }) => {
         JB_current_salary: Number(draft.currentSalary) || 0,
         JB_expected_salary: Number(draft.expectedSalary) || 0,
 
-        // Upskilling — conditional based on the Yes/No toggle
+        // Upskilling — conditional based on the Yes/No flow
         JB_upskilling_yes_no: upskillingDone,
         JB_upskilling_details: upskillingDone
           ? draft.upskillingLocation.trim()
@@ -1347,13 +1382,13 @@ const JobSeekerDetails = ({ mode }) => {
 
   const active = user.status === "Active";
 
-  // Upskilling helper: which branch to show
-  const upskillingDoneValue = isEditing
-    ? draft.upskillingDone
-    : form.upskillingDone;
-  const showWhereUpskilling = toBoolean(upskillingDoneValue);
-  const showInterestedInUpskilling =
-    hasValue(upskillingDoneValue) && !toBoolean(upskillingDoneValue);
+  // Upskilling flow state (works for both view and edit modes)
+  const upskillingDoneState = upskillingState(
+    isEditing ? draft.upskillingDone : form.upskillingDone,
+  );
+  const interestedState = upskillingState(
+    isEditing ? draft.interestedInUpskilling : form.interestedInUpskilling,
+  );
 
   return (
     <div className={`min-h-full ${T.bg}`}>
@@ -1554,73 +1589,6 @@ const JobSeekerDetails = ({ mode }) => {
                           >
                             {editInput("currentDesignation")}
                           </FieldRow>
-
-                          {/* ---------- Upskilling (conditional) ---------- */}
-                          <FieldRow
-                            label="Upskilling Done?"
-                            value={form.upskillingDone}
-                          >
-                            {isEditing ? (
-                              <select
-                                className={EDIT_INPUT}
-                                value={
-                                  toBoolean(draft.upskillingDone)
-                                    ? "true"
-                                    : "false"
-                                }
-                                onChange={(event) => {
-                                  const isYes = event.target.value === "true";
-                                  updateDraft("upskillingDone", isYes);
-                                  // Clear the branch that is no longer relevant
-                                  if (isYes) {
-                                    updateDraft("interestedInUpskilling", "");
-                                  } else {
-                                    updateDraft("upskillingLocation", "");
-                                  }
-                                }}
-                              >
-                                <option value="true">Yes</option>
-                                <option value="false">No</option>
-                              </select>
-                            ) : undefined}
-                          </FieldRow>
-
-                          {showWhereUpskilling && (
-                            <FieldRow
-                              label="Where did you complete your upskilling?"
-                              value={form.upskillingLocation}
-                            >
-                              {editInput("upskillingLocation")}
-                            </FieldRow>
-                          )}
-
-                          {showInterestedInUpskilling && (
-                            <FieldRow
-                              label="Interested in Upskilling?"
-                              value={form.interestedInUpskilling}
-                            >
-                              {isEditing ? (
-                                <select
-                                  className={EDIT_INPUT}
-                                  value={
-                                    toBoolean(draft.interestedInUpskilling)
-                                      ? "true"
-                                      : "false"
-                                  }
-                                  onChange={(event) =>
-                                    updateDraft(
-                                      "interestedInUpskilling",
-                                      event.target.value === "true",
-                                    )
-                                  }
-                                >
-                                  <option value="true">Yes</option>
-                                  <option value="false">No</option>
-                                </select>
-                              ) : undefined}
-                            </FieldRow>
-                          )}
-                          {/* ---------- /Upskilling ---------- */}
 
                           <FieldRow
                             label="Status"
@@ -1903,6 +1871,70 @@ const JobSeekerDetails = ({ mode }) => {
                           "Select profession",
                         )}
                       </FieldRow>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {tab === "upskilling" && (
+                <section
+                  className={`${T.surface} ${T.radius} border ${T.border} shadow-[0_1px_2px_rgba(16,24,40,0.04)]`}
+                >
+                  <div className="p-4">
+                    <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-[#1e5a7a]">
+                      Upskilling
+                    </h3>
+                    <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
+                      <FieldRow
+                        label="Upskilling Done?"
+                        value={yesNoLabel(upskillingDoneState)}
+                      >
+                        {isEditing ? (
+                          <select
+                            className={EDIT_INPUT}
+                            value={upskillingDoneState}
+                            onChange={(event) =>
+                              setUpskillingDone(event.target.value)
+                            }
+                          >
+                            <option value="">Select</option>
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
+                          </select>
+                        ) : undefined}
+                      </FieldRow>
+
+                      {/* YES branch: where did you complete the upskilling */}
+                      {upskillingDoneState === "yes" && (
+                        <FieldRow
+                          label="Where did you complete your upskilling?"
+                          value={form.upskillingLocation}
+                        >
+                          {editInput("upskillingLocation")}
+                        </FieldRow>
+                      )}
+
+                      {/* NO branch: interested in upskilling? */}
+                      {upskillingDoneState === "no" && (
+                        <FieldRow
+                          label="Interested in Upskilling?"
+                          value={yesNoLabel(interestedState)}
+                        >
+                          {isEditing ? (
+                            <select
+                              className={EDIT_INPUT}
+                              value={interestedState}
+                              onChange={(event) =>
+                                setInterestedInUpskilling(event.target.value)
+                              }
+                            >
+                              <option value="">Select</option>
+                              <option value="yes">Yes</option>
+                              <option value="no">No</option>
+                            </select>
+                          ) : undefined}
+                        </FieldRow>
+                      )}
                     </div>
                   </div>
                 </section>

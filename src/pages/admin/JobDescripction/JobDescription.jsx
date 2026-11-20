@@ -35,6 +35,7 @@ const COLUMNS = [
   { key: "jobId", width: "210px" }, // Increased to fit IR-JDBYADMIN-311026-001 fully
   { key: "status", width: "120px" },
   { key: "organization", width: "200px" },
+  { key: "location", width: "150px" },
   { key: "position", width: "190px" },
   { key: "jobCategory", width: "180px" },
   { key: "actions", width: "120px" },
@@ -81,6 +82,7 @@ const toListRow = (item) => {
         : null,
     jobId: item?.jdbA_Id ?? "",
     organizationName: item?.instituteTypeName ?? "",
+    location : item?.jdbA_Location ?? "",
     position: item?.roleName ?? "",
     jobCategory: item?.categoryName ?? "",
     isActive: isActive,
@@ -425,6 +427,7 @@ const JobDescriptionList = () => {
                   <th className={thClass}>Sr.No</th>
                   <th className={thClass}>Job ID</th>
                   <th className={thClass}>Status</th>
+                  <th className={thClass}>Location</th>
                   <th className={thClass}>Institute Type</th>
                   <th className={thClass}>Position</th>
                   <th className={thClass}>Job Category</th>
@@ -491,6 +494,11 @@ const JobDescriptionList = () => {
                           </span>
                         </td>
 
+                        <td className={td}>
+                          <span className="block truncate text-slate-900">
+                            {row.location || "-"}
+                          </span>
+                        </td>
                         {/* INSTITUTE TYPE - uniform styling */}
                         <td className={td}>
                           <span className="block truncate text-slate-900">
