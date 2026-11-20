@@ -24,10 +24,14 @@ const LIST_PATH = "/admin/jdbyadmin";
 const selectClass =
   "w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:cursor-not-allowed disabled:bg-slate-50";
 
+const textInputClass =
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:cursor-not-allowed disabled:bg-slate-50";
+
 const readOnlyInputClass =
   "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none cursor-default";
 
 const DESCRIPTION_MAX = 500;
+const LOCATION_MAX = 200;
 
 const QUILL_MODULES = {
   toolbar: [
@@ -153,6 +157,7 @@ const EMPTY = {
   organizationTypeId: "",
   jobCategoryId: "",
   jobRoleId: "",
+  jobLocation: "",
   description: "",
 };
 
@@ -164,6 +169,7 @@ const formFromRecord = (r) => ({
     first(r, "categoryId", "CategoryId", "jQ_job_category_id"),
   ),
   jobRoleId: String(first(r, "roleId", "RoleId", "jQ_job_role_id")),
+  jobLocation: String(first(r, "jdbA_Location", "JdbA_Location")),
   description: String(first(r, "description", "Description", "jQ_description")),
 });
 
@@ -173,6 +179,9 @@ const validate = (f) => {
     errors.organizationTypeId = "Select an organization type";
   if (!f.jobCategoryId) errors.jobCategoryId = "Select a job category";
   if (!f.jobRoleId) errors.jobRoleId = "Select a job role";
+
+  if (f.jobLocation.trim().length > LOCATION_MAX)
+    errors.jobLocation = `Location must be ${LOCATION_MAX} characters or less`;
 
   const text = plainText(f.description);
   if (!text) errors.description = "Job description is required";
@@ -187,6 +196,7 @@ const toPayload = (f, userId, isCreate) => {
     InstituteTypeId: Number(f.organizationTypeId),
     CategoryId: Number(f.jobCategoryId),
     RoleId: Number(f.jobRoleId),
+    JdbA_Location: f.jobLocation.trim() || null,
     Description: f.description,
   };
 
@@ -663,6 +673,24 @@ export default function CreateJobDescription() {
                       loading={loadingRoles}
                       disabled={saving || !form.jobCategoryId}
                     />
+                  )}
+                </Field>
+
+                <Field label="Job Location" error={errors.jobLocation}>
+                  {isView ? (
+                    <ReadOnly>{v(first(rec, "jdbA_Location", "JdbA_Location"))}</ReadOnly>
+                  ) : (
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={form.jobLocation}
+                        onChange={(e) => setField("jobLocation", e.target.value)}
+                        disabled={saving}
+                        maxLength={LOCATION_MAX + 50}
+                        placeholder="e.g. Aurangabad, Maharashtra"
+                        className={textInputClass}
+                      />
+                    </div>
                   )}
                 </Field>
 
