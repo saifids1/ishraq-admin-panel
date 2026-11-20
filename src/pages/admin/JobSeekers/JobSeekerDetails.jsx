@@ -39,13 +39,7 @@ const T = {
   hover: "hover:bg-[#f3f6f9]",
 };
 
-const StatusBox = ({
-  value,
-  verified,
-  mono = false,
-  mailto = false,
-  input,
-}) => {
+const StatusBox = ({ value, verified, mono = false, mailto = false, input }) => {
   const ok = truthy(verified);
 
   const badge = (
@@ -257,6 +251,10 @@ const EMPTY_FORM = {
   consentAt: "",
   isNumberVerified: "",
   isEmailVerified: "",
+  // Upskilling
+  upskillingDone: "",
+  upskillingLocation: "",
+  interestedInUpskilling: "",
 };
 
 const extractRecord = (response) => {
@@ -356,6 +354,11 @@ const toJobseekerView = (item, id) => {
     willingToRelocate: toYesNo(item?.jB_willing_to_relocate),
     employmentPreference: "",
     availabilityToJoin: item?.jB_availability_to_join ?? "",
+
+    // Upskilling
+    upskillingDone: toYesNo(item?.jB_upskilling_yes_no),
+    upskillingLocation: item?.jB_upskilling_details ?? "",
+    interestedInUpskilling: toYesNo(item?.jB_are_intrested),
 
     jobseekerNo: item?.jB_jobseeker_no ?? "",
     createdAt: item?.jB_created_at ?? "",
@@ -1179,6 +1182,8 @@ const JobSeekerDetails = ({ mode }) => {
     try {
       const preferredPayload = writePreferredToApi(draft);
 
+      const upskillingDone = toBoolean(draft.upskillingDone);
+
       const payload = {
         JB_jobseeker_id: Number(id),
         JB_full_name: draft.fullName.trim(),
@@ -1202,6 +1207,15 @@ const JobSeekerDetails = ({ mode }) => {
         JB_current_employer: draft.currentEmployment.trim(),
         JB_current_salary: Number(draft.currentSalary) || 0,
         JB_expected_salary: Number(draft.expectedSalary) || 0,
+
+        // Upskilling — conditional based on the Yes/No toggle
+        JB_upskilling_yes_no: upskillingDone,
+        JB_upskilling_details: upskillingDone
+          ? draft.upskillingLocation.trim()
+          : "",
+        JB_are_intrested: upskillingDone
+          ? null
+          : toBoolean(draft.interestedInUpskilling),
 
         // Preferred location — API stores the CITY in jB_preferred_location
         ...preferredPayload,
@@ -1333,6 +1347,14 @@ const JobSeekerDetails = ({ mode }) => {
 
   const active = user.status === "Active";
 
+  // Upskilling helper: which branch to show
+  const upskillingDoneValue = isEditing
+    ? draft.upskillingDone
+    : form.upskillingDone;
+  const showWhereUpskilling = toBoolean(upskillingDoneValue);
+  const showInterestedInUpskilling =
+    hasValue(upskillingDoneValue) && !toBoolean(upskillingDoneValue);
+
   return (
     <div className={`min-h-full ${T.bg}`}>
       <div className="mx-auto">
@@ -1442,10 +1464,6 @@ const JobSeekerDetails = ({ mode }) => {
                           Personal & Professional Details
                         </h3>
                         <div className="grid grid-cols-1 gap-x-8 gap-y-3 xl:grid-cols-2">
-                          {/* <FieldRow
-                            label="Jobseeker ID"
-                            value={form.jobseekerNo}
-                          /> */}
                           <FieldRow label="Full Name" value={form.fullName}>
                             {editInput("fullName")}
                           </FieldRow>
@@ -1473,7 +1491,6 @@ const JobSeekerDetails = ({ mode }) => {
                               value={form.email}
                               mailto
                               verified={form.isEmailVerified}
-                              // input={editInput("email", "email")}
                             />
                           </FieldRow>
 
@@ -1537,6 +1554,74 @@ const JobSeekerDetails = ({ mode }) => {
                           >
                             {editInput("currentDesignation")}
                           </FieldRow>
+
+                          {/* ---------- Upskilling (conditional) ---------- */}
+                          <FieldRow
+                            label="Upskilling Done?"
+                            value={form.upskillingDone}
+                          >
+                            {isEditing ? (
+                              <select
+                                className={EDIT_INPUT}
+                                value={
+                                  toBoolean(draft.upskillingDone)
+                                    ? "true"
+                                    : "false"
+                                }
+                                onChange={(event) => {
+                                  const isYes = event.target.value === "true";
+                                  updateDraft("upskillingDone", isYes);
+                                  // Clear the branch that is no longer relevant
+                                  if (isYes) {
+                                    updateDraft("interestedInUpskilling", "");
+                                  } else {
+                                    updateDraft("upskillingLocation", "");
+                                  }
+                                }}
+                              >
+                                <option value="true">Yes</option>
+                                <option value="false">No</option>
+                              </select>
+                            ) : undefined}
+                          </FieldRow>
+
+                          {showWhereUpskilling && (
+                            <FieldRow
+                              label="Where did you complete your upskilling?"
+                              value={form.upskillingLocation}
+                            >
+                              {editInput("upskillingLocation")}
+                            </FieldRow>
+                          )}
+
+                          {showInterestedInUpskilling && (
+                            <FieldRow
+                              label="Interested in Upskilling?"
+                              value={form.interestedInUpskilling}
+                            >
+                              {isEditing ? (
+                                <select
+                                  className={EDIT_INPUT}
+                                  value={
+                                    toBoolean(draft.interestedInUpskilling)
+                                      ? "true"
+                                      : "false"
+                                  }
+                                  onChange={(event) =>
+                                    updateDraft(
+                                      "interestedInUpskilling",
+                                      event.target.value === "true",
+                                    )
+                                  }
+                                >
+                                  <option value="true">Yes</option>
+                                  <option value="false">No</option>
+                                </select>
+                              ) : undefined}
+                            </FieldRow>
+                          )}
+                          {/* ---------- /Upskilling ---------- */}
+
                           <FieldRow
                             label="Status"
                             value={active ? "Active" : "Inactive"}
