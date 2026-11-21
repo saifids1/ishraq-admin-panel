@@ -1,3 +1,4 @@
+
 import StatusModal from "../../../components/common/StatusModal";
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -5,7 +6,6 @@ import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
   Search as SearchIcon,
-  X as CloseIcon,
   Inbox,
   ShieldCheck,
   ShieldAlert,
@@ -133,8 +133,14 @@ const toListRow = (item, srNo) => ({
   srNo,
 });
 
+/* ------------------------------ LIST RESPONSE ------------------------------ */
+
 const parseListResponse = (response, pageSize) => {
-  const inner = response?.data?.data;
+  const inner =
+    response?.data?.data ??
+    response?.data?.Data ??
+    response?.data ??
+    {};
 
   if (Array.isArray(inner)) {
     return {
@@ -144,12 +150,23 @@ const parseListResponse = (response, pageSize) => {
     };
   }
 
-  const list = inner?.data ?? [];
-  const totalRecords = inner?.totalRecords ?? list.length;
-  const totalPages =
-    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize));
+  const list = inner?.data ?? inner?.Data ?? [];
 
-  return { list, totalRecords, totalPages };
+  const totalRecords =
+    inner?.totalRecords ??
+    inner?.TotalRecords ??
+    list.length;
+
+  const totalPages =
+    inner?.totalPages ??
+    inner?.TotalPages ??
+    Math.max(1, Math.ceil(totalRecords / pageSize));
+
+  return {
+    list: Array.isArray(list) ? list : [],
+    totalRecords: Number(totalRecords) || 0,
+    totalPages: Number(totalPages) || 0,
+  };
 };
 
 /* ------------------------------ DASHBOARD PARSE ------------------------------ */
@@ -158,17 +175,33 @@ const EMPTY_DASHBOARD = {
   totalJobseekers: 0,
   activeJobseekers: 0,
   inactiveJobseekers: 0,
-  newRegistrationsThisMonth: 0,
+  registrationsThisMonth: 0,
 };
 
 const parseDashboardResponse = (response) => {
-  const d = response?.data?.data;
-  if (!d || typeof d !== "object") return { ...EMPTY_DASHBOARD };
+  const d =
+    response?.data?.data ??
+    response?.data?.Data ??
+    response?.data ??
+    {};
+
+  if (!d || typeof d !== "object") {
+    return { ...EMPTY_DASHBOARD };
+  }
+
   return {
-    totalJobseekers: Number(d.totalJobseekers) || 0,
-    activeJobseekers: Number(d.activeJobseekers) || 0,
-    inactiveJobseekers: Number(d.inactiveJobseekers) || 0,
-    newRegistrationsThisMonth: Number(d.newRegistrationsThisMonth) || 0,
+    totalJobseekers: Number(
+      d.totalJobseekers ?? d.TotalJobseekers ?? 0
+    ),
+    activeJobseekers: Number(
+      d.activeJobseekers ?? d.ActiveJobseekers ?? 0
+    ),
+    inactiveJobseekers: Number(
+      d.inactiveJobseekers ?? d.InactiveJobseekers ?? 0
+    ),
+    registrationsThisMonth: Number(
+      d.registrationsThisMonth ?? d.RegistrationsThisMonth ?? 0
+    ),
   };
 };
 
@@ -193,7 +226,6 @@ const JobSeekerList = () => {
     status: "All",
   });
 
-  // Debounced search value used for API calls
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const [confirm, setConfirm] = useState(null);
@@ -218,6 +250,7 @@ const JobSeekerList = () => {
     const t = setTimeout(() => {
       setDebouncedSearch(query.search.trim());
     }, 350);
+
     return () => clearTimeout(t);
   }, [query.search]);
 
@@ -225,23 +258,23 @@ const JobSeekerList = () => {
 
   const loadDashboard = useCallback(async () => {
     try {
-      const res = await jobseekerApi.getDashboard();
-      setDashboard(parseDashboardResponse(res));
+      const response = await jobseekerApi.getAll({
+        pageNo: 1,
+        pageSize: 1,
+      });
+
+      setDashboard(parseDashboardResponse(response));
     } catch (err) {
       console.warn("[JobSeekerList] dashboard fetch failed", err);
     }
   }, []);
-
-  // Fetch dashboard once on mount
-  useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
 
   /* --------------------------- FETCH --------------------------- */
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+
     try {
       const response = await jobseekerApi.getAll({
         pageNo: page,
@@ -249,6 +282,7 @@ const JobSeekerList = () => {
         search: debouncedSearch || undefined,
         status: query.status !== "All" ? query.status : undefined,
       });
+
       const {
         list,
         totalRecords: total,
@@ -257,16 +291,23 @@ const JobSeekerList = () => {
 
       setRows(
         list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
+          toListRow(item, (page - 1) * pageSize + index + 1)
+        )
       );
+
       setTotalRecords(total);
       setTotalPages(pages);
+
+      // Dashboard counts come from the same paginated API.
+      // They are global counts, not filtered page counts.
+      setDashboard(parseDashboardResponse(response));
     } catch (err) {
       setRows([]);
       setTotalRecords(0);
       setTotalPages(0);
-      setError(getApiErrorMessage(err) || "Unable to load jobseeker records.");
+      setError(
+        getApiErrorMessage(err) || "Unable to load jobseeker records."
+      );
     } finally {
       setLoading(false);
     }
@@ -288,9 +329,10 @@ const JobSeekerList = () => {
     setPage(1);
 
     try {
-      const [listRes] = await Promise.all([
-        jobseekerApi.getAll({ pageNo: 1, pageSize }),
-      ]);
+      const listRes = await jobseekerApi.getAll({
+        pageNo: 1,
+        pageSize,
+      });
 
       const {
         list,
@@ -302,17 +344,18 @@ const JobSeekerList = () => {
       setTotalRecords(total);
       setTotalPages(pages);
 
-      // refresh stat cards too
-      await loadDashboard();
+      setDashboard(parseDashboardResponse(listRes));
     } catch (err) {
       setRows([]);
       setTotalRecords(0);
       setTotalPages(0);
-      setError(getApiErrorMessage(err) || "Unable to load jobseeker records.");
+      setError(
+        getApiErrorMessage(err) || "Unable to load jobseeker records."
+      );
     } finally {
       setRefreshing(false);
     }
-  }, [pageSize, refreshing, loadDashboard]);
+  }, [pageSize, refreshing]);
 
   /* --------------------------- STATS --------------------------- */
 
@@ -321,7 +364,7 @@ const JobSeekerList = () => {
       totalJobseekers,
       activeJobseekers,
       inactiveJobseekers,
-      newRegistrationsThisMonth,
+      registrationsThisMonth,
     } = dashboard;
 
     return [
@@ -357,7 +400,7 @@ const JobSeekerList = () => {
       },
       {
         title: "Registrations this month",
-        value: newRegistrationsThisMonth,
+        value: registrationsThisMonth,
         note: "Registrations in current month",
         icon: CalendarPlus,
         color: "#f59e0b",
@@ -384,6 +427,7 @@ const JobSeekerList = () => {
         search: debouncedSearch || undefined,
         status: query.status !== "All" ? query.status : undefined,
       });
+
       const {
         list,
         totalRecords: total,
@@ -392,23 +436,25 @@ const JobSeekerList = () => {
 
       setRows(
         list.map((item, index) =>
-          toListRow(item, (page - 1) * pageSize + index + 1),
-        ),
+          toListRow(item, (page - 1) * pageSize + index + 1)
+        )
       );
+
       setTotalRecords(total);
       setTotalPages(pages);
 
-      // refresh stat cards (active/inactive counts changed)
-      loadDashboard();
+      setDashboard(parseDashboardResponse(response));
     } catch (err) {
       const status = err?.status ?? err?.response?.status;
+
       if (status === 405) {
         console.error(
           "[JobSeekerList] 405 Method Not Allowed — the endpoint /api/Jobseeker/{id}/toggle-active did not accept the HTTP verb.",
           "Response Allow header:",
-          err?.response?.headers?.allow,
+          err?.response?.headers?.allow
         );
       }
+
       setError(getApiErrorMessage(err) || "Unable to update status.");
       throw err;
     }
@@ -418,31 +464,37 @@ const JobSeekerList = () => {
 
   const patchFilter = (patch) => {
     setQuery((q) => ({ ...q, ...patch }));
-    setPage(1); // reset to first page whenever filters change
+    setPage(1);
   };
 
   /* ---------------------------- PAGINATION ---------------------------- */
 
-  // Server is the source of truth
   const count = totalRecords;
   const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = rows; // API already returns only this page
+  const pageRows = rows;
 
   const pageNumbers = useMemo(() => {
     const win = 5;
     let from = Math.max(1, currentPage - Math.floor(win / 2));
     const to = Math.min(totalPagesLocal, from + win - 1);
+
     from = Math.max(1, to - win + 1);
-    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+
+    return Array.from(
+      { length: to - from + 1 },
+      (_, i) => from + i
+    );
   }, [currentPage, totalPagesLocal]);
 
   /* ---------------------------- TOAST ---------------------------- */
 
   useEffect(() => {
     if (!toast) return undefined;
+
     const t = setTimeout(() => setToast(null), 2800);
+
     return () => clearTimeout(t);
   }, [toast, setToast]);
 
@@ -455,10 +507,13 @@ const JobSeekerList = () => {
 
   const confirmToggle = async () => {
     if (!confirm) return;
+
     const { row, next } = confirm;
     setBusy(true);
+
     try {
       await handleToggle(row, next === "Active");
+
       setToast({
         id: Date.now(),
         tone: next === "Active" ? "ok" : "warn",
@@ -480,11 +535,15 @@ const JobSeekerList = () => {
 
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
+
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
+
   const td =
     "border-t border-[#e2e8ee] px-2 py-2 text-[13px] text-slate-900 sm:px-3.5 sm:py-2.5 sm:text-[15px]";
+
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2";
+
   const btnRefresh =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
@@ -504,25 +563,30 @@ const JobSeekerList = () => {
       <StatCardGrid items={stats} />
 
       <div className="mx-auto w-full min-w-0 max-w-[1400px] rounded-[14px] border border-[#e2e8ee] bg-white p-2.5 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:p-4 lg:px-5">
-        
-        {/* HEADER - Responsive, stays in 1 row on desktop */}
+
+        {/* HEADER */}
+
         <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <h1 className="m-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]">
             Jobseekers
           </h1>
 
           <div className="flex w-full flex-col gap-2.5 sm:flex-row sm:items-center md:w-auto">
+
             <div className="relative w-full sm:flex-1 md:w-[240px] md:flex-none">
               <SearchIcon
                 size={15}
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
               />
+
               <input
                 type="search"
                 aria-label="Search jobseekers..."
                 placeholder="Search by name, email or mobile"
                 value={query.search}
-                onChange={(e) => patchFilter({ search: e.target.value })}
+                onChange={(e) =>
+                  patchFilter({ search: e.target.value })
+                }
                 className="h-9 w-full rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
               />
             </div>
@@ -531,13 +595,16 @@ const JobSeekerList = () => {
               <select
                 aria-label="Status"
                 value={query.status}
-                onChange={(e) => patchFilter({ status: e.target.value })}
+                onChange={(e) =>
+                  patchFilter({ status: e.target.value })
+                }
                 className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[14px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
               >
                 <option value="All">Status: All</option>
                 <option value="Active">Active</option>
                 <option value="Inactive">Inactive</option>
               </select>
+
               <ChevronDown
                 size={15}
                 className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
@@ -557,10 +624,14 @@ const JobSeekerList = () => {
                   size={15}
                   strokeWidth={2.2}
                   className={`transition-transform duration-500 ${
-                    refreshing ? "animate-spin" : "group-hover:rotate-90"
+                    refreshing
+                      ? "animate-spin"
+                      : "group-hover:rotate-90"
                   }`}
                 />
-                <span className="inline">{refreshing ? "Refreshing..." : "Refresh"}</span>
+                <span className="inline">
+                  {refreshing ? "Refreshing..." : "Refresh"}
+                </span>
               </button>
 
               <button
@@ -579,15 +650,18 @@ const JobSeekerList = () => {
             </div>
           </div>
         </div>
+
         <div
           aria-hidden="true"
           className="my-3.5 h-px bg-gradient-to-r from-[#2c6b8a]/45 via-[#e2e8ee] to-transparent"
         />
 
         {/* ERROR */}
+
         {error && (
           <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <span>{error}</span>
+
             <button
               type="button"
               onClick={load}
@@ -598,9 +672,12 @@ const JobSeekerList = () => {
           </div>
         )}
 
-        {/* TABLE: fixed header + scrollable body (vertical scrollbar only on values) */}
+        {/* TABLE */}
+
         <div className="mt-4 w-full min-w-0">
-          {/* HEADER (no scrollbar; synced horizontally with body) */}
+
+          {/* TABLE HEADER */}
+
           <div
             ref={headerRef}
             className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]"
@@ -611,9 +688,16 @@ const JobSeekerList = () => {
             >
               <colgroup>
                 {COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                  <col
+                    key={c.key}
+                    style={{
+                      width: c.width,
+                      minWidth: c.minWidth,
+                    }}
+                  />
                 ))}
               </colgroup>
+
               <thead>
                 <tr>
                   <th scope="col" className={thClass}>Sr.No</th>
@@ -630,7 +714,8 @@ const JobSeekerList = () => {
             </table>
           </div>
 
-          {/* BODY (vertical + horizontal scroll) */}
+          {/* TABLE BODY */}
+
           <div
             ref={bodyRef}
             onScroll={handleBodyScroll}
@@ -642,9 +727,16 @@ const JobSeekerList = () => {
             >
               <colgroup>
                 {COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                  <col
+                    key={c.key}
+                    style={{
+                      width: c.width,
+                      minWidth: c.minWidth,
+                    }}
+                  />
                 ))}
               </colgroup>
+
               <tbody>
                 {loading ? (
                   <tr>
@@ -669,6 +761,7 @@ const JobSeekerList = () => {
                       <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                         <Inbox size={22} />
                       </div>
+
                       <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
                         No jobseekers found
                       </p>
@@ -678,75 +771,138 @@ const JobSeekerList = () => {
                   pageRows.map((row, index) => (
                     <tr
                       key={row.id ?? index}
-                      style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                      style={{
+                        animationDelay: `${Math.min(index, 12) * 35}ms`,
+                      }}
                       className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
-                      <td className={`${td} tabular-nums`}>{start + index + 1}</td>
+                      <td className={`${td} tabular-nums`}>
+                        {start + index + 1}
+                      </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         <span className="flex min-w-0 flex-col">
-                          <span className="truncate font-medium text-slate-900">{row.jobSeekerId || "-"}</span>
+                          <span className="truncate font-medium text-slate-900">
+                            {row.jobSeekerId || "-"}
+                          </span>
                         </span>
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         <span className="flex min-w-0 flex-col">
-                          <span className="truncate font-medium text-slate-900">{row.fullName || "-"}</span>
+                          <span className="truncate font-medium text-slate-900">
+                            {row.fullName || "-"}
+                          </span>
                         </span>
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         <span
                           title={row.jobCategory}
-                          className={`inline-flex h-7 max-w-[140px] items-center justify-center truncate rounded-md px-2 text-[12px] ring-1 ring-inset shadow-sm sm:text-[14px] ${CATEGORY_STYLE[row.jobCategory] || CATEGORY_STYLE.Other}`}
+                          className={`inline-flex h-7 max-w-[140px] items-center justify-center truncate rounded-md px-2 text-[12px] ring-1 ring-inset shadow-sm sm:text-[14px] ${
+                            CATEGORY_STYLE[row.jobCategory] ||
+                            CATEGORY_STYLE.Other
+                          }`}
                         >
-                          <span className="truncate">{row.jobCategory || "-"}</span>
+                          <span className="truncate">
+                            {row.jobCategory || "-"}
+                          </span>
                         </span>
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
-                        <span className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${toneOf(row.status).badge}`}>
+                        <span
+                          className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${
+                            toneOf(row.status).badge
+                          }`}
+                        >
                           {row.status || "-"}
                         </span>
                       </td>
+
                       <td className={`${td} whitespace-nowrap text-center tabular-nums`}>
-                        <strong className="font-semibold text-center">{row.experience ?? 0}</strong>
+                        <strong className="font-semibold text-center">
+                          {row.experience ?? 0}
+                        </strong>
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         {row.email ? (
-                          <span className="block truncate text-[12px] sm:text-[14px]" title={row.email}>{row.email}</span>
+                          <span
+                            className="block truncate text-[12px] sm:text-[14px]"
+                            title={row.email}
+                          >
+                            {row.email}
+                          </span>
                         ) : (
                           <span className="text-[#9aa5b1]">-</span>
                         )}
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         {row.mobile ? (
-                          <span className="text-[12px] tabular-nums sm:text-[14px]">{row.mobile}</span>
+                          <span className="text-[12px] tabular-nums sm:text-[14px]">
+                            {row.mobile}
+                          </span>
                         ) : (
                           <span className="text-[#9aa5b1]">-</span>
                         )}
                       </td>
+
                       <td className={stickyActionsCell}>
                         <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
                             title={`View ${row.fullName || "Jobseeker"}`}
                             aria-label={`View ${row.fullName || "Jobseeker"}`}
-                            onClick={() => navigate(`/admin/jobseekers/${row.id}`)}
+                            onClick={() =>
+                              navigate(`/admin/jobseekers/${row.id}`)
+                            }
                             className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                           >
                             <ChevronsRight size={14} strokeWidth={2.2} />
                           </button>
+
                           <button
                             type="button"
                             role="switch"
                             aria-checked={row.status === "Active"}
-                            aria-label={row.status === "Active" ? `Deactivate ${row.fullName || "Jobseeker"}` : `Activate ${row.fullName || "Jobseeker"}`}
-                            title={row.status === "Active" ? "Active. Click to deactivate" : "Not active. Click to activate"}
+                            aria-label={
+                              row.status === "Active"
+                                ? `Deactivate ${row.fullName || "Jobseeker"}`
+                                : `Activate ${row.fullName || "Jobseeker"}`
+                            }
+                            title={
+                              row.status === "Active"
+                                ? "Active. Click to deactivate"
+                                : "Not active. Click to activate"
+                            }
                             onClick={() => askToggle(row)}
-                            className={`relative h-6 w-[38px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:w-[42px] ${row.status === "Active" ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]" : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"}`}
+                            className={`relative h-6 w-[38px] shrink-0 cursor-pointer rounded-full p-0.5 shadow-inner transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 sm:w-[42px] ${
+                              row.status === "Active"
+                                ? "bg-gradient-to-r from-[#16834f] to-[#2fc77e]"
+                                : "bg-gradient-to-r from-[#c8323f] to-[#ed626b]"
+                            }`}
                           >
-                            <span className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${row.status === "Active" ? "translate-x-[14px] sm:translate-x-[18px]" : "translate-x-0"}`}>
+                            <span
+                              className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow-md transition-transform duration-300 ${
+                                row.status === "Active"
+                                  ? "translate-x-[14px] sm:translate-x-[18px]"
+                                  : "translate-x-0"
+                              }`}
+                            >
                               {row.status === "Active" ? (
-                                <UserRoundCheck size={13} strokeWidth={2.7} className="text-emerald-700" />
+                                <UserRoundCheck
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-emerald-700"
+                                />
                               ) : (
-                                <UserRoundX size={13} strokeWidth={2.7} className="text-rose-700" />
+                                <UserRoundX
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-rose-700"
+                                />
                               )}
                             </span>
                           </button>
@@ -761,6 +917,7 @@ const JobSeekerList = () => {
         </div>
 
         {/* PAGINATION */}
+
         <div className="mt-3.5 flex flex-col gap-3 border-t border-[#e2e8ee] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-[#60738a]">
             <span>
@@ -773,11 +930,15 @@ const JobSeekerList = () => {
                 {Math.min(start + pageSize, count)}
               </strong>{" "}
               of{" "}
-              <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
+              <strong className="font-semibold text-[#53677f]">
+                {count}
+              </strong>{" "}
               entries
             </span>
+
             <label className="flex items-center gap-1.5">
               <span>Show:</span>
+
               <select
                 value={pageSize}
                 onChange={(e) => {
@@ -807,6 +968,7 @@ const JobSeekerList = () => {
             >
               Previous
             </button>
+
             {pageNumbers.map((n) => (
               <button
                 key={n}
@@ -822,6 +984,7 @@ const JobSeekerList = () => {
                 {n}
               </button>
             ))}
+
             <button
               type="button"
               onClick={() => setPage(currentPage + 1)}
@@ -834,6 +997,7 @@ const JobSeekerList = () => {
         </div>
 
         {/* DIALOG */}
+
         {confirm && (
           <StatusModal
             isOpen
@@ -857,6 +1021,7 @@ const JobSeekerList = () => {
         )}
 
         {/* TOAST */}
+
         {toast && (
           <div
             key={toast.id}
@@ -875,6 +1040,7 @@ const JobSeekerList = () => {
             >
               ✓
             </span>
+
             {toast.msg}
           </div>
         )}

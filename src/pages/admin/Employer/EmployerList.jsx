@@ -1,3 +1,4 @@
+
 import StatusModal from "../../../components/common/StatusModal";
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -41,7 +42,6 @@ const COLUMNS = [
   { key: "companyName", width: "190px", minWidth: "140px" },
   { key: "industry", width: "150px", minWidth: "110px" },
   { key: "status", width: "105px", minWidth: "90px" },
-  // { key: "jobCount", width: "100px", minWidth: "85px" },
   { key: "email", width: "190px", minWidth: "150px" },
   { key: "mobile", width: "125px", minWidth: "100px" },
   { key: "actions", width: "90px", minWidth: "90px", sticky: true },
@@ -81,7 +81,10 @@ const toListRow = (item, srNo) => ({
 });
 
 const parseListResponse = (response, pageSize) => {
-  const inner = response?.data?.data;
+  const inner =
+    response?.data?.data ??
+    response?.data?.Data ??
+    response?.data;
 
   if (Array.isArray(inner)) {
     return {
@@ -91,10 +94,16 @@ const parseListResponse = (response, pageSize) => {
     };
   }
 
-  const list = inner?.data ?? [];
-  const totalRecords = inner?.totalRecords ?? list.length;
+  const list = inner?.data ?? inner?.Data ?? [];
+  const totalRecords =
+    inner?.totalRecords ??
+    inner?.TotalRecords ??
+    list.length;
+
   const totalPages =
-    inner?.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize));
+    inner?.totalPages ??
+    inner?.TotalPages ??
+    Math.max(1, Math.ceil(totalRecords / pageSize));
 
   return { list, totalRecords, totalPages };
 };
@@ -109,13 +118,40 @@ const EMPTY_DASHBOARD = {
 };
 
 const parseDashboardResponse = (response) => {
-  const d = response?.data?.data;
-  if (!d || typeof d !== "object") return { ...EMPTY_DASHBOARD };
+  const d =
+    response?.data?.data ??
+    response?.data?.Data ??
+    response?.data ??
+    {};
+
   return {
-    totalEmployers: Number(d.totalEmployers) || 0,
-    activeEmployers: Number(d.activeEmployers) || 0,
-    inactiveEmployers: Number(d.inactiveEmployers) || 0,
-    newRegistrationsThisMonth: Number(d.newRegistrationsThisMonth) || 0,
+    totalEmployers: Number(
+      d.totalEmployers ??
+      d.TotalEmployers ??
+      d.totalRecords ??
+      d.TotalRecords ??
+      0
+    ),
+
+    activeEmployers: Number(
+      d.activeEmployers ??
+      d.ActiveEmployers ??
+      0
+    ),
+
+    inactiveEmployers: Number(
+      d.inactiveEmployers ??
+      d.InactiveEmployers ??
+      0
+    ),
+
+    newRegistrationsThisMonth: Number(
+      d.registrationsThisMonth ??
+      d.RegistrationsThisMonth ??
+      d.newRegistrationsThisMonth ??
+      d.NewRegistrationsThisMonth ??
+      0
+    ),
   };
 };
 
@@ -137,7 +173,6 @@ const EmployerList = () => {
 
   const [query, setQuery] = useState({ search: "", status: "All" });
 
-  // Debounced search used for the API request
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const [confirm, setConfirm] = useState(null);
@@ -151,6 +186,7 @@ const EmployerList = () => {
     const t = setTimeout(() => {
       setDebouncedSearch(query.search.trim());
     }, 350);
+
     return () => clearTimeout(t);
   }, [query.search]);
 
@@ -158,14 +194,17 @@ const EmployerList = () => {
 
   const loadDashboard = useCallback(async () => {
     try {
-      const res = await employerApi.getDashboard();
+      const res = await employerApi.getAll({
+        pageNo: 1,
+        pageSize: 1,
+      });
+
       setDashboard(parseDashboardResponse(res));
     } catch (err) {
       console.warn("[EmployerList] dashboard fetch failed", err);
     }
   }, []);
 
-  // Fetch dashboard once on mount
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
@@ -180,24 +219,38 @@ const EmployerList = () => {
         search: debouncedSearch || undefined,
         status: query.status !== "All" ? query.status : undefined,
       });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, size);
+
+      // Update dashboard counts from paginated API response
+      setDashboard(parseDashboardResponse(response));
+
+      const {
+        list,
+        totalRecords: total,
+        totalPages: pages,
+      } = parseListResponse(response, size);
+
       return {
         rows: list.map((item, index) =>
-          toListRow(item, (pageNo - 1) * size + index + 1),
+          toListRow(item, (pageNo - 1) * size + index + 1)
         ),
         total,
         pages,
       };
     },
-    [debouncedSearch, query.status],
+    [debouncedSearch, query.status]
   );
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+
     try {
-      const { rows: nextRows, total, pages } = await fetchPage(page, pageSize);
+      const {
+        rows: nextRows,
+        total,
+        pages,
+      } = await fetchPage(page, pageSize);
+
       setRows(nextRows);
       setTotalRecords(total);
       setTotalPages(pages);
@@ -205,7 +258,9 @@ const EmployerList = () => {
       setRows([]);
       setTotalRecords(0);
       setTotalPages(0);
-      setError(getApiErrorMessage(err) || "Unable to load employer records.");
+      setError(
+        getApiErrorMessage(err) || "Unable to load employer records."
+      );
     } finally {
       setLoading(false);
     }
@@ -219,30 +274,42 @@ const EmployerList = () => {
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
+
     setRefreshing(true);
     setError("");
+
     setQuery({ search: "", status: "All" });
     setDebouncedSearch("");
     setPage(1);
+
     try {
-      const response = await employerApi.getAll({ pageNo: 1, pageSize });
-      const { list, totalRecords: total, totalPages: pages } =
-        parseListResponse(response, pageSize);
+      const response = await employerApi.getAll({
+        pageNo: 1,
+        pageSize,
+      });
+
+      const {
+        list,
+        totalRecords: total,
+        totalPages: pages,
+      } = parseListResponse(response, pageSize);
+
       setRows(list.map((item, index) => toListRow(item, index + 1)));
       setTotalRecords(total);
       setTotalPages(pages);
 
-      // refresh stat cards too
-      await loadDashboard();
+      setDashboard(parseDashboardResponse(response));
     } catch (err) {
       setRows([]);
       setTotalRecords(0);
       setTotalPages(0);
-      setError(getApiErrorMessage(err) || "Unable to load employer records.");
+      setError(
+        getApiErrorMessage(err) || "Unable to load employer records."
+      );
     } finally {
       setRefreshing(false);
     }
-  }, [pageSize, refreshing, loadDashboard]);
+  }, [pageSize, refreshing]);
 
   /* --------------------------- STATS --------------------------- */
 
@@ -301,39 +368,51 @@ const EmployerList = () => {
   /* ------------------------- TOGGLE STATUS ------------------------- */
 
   const handleToggle = async (row, isActive) => {
-    if (row.id == null) throw new Error("Employer ID is missing.");
+    if (row.id == null) {
+      throw new Error("Employer ID is missing.");
+    }
+
     await employerApi.toggleActive(row.id, isActive);
-    const { rows: nextRows, total, pages } = await fetchPage(page, pageSize);
+
+    const {
+      rows: nextRows,
+      total,
+      pages,
+    } = await fetchPage(page, pageSize);
+
     setRows(nextRows);
     setTotalRecords(total);
     setTotalPages(pages);
 
-    // refresh stat cards (active/inactive counts changed)
-    loadDashboard();
+    await loadDashboard();
   };
 
   /* ---------------------------- QUERY HELPERS ---------------------------- */
 
   const patchFilter = (patch) => {
     setQuery((q) => ({ ...q, ...patch }));
-    setPage(1); // reset to first page whenever filters change
+    setPage(1);
   };
 
   /* ---------------------------- PAGINATION ---------------------------- */
 
-  // Server is the source of truth
   const count = totalRecords;
   const totalPagesLocal = Math.max(1, totalPages);
   const currentPage = Math.min(page, totalPagesLocal);
   const start = (currentPage - 1) * pageSize;
-  const pageRows = rows; // API already returns only this page
+  const pageRows = rows;
 
   const pageNumbers = useMemo(() => {
     const win = 5;
     let from = Math.max(1, currentPage - Math.floor(win / 2));
     const to = Math.min(totalPagesLocal, from + win - 1);
+
     from = Math.max(1, to - win + 1);
-    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+
+    return Array.from(
+      { length: to - from + 1 },
+      (_, i) => from + i
+    );
   }, [currentPage, totalPagesLocal]);
 
   /* ---------------------------- STATUS TOGGLE ---------------------------- */
@@ -345,10 +424,13 @@ const EmployerList = () => {
 
   const confirmToggle = async () => {
     if (!confirm) return;
+
     const { row, next } = confirm;
     setBusy(true);
+
     try {
       await handleToggle(row, next === "Active");
+
       setToast({
         id: Date.now(),
         tone: next === "Active" ? "ok" : "warn",
@@ -370,11 +452,15 @@ const EmployerList = () => {
 
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
+
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
+
   const td =
     "border-t border-[#e2e8ee] px-2 py-2 text-[13px] text-slate-900 sm:px-3.5 sm:py-2.5 sm:text-[15px]";
+
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2";
+
   const btnRefresh =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
@@ -427,6 +513,7 @@ const EmployerList = () => {
                 <option value="Active">Active</option>
                 <option value="Inactive">Inactive</option>
               </select>
+
               <ChevronDown
                 size={15}
                 className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
@@ -449,6 +536,7 @@ const EmployerList = () => {
                     refreshing ? "animate-spin" : "group-hover:rotate-90"
                   }`}
                 />
+
                 <span className="inline">
                   {refreshing ? "Refreshing..." : "Refresh"}
                 </span>
@@ -480,7 +568,11 @@ const EmployerList = () => {
         {error && (
           <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <span>{error}</span>
-            <button type="button" onClick={load} className="font-semibold underline">
+            <button
+              type="button"
+              onClick={load}
+              className="font-semibold underline"
+            >
               Retry
             </button>
           </div>
@@ -488,7 +580,6 @@ const EmployerList = () => {
 
         {/* TABLE */}
         <div className="mt-4 w-full min-w-0">
-          {/* HEADER (fixed, no vertical scrollbar) */}
           <div className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]">
             <table
               className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
@@ -496,9 +587,13 @@ const EmployerList = () => {
             >
               <colgroup>
                 {COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                  <col
+                    key={c.key}
+                    style={{ width: c.width, minWidth: c.minWidth }}
+                  />
                 ))}
               </colgroup>
+
               <thead>
                 <tr>
                   <th scope="col" className={thClass}>Sr.No</th>
@@ -514,7 +609,6 @@ const EmployerList = () => {
             </table>
           </div>
 
-          {/* BODY (scrollable vertically + horizontally) */}
           <div className="common-scrollbar h-[330px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0">
             <table
               className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
@@ -522,9 +616,13 @@ const EmployerList = () => {
             >
               <colgroup>
                 {COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                  <col
+                    key={c.key}
+                    style={{ width: c.width, minWidth: c.minWidth }}
+                  />
                 ))}
               </colgroup>
+
               <tbody>
                 {loading ? (
                   <tr>
@@ -549,6 +647,7 @@ const EmployerList = () => {
                       <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                         <Inbox size={22} />
                       </div>
+
                       <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
                         No employers found
                       </p>
@@ -558,10 +657,15 @@ const EmployerList = () => {
                   pageRows.map((row, index) => (
                     <tr
                       key={row.id ?? index}
-                      style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                      style={{
+                        animationDelay: `${Math.min(index, 12) * 35}ms`,
+                      }}
                       className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
-                      <td className={`${td} tabular-nums`}>{start + index + 1}</td>
+                      <td className={`${td} tabular-nums`}>
+                        {start + index + 1}
+                      </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         <span className="flex min-w-0 flex-col">
                           <span className="truncate font-medium text-slate-900">
@@ -569,6 +673,7 @@ const EmployerList = () => {
                           </span>
                         </span>
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         <span className="flex min-w-0 flex-col">
                           <span className="truncate font-medium text-slate-900">
@@ -576,6 +681,7 @@ const EmployerList = () => {
                           </span>
                         </span>
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         <span
                           title={row.industry}
@@ -583,9 +689,12 @@ const EmployerList = () => {
                             INDUSTRY_STYLE[row.industry] || INDUSTRY_STYLE.Other
                           }`}
                         >
-                          <span className="truncate">{row.industry || "-"}</span>
+                          <span className="truncate">
+                            {row.industry || "-"}
+                          </span>
                         </span>
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         <span
                           className={`${BADGE_BASE} !h-6 !min-w-[80px] !px-2 !text-[12px] sm:!h-7 sm:!min-w-[96px] sm:!text-[14px] ${
@@ -595,6 +704,7 @@ const EmployerList = () => {
                           {row.status || "-"}
                         </span>
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         {row.email ? (
                           <span
@@ -607,6 +717,7 @@ const EmployerList = () => {
                           <span className="text-[#9aa5b1]">-</span>
                         )}
                       </td>
+
                       <td className={`${td} whitespace-nowrap`}>
                         {row.mobile ? (
                           <span className="text-[12px] tabular-nums sm:text-[14px]">
@@ -616,17 +727,21 @@ const EmployerList = () => {
                           <span className="text-[#9aa5b1]">-</span>
                         )}
                       </td>
+
                       <td className={stickyActionsCell}>
                         <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
                             title={`View ${row.companyName || "Employer"}`}
                             aria-label={`View ${row.companyName || "Employer"}`}
-                            onClick={() => navigate(`/admin/employers/${row.id}`)}
+                            onClick={() =>
+                              navigate(`/admin/employers/${row.id}`)
+                            }
                             className="grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-gradient-to-br from-[#168fa1] to-[#35b8c4] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2"
                           >
                             <ChevronsRight size={14} strokeWidth={2.2} />
                           </button>
+
                           <button
                             type="button"
                             role="switch"
@@ -656,9 +771,17 @@ const EmployerList = () => {
                               }`}
                             >
                               {row.status === "Active" ? (
-                                <Building size={13} strokeWidth={2.7} className="text-emerald-700" />
+                                <Building
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-emerald-700"
+                                />
                               ) : (
-                                <Building2 size={13} strokeWidth={2.7} className="text-rose-700" />
+                                <Building2
+                                  size={13}
+                                  strokeWidth={2.7}
+                                  className="text-rose-700"
+                                />
                               )}
                             </span>
                           </button>
@@ -685,9 +808,12 @@ const EmployerList = () => {
                 {Math.min(start + pageSize, count)}
               </strong>{" "}
               of{" "}
-              <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
+              <strong className="font-semibold text-[#53677f]">
+                {count}
+              </strong>{" "}
               entries
             </span>
+
             <label className="flex items-center gap-1.5">
               <span>Show:</span>
               <select
@@ -716,6 +842,7 @@ const EmployerList = () => {
             >
               Previous
             </button>
+
             {pageNumbers.map((n) => (
               <button
                 key={n}
@@ -731,6 +858,7 @@ const EmployerList = () => {
                 {n}
               </button>
             ))}
+
             <button
               type="button"
               onClick={() => setPage(currentPage + 1)}
