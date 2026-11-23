@@ -1,3 +1,4 @@
+
 import StatusModal from "../../../components/common/StatusModal";
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -89,17 +90,20 @@ const extractList = (response) => {
     root?.Data,
     root,
   ];
+
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) return candidate;
     if (Array.isArray(candidate?.data)) return candidate.data;
     if (Array.isArray(candidate?.Data)) return candidate.Data;
   }
+
   return [];
 };
 
 const parseListResponse = (response) => {
   const root = response?.data ?? response;
   const payload = root?.data ?? root?.Data ?? root;
+
   const list = Array.isArray(payload)
     ? payload
     : (payload?.data ?? payload?.Data ?? []);
@@ -121,19 +125,23 @@ const toListRow = (item, srNo) => {
     "JQ_status",
     "JS_name",
   );
+
   const activeValue = firstValue(
     item,
     "jQ_is_active",
     "JQ_is_active",
     "isActive",
   );
+
   const hasActiveValue = activeValue !== "";
+
   const isActive = hasActiveValue
     ? [true, 1, "1", "true", "True"].includes(activeValue)
     : status === "Open" || status === "Active";
 
   return {
     ...item,
+
     id: firstValue(
       item,
       "jQ_job_requirement_id",
@@ -142,6 +150,7 @@ const toListRow = (item, srNo) => {
       "jobRequirementId",
       "id",
     ),
+
     requestId: firstValue(
       item,
       "jQ_job_re_id",
@@ -150,6 +159,7 @@ const toListRow = (item, srNo) => {
       "requestNo",
       "requestId",
     ),
+
     organizationName: firstValue(
       item,
       "employerName",
@@ -158,6 +168,7 @@ const toListRow = (item, srNo) => {
       "JQ_organizationName",
       "organization_name",
     ),
+
     position: firstValue(
       item,
       "jQ_position_title",
@@ -167,6 +178,7 @@ const toListRow = (item, srNo) => {
       "JQ_position_required",
       "positionRequired",
     ),
+
     department: firstValue(
       item,
       "jQ_department_speciality",
@@ -175,6 +187,7 @@ const toListRow = (item, srNo) => {
       "JQ_department",
       "departmentSpeciality",
     ),
+
     employmentType: firstValue(
       item,
       "employmentTypeName",
@@ -184,6 +197,7 @@ const toListRow = (item, srNo) => {
       "JQ_employment_type",
       "employment_type",
     ),
+
     jobCategory: firstValue(
       item,
       "jobCategoryName",
@@ -191,6 +205,7 @@ const toListRow = (item, srNo) => {
       "JC_name",
       "JQ_job_category",
     ),
+
     vacancies: firstValue(
       item,
       "jQ_vacancies",
@@ -199,6 +214,7 @@ const toListRow = (item, srNo) => {
       "JQ_number_of_vacancies",
       "numberOfVacancies",
     ),
+
     applicants:
       firstValue(
         item,
@@ -207,6 +223,7 @@ const toListRow = (item, srNo) => {
         "applicantCount",
         "JQ_applicants",
       ) || 0,
+
     location: firstValue(
       item,
       "jobLocationName",
@@ -214,16 +231,24 @@ const toListRow = (item, srNo) => {
       "JQ_job_location",
       "jobLocation",
     ),
+
     isActive,
-    status: hasActiveValue ? (isActive ? "Active" : "Inactive") : status || "-",
+
+    status: hasActiveValue
+      ? (isActive ? "Active" : "Inactive")
+      : status || "-",
+
     requirementStatus: status || "-",
+
     requirementStatusId: firstValue(
       item,
       "jQ_job_status_id",
       "JQ_job_status_id",
       "jobStatusId",
     ),
+
     deadline: firstValue(item, "jQ_deadline", "JQ_deadline", "deadline"),
+
     srNo,
   };
 };
@@ -238,13 +263,44 @@ const EMPTY_DASHBOARD = {
 };
 
 const parseDashboardResponse = (response) => {
-  const d = response?.data?.data;
-  if (!d || typeof d !== "object") return { ...EMPTY_DASHBOARD };
+  const d =
+    response?.data?.data ??
+    response?.data?.Data ??
+    response?.data ??
+    {};
+
   return {
-    totalJobRequirements: Number(d.totalJobRequirements) || 0,
-    activeJobRequirements: Number(d.activeJobRequirements) || 0,
-    inactiveJobRequirements: Number(d.inactiveJobRequirements) || 0,
-    newRequirementsThisMonth: Number(d.newRequirementsThisMonth) || 0,
+    totalJobRequirements: Number(
+      d.totalJobRequirements ??
+        d.TotalJobRequirements ??
+        d.totalRecords ??
+        d.TotalRecords ??
+        0,
+    ),
+
+    activeJobRequirements: Number(
+      d.activeJobRequirements ??
+        d.ActiveJobRequirements ??
+        d.activeRequirements ??
+        d.ActiveRequirements ??
+        0,
+    ),
+
+    inactiveJobRequirements: Number(
+      d.inactiveJobRequirements ??
+        d.InactiveJobRequirements ??
+        d.inactiveRequirements ??
+        d.InactiveRequirements ??
+        0,
+    ),
+
+    newRequirementsThisMonth: Number(
+      d.newRequirementsThisMonth ??
+        d.NewRequirementsThisMonth ??
+        d.jobsPostedThisMonth ??
+        d.JobsPostedThisMonth ??
+        0,
+    ),
   };
 };
 
@@ -284,10 +340,12 @@ const JobRequirementList = () => {
 
   const [statusDialog, setStatusDialog] = useState(null);
   const [jobStatuses, setJobStatuses] = useState([]);
+
   const [statusForm, setStatusForm] = useState({
     jobStatusId: "",
     deadline: "",
   });
+
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusError, setStatusError] = useState("");
@@ -307,6 +365,7 @@ const JobRequirementList = () => {
 
   useEffect(() => {
     let cancelled = false;
+
     const load = async () => {
       try {
         const [rolesRes, catsRes, instRes] = await Promise.all([
@@ -314,6 +373,7 @@ const JobRequirementList = () => {
           jobCategoryApi.getAllList?.() ?? Promise.resolve([]),
           instituteTypeApi.getAllList(),
         ]);
+
         if (!cancelled) {
           setJobRoles(extractList(rolesRes));
           setJobCategories(extractList(catsRes));
@@ -323,7 +383,9 @@ const JobRequirementList = () => {
         /* silent */
       }
     };
+
     load();
+
     return () => {
       cancelled = true;
     };
@@ -333,10 +395,18 @@ const JobRequirementList = () => {
 
   const loadDashboard = useCallback(async () => {
     try {
-      const res = await jobRequirementApi.getDashboard();
-      setDashboard(parseDashboardResponse(res));
+      const response = await jobRequirementApi.getAll({
+        pageNo: 1,
+        pageSize: 1,
+        JQ_is_CreatedByAdmin: false,
+      });
+
+      setDashboard(parseDashboardResponse(response));
     } catch (err) {
-      console.warn("[JobRequirementList] dashboard fetch failed", err);
+      console.warn(
+        "[JobRequirementList] dashboard fetch failed",
+        err,
+      );
     }
   }, []);
 
@@ -350,16 +420,33 @@ const JobRequirementList = () => {
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+
     try {
-      const params = { pageNo: page, pageSize, JQ_is_CreatedByAdmin: false };
-      if (query.search.trim()) params.search = query.search.trim();
-      if (query.isActive !== "All")
+      const params = {
+        pageNo: page,
+        pageSize,
+        JQ_is_CreatedByAdmin: false,
+      };
+
+      if (query.search.trim()) {
+        params.search = query.search.trim();
+      }
+
+      if (query.isActive !== "All") {
         params.isActive = query.isActive === "Active";
-      if (query.jobRoleId) params.JQ_job_role_id = Number(query.jobRoleId);
-      if (query.instituteTypeId)
+      }
+
+      if (query.jobRoleId) {
+        params.JQ_job_role_id = Number(query.jobRoleId);
+      }
+
+      if (query.instituteTypeId) {
         params.JQ_institute_type_id = Number(query.instituteTypeId);
-      if (query.jobCategoryId)
+      }
+
+      if (query.jobCategoryId) {
         params.JQ_job_category_id = Number(query.jobCategoryId);
+      }
 
       const response = await jobRequirementApi.getAll(params);
       const result = parseListResponse(response);
@@ -369,7 +456,9 @@ const JobRequirementList = () => {
           toListRow(item, (page - 1) * pageSize + index + 1),
         ),
       );
+
       setTotalRecords(result.totalRecords);
+
       setTotalPages(
         result.totalPages ||
           Math.max(1, Math.ceil(result.totalRecords / pageSize)),
@@ -378,8 +467,10 @@ const JobRequirementList = () => {
       setJobs([]);
       setTotalRecords(0);
       setTotalPages(0);
+
       setError(
-        getApiErrorMessage(err) || "Unable to load job requirement records.",
+        getApiErrorMessage(err) ||
+          "Unable to load job requirement records.",
       );
     } finally {
       setLoading(false);
@@ -394,7 +485,9 @@ const JobRequirementList = () => {
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
+
     setRefreshing(true);
+
     try {
       await load();
       await loadDashboard();
@@ -461,9 +554,11 @@ const JobRequirementList = () => {
 
   const handleToggle = async (row) => {
     await jobRequirementApi.toggleActive(row.id, !row.isActive);
+
     await load();
-    // refresh stat cards (active/inactive counts changed)
-    loadDashboard();
+
+    // Refresh stat cards after active status changes
+    await loadDashboard();
   };
 
   const patchFilter = (patch) => {
@@ -481,10 +576,16 @@ const JobRequirementList = () => {
 
   const pageNumbers = useMemo(() => {
     const win = 5;
+
     let from = Math.max(1, currentPage - Math.floor(win / 2));
     const to = Math.min(totalPagesLocal, from + win - 1);
+
     from = Math.max(1, to - win + 1);
-    return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+
+    return Array.from(
+      { length: to - from + 1 },
+      (_, i) => from + i,
+    );
   }, [currentPage, totalPagesLocal]);
 
   /* --------------------------- TOGGLE CONFIRM --------------------------- */
@@ -496,10 +597,14 @@ const JobRequirementList = () => {
 
   const confirmToggle = async () => {
     if (!confirm) return;
+
     const { row, next } = confirm;
+
     setBusy(true);
+
     try {
       await handleToggle(row);
+
       setToast({
         id: Date.now(),
         tone: next === "Active" ? "ok" : "warn",
@@ -522,6 +627,7 @@ const JobRequirementList = () => {
   const openStatusDialog = async (row) => {
     setStatusDialog(row);
     setStatusError("");
+
     setStatusForm({
       jobStatusId: String(row.requirementStatusId || ""),
       deadline: dateInputValue(row.deadline),
@@ -530,46 +636,67 @@ const JobRequirementList = () => {
     if (jobStatuses.length > 0) return;
 
     setStatusLoading(true);
+
     try {
       const response = await jobStatusApi.getAllList();
-      const payload = response?.data?.data ?? response?.data?.Data ?? [];
+
+      const payload =
+        response?.data?.data ??
+        response?.data?.Data ??
+        [];
+
       setJobStatuses(Array.isArray(payload) ? payload : []);
     } catch (err) {
-      setStatusError(getApiErrorMessage(err) || "Unable to load job statuses.");
+      setStatusError(
+        getApiErrorMessage(err) || "Unable to load job statuses.",
+      );
     } finally {
       setStatusLoading(false);
     }
   };
 
   const closeStatusDialog = () => {
-    if (!statusSaving) setStatusDialog(null);
+    if (!statusSaving) {
+      setStatusDialog(null);
+    }
   };
 
   const submitStatusUpdate = async (event) => {
     event.preventDefault();
+
     if (!statusDialog || statusSaving) return;
 
     if (!statusForm.jobStatusId || !statusForm.deadline) {
-      setStatusError("Job requirement status and deadline are required.");
+      setStatusError(
+        "Job requirement status and deadline are required.",
+      );
       return;
     }
 
     setStatusSaving(true);
     setStatusError("");
+
     try {
-      await jobRequirementApi.updateStatusAndDeadline(statusDialog.id, {
-        jQ_job_status_id: Number(statusForm.jobStatusId),
-        jQ_deadline: apiDateValue(statusForm.deadline),
-      });
+      await jobRequirementApi.updateStatusAndDeadline(
+        statusDialog.id,
+        {
+          jQ_job_status_id: Number(statusForm.jobStatusId),
+          jQ_deadline: apiDateValue(statusForm.deadline),
+        },
+      );
+
       setStatusDialog(null);
+
       setToast({
         id: Date.now(),
         tone: "ok",
         msg: "Requirement status and deadline updated successfully.",
       });
+
       await load();
-      // deadline/status changes may affect active counts
-      loadDashboard();
+
+      // Refresh dashboard counts after status/deadline update
+      await loadDashboard();
     } catch (err) {
       setStatusError(
         getApiErrorMessage(err) ||
@@ -584,25 +711,34 @@ const JobRequirementList = () => {
 
   const pageBtn =
     "grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg px-2.5 text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a]";
+
   const navBtn = `${pageBtn} border border-[#dce3eb] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] disabled:cursor-not-allowed disabled:border-[#e2e8ee] disabled:text-[#b8c4d3] disabled:hover:bg-white disabled:hover:text-[#b8c4d3]`;
+
   const td =
     "border-t border-[#e2e8ee] px-2 py-2 text-[13px] text-slate-900 sm:px-3.5 sm:py-2.5 sm:text-[15px]";
+
   const btnPrimary =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#16834f] to-[#2fb877] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16834f] focus-visible:ring-offset-2";
+
   const btnRefresh =
     "group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9d5dd] bg-white px-3 text-[13px] font-semibold text-[#34445a] shadow-sm transition hover:-translate-y-0.5 hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+
   const btnFilter = (active) =>
     `group inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-[13px] font-semibold shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c6b8a] focus-visible:ring-offset-2 ${
       active
         ? "border-[#2c6b8a] bg-[#e8f1f6] text-[#2c6b8a]"
         : "border-[#c9d5dd] bg-white text-[#34445a] hover:border-[#2c6b8a] hover:bg-[#e8f1f6] hover:text-[#2c6b8a]"
     }`;
+
   const thClass =
     "whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-2 py-2 text-left text-[12px] font-semibold tracking-wide text-white shadow-[0_3px_6px_-3px_rgba(30,43,54,0.45)] sm:px-4 sm:py-1.5 sm:text-[15px]";
+
   const stickyActionsHead =
     "sticky right-0 z-30 w-[160px] min-w-[140px] whitespace-nowrap bg-gradient-to-r from-[#2c6b8a] to-[#3b86a6] px-1 py-2 text-center text-[12px] font-semibold tracking-wide text-white shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.35)] sm:px-2 sm:py-1.5 sm:text-[15px]";
+
   const stickyActionsCell =
     "sticky right-0 z-20 w-[160px] min-w-[140px] border-t border-[#e2e8ee] bg-white px-1 py-2 text-center text-[13px] text-slate-900 shadow-[-8px_0_12px_-8px_rgba(30,43,54,0.18)] group-even:bg-[#f9fbfc] group-hover:bg-[#e8f1f6] sm:px-2 sm:py-2.5 sm:text-[15px]";
+
   const filterInput =
     "h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[13px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30";
 
@@ -613,7 +749,7 @@ const JobRequirementList = () => {
       <StatCardGrid items={stats} />
 
       <div className="mx-auto w-full min-w-0 max-w-[1400px] rounded-[14px] border border-[#e2e8ee] bg-white p-2.5 text-[#1e2b36] shadow-[0_1px_2px_rgba(30,43,54,0.05),0_12px_28px_-16px_rgba(44,107,138,0.35)] sm:p-4 lg:px-5">
-        {/* HEADER — identical structure to EmployerList */}
+        {/* HEADER */}
         <div className="mb-4 flex min-w-0 flex-col justify-between gap-3 md:flex-row md:items-center">
           <h1 className="m-0 shrink-0 text-[22px] font-extrabold tracking-tight text-[#2c6b8a] sm:text-[26px]">
             Job Requirements
@@ -626,12 +762,15 @@ const JobRequirementList = () => {
                 size={15}
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
               />
+
               <input
                 type="search"
                 aria-label="Search job requirements..."
                 placeholder="Search organization, position, location"
                 value={query.search}
-                onChange={(e) => patchFilter({ search: e.target.value })}
+                onChange={(e) =>
+                  patchFilter({ search: e.target.value })
+                }
                 className="h-9 w-full min-w-0 rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] pl-9 pr-3 text-[13px] text-[#1e2b36] outline-none transition placeholder:text-[#9aa5b1] hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
               />
             </div>
@@ -662,9 +801,12 @@ const JobRequirementList = () => {
                   size={15}
                   strokeWidth={2.2}
                   className={`shrink-0 transition-transform duration-500 ${
-                    refreshing ? "animate-spin" : "group-hover:rotate-90"
+                    refreshing
+                      ? "animate-spin"
+                      : "group-hover:rotate-90"
                   }`}
                 />
+
                 <span className="truncate">
                   {refreshing ? "Refreshing..." : "Refresh"}
                 </span>
@@ -673,7 +815,9 @@ const JobRequirementList = () => {
               <button
                 type="button"
                 title="Add"
-                onClick={() => navigate("/admin/job-requirements/create")}
+                onClick={() =>
+                  navigate("/admin/job-requirements/create")
+                }
                 className={`${btnPrimary} w-full min-w-0 justify-center px-2 md:w-auto md:px-3`}
               >
                 <Plus
@@ -687,7 +831,7 @@ const JobRequirementList = () => {
           </div>
         </div>
 
-        {/* FILTER PANEL (collapsible, inside card) */}
+        {/* FILTER PANEL */}
         {showFilters && (
           <div className="mt-1 rounded-xl border border-[#e2e8ee] bg-[#f9fbfc] p-3">
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -695,26 +839,33 @@ const JobRequirementList = () => {
                 <select
                   aria-label="Status"
                   value={query.isActive}
-                  onChange={(e) => patchFilter({ isActive: e.target.value })}
+                  onChange={(e) =>
+                    patchFilter({ isActive: e.target.value })
+                  }
                   className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-[#c9d5dd] bg-[#f9fbfc] px-3 pr-9 text-[14px] font-medium text-[#34445a] outline-none transition hover:border-[#2c6b8a] hover:bg-white focus:border-[#2c6b8a] focus:bg-white focus:ring-2 focus:ring-[#2c6b8a]/30"
                 >
                   <option value="All">Status: All</option>
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
                 </select>
+
                 <ChevronDown
                   size={15}
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
                 />
               </div>
+
               <div className="relative">
                 <select
                   aria-label="Job Role"
                   value={query.jobRoleId}
-                  onChange={(e) => patchFilter({ jobRoleId: e.target.value })}
+                  onChange={(e) =>
+                    patchFilter({ jobRoleId: e.target.value })
+                  }
                   className={filterInput}
                 >
                   <option value="">Job Role: All</option>
+
                   {jobRoles.map((r) => (
                     <option
                       key={r.jR_job_role_id ?? r.id ?? r.jR_name}
@@ -724,6 +875,7 @@ const JobRequirementList = () => {
                     </option>
                   ))}
                 </select>
+
                 <ChevronDown
                   size={15}
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
@@ -740,6 +892,7 @@ const JobRequirementList = () => {
                   className={filterInput}
                 >
                   <option value="">Institute Type: All</option>
+
                   {instituteTypes.map((t) => (
                     <option
                       key={t.iT_institute_type_id ?? t.id}
@@ -749,6 +902,7 @@ const JobRequirementList = () => {
                     </option>
                   ))}
                 </select>
+
                 <ChevronDown
                   size={15}
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
@@ -765,6 +919,7 @@ const JobRequirementList = () => {
                   className={filterInput}
                 >
                   <option value="">Job Category: All</option>
+
                   {jobCategories.map((c) => (
                     <option
                       key={c.jC_job_category_id ?? c.id ?? c.jC_name}
@@ -774,6 +929,7 @@ const JobRequirementList = () => {
                     </option>
                   ))}
                 </select>
+
                 <ChevronDown
                   size={15}
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9aa5b1]"
@@ -792,6 +948,7 @@ const JobRequirementList = () => {
         {error && (
           <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <span className="min-w-0 break-words">{error}</span>
+
             <button
               type="button"
               onClick={load}
@@ -802,9 +959,9 @@ const JobRequirementList = () => {
           </div>
         )}
 
-        {/* TABLE: fixed header + scrollable body (vertical scrollbar only on values) */}
+        {/* TABLE */}
         <div className="mt-4 w-full min-w-0">
-          {/* HEADER (no vertical scrollbar; synced horizontally with body) */}
+          {/* HEADER */}
           <div
             ref={headerScrollRef}
             className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]"
@@ -815,9 +972,16 @@ const JobRequirementList = () => {
             >
               <colgroup>
                 {COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                  <col
+                    key={c.key}
+                    style={{
+                      width: c.width,
+                      minWidth: c.minWidth,
+                    }}
+                  />
                 ))}
               </colgroup>
+
               <thead>
                 <tr>
                   <th scope="col" className={thClass}>Sr.No</th>
@@ -835,7 +999,7 @@ const JobRequirementList = () => {
             </table>
           </div>
 
-          {/* BODY (vertical + horizontal scroll) */}
+          {/* BODY */}
           <div
             ref={bodyScrollRef}
             onScroll={handleBodyScroll}
@@ -847,18 +1011,29 @@ const JobRequirementList = () => {
             >
               <colgroup>
                 {COLUMNS.map((c) => (
-                  <col key={c.key} style={{ width: c.width, minWidth: c.minWidth }} />
+                  <col
+                    key={c.key}
+                    style={{
+                      width: c.width,
+                      minWidth: c.minWidth,
+                    }}
+                  />
                 ))}
               </colgroup>
+
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={COL_SPAN_ALL} className="px-4 py-12 text-center">
+                    <td
+                      colSpan={COL_SPAN_ALL}
+                      className="px-4 py-12 text-center"
+                    >
                       <div className="flex flex-col items-center">
                         <span
                           aria-hidden="true"
                           className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#e8f1f6] border-t-[#2c6b8a]"
                         />
+
                         <p className="mt-3 text-[14px] text-[#6b7a88] sm:text-[15px]">
                           Loading...
                         </p>
@@ -874,6 +1049,7 @@ const JobRequirementList = () => {
                       <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1f6] text-[#2c6b8a] shadow-[0_0_0_6px_rgba(232,241,246,0.6)]">
                         <Inbox size={22} />
                       </div>
+
                       <p className="mt-3 text-[14px] text-[#1e2b36] sm:text-[15px]">
                         No job requirements yet
                       </p>
@@ -883,7 +1059,9 @@ const JobRequirementList = () => {
                   pageRows.map((row, index) => (
                     <tr
                       key={row.id ?? index}
-                      style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+                      style={{
+                        animationDelay: `${Math.min(index, 12) * 35}ms`,
+                      }}
                       className="js-row group transition-colors even:bg-[#f9fbfc] hover:bg-[#e8f1f6]"
                     >
                       <td className={`${td} tabular-nums`}>
@@ -906,7 +1084,6 @@ const JobRequirementList = () => {
                           <span className="truncate font-medium text-slate-900">
                             {row.organizationName || "-"}
                           </span>
-                          
                         </span>
                       </td>
 
@@ -915,7 +1092,6 @@ const JobRequirementList = () => {
                           <span className="truncate font-medium text-slate-900">
                             {row.position || "-"}
                           </span>
-                         
                         </span>
                       </td>
 
@@ -966,11 +1142,13 @@ const JobRequirementList = () => {
                             strokeWidth={2.4}
                             className="sm:hidden"
                           />
+
                           <Users
                             size={13}
                             strokeWidth={2.4}
                             className="hidden sm:block"
                           />
+
                           {Number(row.applicants || 0)}
                         </button>
                       </td>
@@ -1065,11 +1243,15 @@ const JobRequirementList = () => {
                 {Math.min(start + pageSize, count)}
               </strong>{" "}
               of{" "}
-              <strong className="font-semibold text-[#53677f]">{count}</strong>{" "}
+              <strong className="font-semibold text-[#53677f]">
+                {count}
+              </strong>{" "}
               entries
             </span>
+
             <label className="flex items-center gap-1.5">
               <span>Show:</span>
+
               <select
                 value={pageSize}
                 onChange={(e) => {
@@ -1099,6 +1281,7 @@ const JobRequirementList = () => {
             >
               Previous
             </button>
+
             {pageNumbers.map((n) => (
               <button
                 key={n}
@@ -1114,6 +1297,7 @@ const JobRequirementList = () => {
                 {n}
               </button>
             ))}
+
             <button
               type="button"
               onClick={() => setPage(currentPage + 1)}
@@ -1125,7 +1309,7 @@ const JobRequirementList = () => {
           </nav>
         </div>
 
-        {/* STATUS DIALOG — responsive like EmployerList modals */}
+        {/* STATUS DIALOG */}
         {statusDialog && (
           <div className="fixed inset-0 z-50 grid place-items-center p-3 sm:p-4">
             <div
@@ -1133,20 +1317,24 @@ const JobRequirementList = () => {
               onClick={closeStatusDialog}
               aria-hidden="true"
             />
+
             <form
               onSubmit={submitStatusUpdate}
               className="relative max-h-[90vh] w-full max-w-[520px] overflow-y-auto rounded-2xl bg-white shadow-2xl"
             >
               <div className="h-1.5 w-full bg-gradient-to-r from-[#2c6b8a] to-[#4a9bb3]" />
+
               <div className="flex items-start justify-between gap-2 border-b border-[#e2e8ee] px-4 py-3.5 sm:px-6 sm:py-4">
                 <div className="min-w-0">
                   <h2 className="text-[16px] font-bold text-[#1e2b36] sm:text-[18px]">
                     Update Requirement Status
                   </h2>
+
                   <p className="mt-1 truncate text-[12px] text-[#6b7a88] sm:text-[13px]">
                     {statusDialog.position || "Job requirement"}
                   </p>
                 </div>
+
                 <button
                   type="button"
                   onClick={closeStatusDialog}
@@ -1167,6 +1355,7 @@ const JobRequirementList = () => {
               <div className="grid grid-cols-1 gap-4 px-4 py-4 sm:grid-cols-2 sm:gap-5 sm:px-6 sm:py-5">
                 <label className="text-sm font-medium text-slate-700">
                   Job Requirement Status
+
                   <select
                     value={statusForm.jobStatusId}
                     onChange={(event) =>
@@ -1180,8 +1369,11 @@ const JobRequirementList = () => {
                     className="mt-1.5 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none transition focus:border-[#2f6b8a] focus:ring-2 focus:ring-[#2f6b8a]/10 disabled:bg-slate-50"
                   >
                     <option value="">
-                      {statusLoading ? "Loading statuses..." : "Select status"}
+                      {statusLoading
+                        ? "Loading statuses..."
+                        : "Select status"}
                     </option>
+
                     {jobStatuses.map((item) => (
                       <option
                         key={item.jS_job_status_id}
@@ -1195,6 +1387,7 @@ const JobRequirementList = () => {
 
                 <label className="text-sm font-medium text-slate-700">
                   Deadline
+
                   <input
                     type="date"
                     value={statusForm.deadline}
@@ -1220,6 +1413,7 @@ const JobRequirementList = () => {
                 >
                   Cancel
                 </button>
+
                 <button
                   type="submit"
                   disabled={statusLoading || statusSaving}
@@ -1269,6 +1463,7 @@ const JobRequirementList = () => {
             >
               ✓
             </span>
+
             {toast.msg}
           </div>
         )}

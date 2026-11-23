@@ -1,4 +1,3 @@
-
 import StatusModal from "../../../components/common/StatusModal";
 import { useStatusToast } from "../../../components/common/StatusModalProvider";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -578,9 +577,9 @@ const EmployerList = () => {
           </div>
         )}
 
-        {/* TABLE */}
+        {/* TABLE – single scroll container, header scrolls with body */}
         <div className="mt-4 w-full min-w-0">
-          <div className="overflow-hidden rounded-t-lg border border-b-0 border-[#cbe1f4]">
+          <div className="common-scrollbar h-[330px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4]">
             <table
               className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
               style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
@@ -606,22 +605,6 @@ const EmployerList = () => {
                   <th scope="col" className={stickyActionsHead}>Actions</th>
                 </tr>
               </thead>
-            </table>
-          </div>
-
-          <div className="common-scrollbar h-[330px] w-full min-w-0 overflow-auto rounded-b-lg border border-[#cbe1f4] border-t-0">
-            <table
-              className="w-full table-fixed border-collapse text-[13px] sm:text-[15px]"
-              style={{ minWidth: `${TABLE_MIN_WIDTH}px` }}
-            >
-              <colgroup>
-                {COLUMNS.map((c) => (
-                  <col
-                    key={c.key}
-                    style={{ width: c.width, minWidth: c.minWidth }}
-                  />
-                ))}
-              </colgroup>
 
               <tbody>
                 {loading ? (

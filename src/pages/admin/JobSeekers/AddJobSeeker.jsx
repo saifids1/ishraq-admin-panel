@@ -624,11 +624,11 @@ const AddJobSeeker = ({ mode }) => {
     }));
   };
 
-  const onMobile = (e) => {
-    const clean = e.target.value.replace(/[^\d+\s]/g, "");
-    setForm((c) => ({ ...c, mobile: clean }));
-    setErrors((c) => ({ ...c, mobile: undefined }));
-  };
+ const onMobile = (e) => {
+  const clean = e.target.value.replace(/\D/g, "").slice(0, 10);
+  setForm((c) => ({ ...c, mobile: clean }));
+  setErrors((c) => ({ ...c, mobile: undefined }));
+};
 
   const onWhatsapp = (e) => {
     const clean = e.target.value.replace(/[^\d+\s]/g, "");
@@ -912,11 +912,13 @@ const AddJobSeeker = ({ mode }) => {
                   <FieldRow label="Mobile Number" required error={errors.mobile}>
                     <input
                       type="tel"
-                      inputMode="tel"
+                
                       value={form.mobile}
                       onChange={onMobile}
+                       inputMode="numeric"
+                  placeholder="10-digit mobile number"
                       disabled={saving}
-                      placeholder="+91 98765 43210"
+                
                       className={inputClass}
                     />
                   </FieldRow>
